@@ -1,0 +1,7 @@
+PyQt6
+adafruit-circuitpython-max31855
+pyserial
+python-daemon
+PyYAML
+RPi.GPIO
+spidev
