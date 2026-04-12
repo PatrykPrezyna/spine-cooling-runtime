@@ -1,8 +1,5 @@
 PyQt6
 PyQt6-Charts
-adafruit-circuitpython-max31855
 pyserial
 python-daemon
 PyYAML
-RPi.GPIO
-spidev

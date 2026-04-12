@@ -120,3 +120,18 @@ class AppConfig:
     @property
     def daemonize(self) -> bool:
         return bool(self.app.get("daemonize", False))
+
+    def set_run_mode(self, mode: str) -> None:
+        self.app["run_mode"] = str(mode).lower()
+
+    @property
+    def run_mode(self) -> str:
+        return str(self.app.get("run_mode", "pi")).lower()
+
+    @property
+    def is_desktop_mode(self) -> bool:
+        return self.run_mode in ("desktop", "dev", "laptop")
+
+    @property
+    def sensor_count(self) -> int:
+        return max(1, len(self.sensor_cs_pins) or 5)

@@ -23,7 +23,7 @@ Raspberry Pi 4B application for temperature acquisition, compressor control, and
    ```bash
    pip install -r requirements.txt
    ```
-   
+
 ## Setup
 
 1. Install dependencies:
@@ -37,6 +37,29 @@ Raspberry Pi 4B application for temperature acquisition, compressor control, and
    ```bash
    python main.py
    ```
+
+### Desktop / Laptop development mode
+
+If you are developing on a laptop without Raspberry Pi GPIO, SPI, or watchdog hardware, use desktop mode.
+
+- Install simulation dependencies on Windows or desktop:
+  ```bash
+  pip install -r requirements-sim.txt
+  ```
+
+  This installs `PyQt6-Charts` so the UI can use `PyQt6.QtCharts`.
+
+- Command line:
+  ```bash
+  python main.py --desktop
+  ```
+- Or enable it in `config.yaml`:
+  ```yaml
+  app:
+    run_mode: desktop
+  ```
+
+Desktop mode uses simulated sensor data and skips the Raspberry Pi watchdog hardware.
 
 4. For systemd, install service file at `/etc/systemd/system/spine-cooling.service`.
 

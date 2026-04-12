@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="810" viewBox="0 0 1200 810" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .box { fill: #f7f9fc; stroke: #2c3e50; stroke-width: 2; rx: 12; }
+    .small-box { fill: #ffffff; stroke: #34495e; stroke-width: 1.5; rx: 10; }
+    .title { font: bold 18px Arial, sans-serif; fill: #1c2833; }
+    .label { font: 14px Arial, sans-serif; fill: #1c2833; }
+    .caption { font: 13px Arial, sans-serif; fill: #1c2833; }
+    .arrow { fill: none; stroke: #2c3e50; stroke-width: 2; marker-end: url(#arrowhead); }
+  </style>
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2c3e50" />
+    </marker>
+  </defs>
+
+  <rect class="box" x="420" y="30" width="360" height="90" />
+  <text x="600" y="60" class="title" text-anchor="middle">main.py</text>
+  <text x="600" y="82" class="label" text-anchor="middle">Application startup / orchestration</text>
+
+  <rect class="small-box" x="90" y="150" width="230" height="70" />
+  <text x="205" y="180" class="title" text-anchor="middle">AppConfig</text>
+  <text x="205" y="205" class="caption" text-anchor="middle">load YAML</text>
+
+  <rect class="small-box" x="420" y="150" width="230" height="70" />
+  <text x="535" y="180" class="title" text-anchor="middle">Logging</text>
+  <text x="535" y="205" class="caption" text-anchor="middle">RotatingFileHandler</text>
+
+  <rect class="small-box" x="750" y="150" width="230" height="70" />
+  <text x="865" y="180" class="title" text-anchor="middle">Threads + Queues</text>
+  <text x="865" y="205" class="caption" text-anchor="middle">ui_queue / logger_queue</text>
+
+  <line x1="600" y1="120" x2="180" y2="150" class="arrow" />
+  <line x1="600" y1="120" x2="535" y2="150" class="arrow" />
+  <line x1="600" y1="120" x2="860" y2="150" class="arrow" />
+
+  <rect class="small-box" x="40" y="260" width="310" height="120" />
+  <text x="195" y="295" class="title" text-anchor="middle">SensorManager</text>
+  <text x="195" y="320" class="caption" text-anchor="middle">Real MAX31855 SPI polling</text>
+  <text x="195" y="340" class="caption" text-anchor="middle">--> ui_queue, logger_queue</text>
+
+  <rect class="small-box" x="40" y="420" width="310" height="100" />
+  <text x="195" y="455" class="title" text-anchor="middle">DevelopmentSensorManager</text>
+  <text x="195" y="480" class="caption" text-anchor="middle">Simulated sensor data</text>
+  <text x="195" y="500" class="caption" text-anchor="middle">--> ui_queue, logger_queue</text>
+
+  <rect class="small-box" x="460" y="320" width="330" height="100" />
+  <text x="625" y="360" class="title" text-anchor="middle">CompressorController</text>
+  <text x="625" y="385" class="caption" text-anchor="middle">Reads latest sample from SensorManager</text>
+  <text x="625" y="405" class="caption" text-anchor="middle">Sends RS-232 commands</text>
+
+  <rect class="small-box" x="440" y="450" width="370" height="120" />
+  <text x="605" y="490" class="title" text-anchor="middle">DataLogger</text>
+  <text x="605" y="515" class="caption" text-anchor="middle">Consumes logger_queue</text>
+  <text x="605" y="535" class="caption" text-anchor="middle">Writes SQLite + CSV</text>
+
+  <rect class="small-box" x="810" y="330" width="330" height="120" />
+  <text x="975" y="365" class="title" text-anchor="middle">MainWindow / UI</text>
+  <text x="975" y="390" class="caption" text-anchor="middle">Consumes ui_queue</text>
+  <text x="975" y="410" class="caption" text-anchor="middle">History query from SQLite</text>
+
+  <rect class="small-box" x="40" y="560" width="310" height="90" />
+  <text x="195" y="595" class="title" text-anchor="middle">WatchdogThread</text>
+  <text x="195" y="620" class="caption" text-anchor="middle">Kicks /dev/watchdog</text>
+  <text x="195" y="640" class="caption" text-anchor="middle">GPIO reset on failure</text>
+
+  <rect class="small-box" x="440" y="590" width="360" height="90" />
+  <text x="620" y="625" class="title" text-anchor="middle">Hardware / Storage</text>
+  <text x="620" y="650" class="caption" text-anchor="middle">SPI, UART, GPIO, SQLite, CSV</text>
+
+  <line x1="200" y1="230" x2="200" y2="260" class="arrow" />
+  <line x1="840" y1="230" x2="620" y2="320" class="arrow" />
+  <line x1="450" y1="230" x2="620" y2="320" class="arrow" />
+
+  <line x1="200" y1="380" x2="200" y2="420" class="arrow" />
+  <line x1="200" y1="520" x2="200" y2="560" class="arrow" />
+  <line x1="200" y1="520" x2="610" y2="520" class="arrow" />
+  <line x1="510" y1="520" x2="510" y2="450" class="arrow" />
+  <line x1="760" y1="520" x2="760" y2="450" class="arrow" />
+
+  <line x1="620" y1="370" x2="980" y2="370" class="arrow" />
+  <line x1="620" y1="480" x2="980" y2="380" class="arrow" />
+  <line x1="600" y1="410" x2="620" y2="450" class="arrow" />
+
+  <line x1="135" y1="650" x2="135" y2="590" class="arrow" />
+  <line x1="625" y1="560" x2="625" y2="590" class="arrow" />
+  <line x1="115" y1="590" x2="115" y2="510" class="arrow" />
+
+  <rect x="360" y="420" width="60" height="18" rx="9" fill="#eef4fb" stroke="#2c3e50" stroke-width="1" />
+  <text x="390" y="432" class="caption" text-anchor="middle">logger_queue</text>
+  <rect x="360" y="370" width="60" height="18" rx="9" fill="#eef4fb" stroke="#2c3e50" stroke-width="1" />
+  <text x="390" y="382" class="caption" text-anchor="middle">ui_queue</text>
+
+  <rect x="900" y="470" width="130" height="70" rx="10" class="small-box" />
+  <text x="965" y="500" class="title" text-anchor="middle">SQLite</text>
+  <text x="965" y="525" class="caption" text-anchor="middle">temperature_log</text>
+
+  <rect x="900" y="560" width="130" height="70" rx="10" class="small-box" />
+  <text x="965" y="590" class="title" text-anchor="middle">CSV Files</text>
+  <text x="965" y="615" class="caption" text-anchor="middle">rotating logs</text>
+
+  <line x1="760" y1="500" x2="900" y2="500" class="arrow" />
+  <line x1="760" y1="520" x2="900" y2="575" class="arrow" />
+
+  <rect x="20" y="30" width="120" height="90" rx="14" class="small-box" />
+  <text x="80" y="60" class="title" text-anchor="middle">Config</text>
+  <text x="80" y="80" class="caption" text-anchor="middle">config.yaml</text>
+  <line x1="120" y1="75" x2="420" y2="75" class="arrow" />
+
+  <rect x="40" y="690" width="310" height="90" rx="14" class="small-box" />
+  <text x="195" y="725" class="title" text-anchor="middle">GPIO / SPI / UART</text>
+  <text x="195" y="745" class="caption" text-anchor="middle">Raspberry Pi hardware</text>
+  <line x1="195" y1="680" x2="195" y2="650" class="arrow" />
+
+</svg>

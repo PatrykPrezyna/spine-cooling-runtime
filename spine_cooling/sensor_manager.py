@@ -2,12 +2,21 @@ import logging
 import queue
 import threading
 import time
+import math
+import random
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
-import RPi.GPIO as GPIO
-import spidev
+try:
+    import RPi.GPIO as GPIO
+except ImportError:  # pragma: no cover
+    GPIO = None
+
+try:
+    import spidev
+except ImportError:  # pragma: no cover
+    spidev = None
 
 from .config import AppConfig
 from .utils import utc_iso_timestamp
@@ -18,6 +27,54 @@ class SensorSample:
     timestamp: str
     values: List[Optional[float]]
     errors: List[Optional[str]] = field(default_factory=list)
+
+
+class DevelopmentSensorManager(threading.Thread):
+    """Simulate live sensor readings without Raspberry Pi hardware."""
+
+    def __init__(
+        self,
+        config: AppConfig,
+        ui_queue: queue.Queue,
+        logger_queue: queue.Queue,
+        stop_event: threading.Event,
+    ) -> None:
+        super().__init__(daemon=True, name="DevelopmentSensorManager")
+        self.config = config
+        self.ui_queue = ui_queue
+        self.logger_queue = logger_queue
+        self.stop_event = stop_event
+        self.logger = logging.getLogger(__name__)
+        self.sensor_count = self.config.sensor_count
+        self._cycle = 0.0
+
+    def _generate_sample(self) -> SensorSample:
+        self._cycle += self.config.sensor_poll_interval
+        values: List[Optional[float]] = []
+        errors: List[Optional[str]] = []
+        for index in range(self.sensor_count):
+            base = 40.0 + 10.0 * index
+            variation = 10.0 * random.random()
+            drift = 5.0 * abs(math.sin(self._cycle / 10.0 + index))
+            temp = base + variation + drift
+            values.append(temp)
+            errors.append(None)
+        return SensorSample(timestamp=utc_iso_timestamp(), values=values, errors=errors)
+
+    def run(self) -> None:
+        self.logger.info("Development sensor manager starting")
+        interval = self.config.sensor_poll_interval
+        while not self.stop_event.is_set():
+            start = time.monotonic()
+            sample = self._generate_sample()
+            for target_queue in (self.ui_queue, self.logger_queue):
+                try:
+                    target_queue.put_nowait(sample)
+                except queue.Full:
+                    self.logger.warning("Dropping simulated sensor sample because queue is full")
+            duration = time.monotonic() - start
+            time.sleep(max(0.0, interval - duration))
+        self.logger.info("Development sensor manager shutting down")
 
 
 class SensorManager(threading.Thread):
@@ -38,11 +95,21 @@ class SensorManager(threading.Thread):
         self._lock = threading.Lock()
         self.latest_sample: Optional[SensorSample] = None
         self.logger = logging.getLogger(__name__)
+        if spidev is None:
+            raise RuntimeError(
+                "spidev is unavailable. "
+                "Use desktop mode (app.run_mode: desktop or --desktop) to run without Pi hardware."
+            )
         self.spi = spidev.SpiDev()
         self.cs_pins = config.sensor_cs_pins
         self._setup_hardware()
 
     def _setup_hardware(self) -> None:
+        if GPIO is None or spidev is None:
+            raise RuntimeError(
+                "Raspberry Pi hardware modules are unavailable. "
+                "Use desktop mode (app.run_mode: desktop or --desktop) to run without Pi hardware."
+            )
         GPIO.setmode(GPIO.BCM)
         for pin in self.cs_pins:
             GPIO.setup(pin, GPIO.OUT, initial=GPIO.HIGH)

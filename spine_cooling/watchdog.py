@@ -3,7 +3,10 @@ import threading
 import time
 from pathlib import Path
 
-import RPi.GPIO as GPIO
+try:
+    import RPi.GPIO as GPIO
+except ImportError:  # pragma: no cover
+    GPIO = None
 
 
 class WatchdogThread(threading.Thread):
