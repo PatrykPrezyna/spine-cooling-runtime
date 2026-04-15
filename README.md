@@ -2,6 +2,52 @@
 
 Raspberry Pi 4B application for temperature acquisition, compressor control, and on-screen monitoring.
 
+## Raspberry Pi setup
+
+1. Install Raspberry Pi OS and connect the device to the network via Wi-Fi or Ethernet.
+2. Enable SSH access:
+   - Use `sudo raspi-config` and enable SSH under `Interfacing Options`.
+   - Alternatively, create an empty file named `ssh` in the boot partition before first boot.
+3. Connect to the Pi using a keyboard and display, or remotely via SSH (for example, with PuTTY on Windows).
+
+### Ethernet static IP configuration
+
+On the laptop:
+- IP address: `192.168.1.2`
+- Netmask: `255.255.255.0`
+- Gateway: `192.168.1.1`
+
+On the Raspberry Pi:
+
+1. Edit the DHCP client configuration:
+   ```bash
+   sudo nano /etc/dhcpcd.conf
+   ```
+2. Add the following block to the end of the file:
+   ```ini
+   interface eth0
+   static ip_address=192.168.1.10/24
+   static routers=192.168.1.1
+   ```
+3. Install or verify that `dhcpcd5` is present:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install dhcpcd5
+   ```
+4. Restart the DHCP client service:
+   ```bash
+   sudo systemctl restart dhcpcd
+   ```
+5. Verify connectivity from the laptop:
+   ```bash
+   ping 192.168.1.10
+   ```
+
+### Optional development tools
+
+- Install the VS Code Remote - SSH extension (`ms-vscode-remote.remote-ssh`).
+- Use `Ctrl+Shift+P` and select `Remote-SSH: Connect Current Window to Host...` to open the project on the Raspberry Pi over SSH.
+
 ## Features
 
 - 5x MAX31855 thermocouple sensors via SPI
