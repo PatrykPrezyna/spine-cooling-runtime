@@ -1,5 +1,0 @@
-PyQt6
-PyQt6-Charts
-pyserial
-python-daemon
-PyYAML

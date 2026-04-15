@@ -4,10 +4,7 @@ import threading
 import time
 from typing import Optional
 
-try:
-    import serial
-except ImportError:  # pragma: no cover
-    serial = None
+import serial
 
 from .config import AppConfig
 from .sensor_manager import SensorManager
@@ -42,11 +39,6 @@ class CompressorController(threading.Thread):
         self._open_serial()
 
     def _open_serial(self) -> None:
-        if serial is None:
-            self.logger.warning("pyserial is unavailable; compressor UART will remain disabled")
-            self.serial = None
-            return
-
         try:
             self.serial = serial.Serial(self.port, self.baudrate, timeout=0.5)
             self.logger.info("Compressor UART opened on %s at %s", self.port, self.baudrate)
