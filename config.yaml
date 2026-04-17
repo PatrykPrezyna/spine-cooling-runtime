@@ -3,7 +3,7 @@
 
 sensors:
   - name: "Level Low"
-    gpio_pin: 23
+    gpio_pin: 14
     active_high: true
     pull_up: true
   - name: "Level Critical"

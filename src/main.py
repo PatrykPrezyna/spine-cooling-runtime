@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import QApplication
 
 from multi_sensor_reader import MultiSensorReader
 from csv_logger import CSVLogger
-from simple_ui import SensorMonitorWindow
+from enhanced_ui import EnhancedSensorMonitorWindow
 
 
 class SensorMonitorApp:
@@ -31,7 +31,7 @@ class SensorMonitorApp:
         # Initialize components
         self.sensor_reader: Optional[MultiSensorReader] = None
         self.csv_logger: Optional[CSVLogger] = None
-        self.ui: Optional[SensorMonitorWindow] = None
+        self.ui: Optional[EnhancedSensorMonitorWindow] = None
         
         self.is_running = False
     
@@ -162,7 +162,7 @@ class SensorMonitorApp:
             app = QApplication(sys.argv)
             
             # Create main window
-            self.ui = SensorMonitorWindow(self.config)
+            self.ui = EnhancedSensorMonitorWindow(self.config)
             
             # Connect callbacks
             self.ui.on_start_callback = self.start_monitoring
