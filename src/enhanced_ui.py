@@ -10,7 +10,8 @@ from typing import Optional
 from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
-    QVBoxLayout, QHBoxLayout, QWidget
+    QVBoxLayout, QHBoxLayout, QWidget, QTabWidget,
+    QLabel, QGridLayout, QGroupBox, QFrame
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QBrush, QColor, QLinearGradient,
@@ -259,6 +260,200 @@ class CartridgeWidget(QWidget):
                         status_text)
 
 
+class ServiceTab(QWidget):
+    """Service tab showing all sensors and outputs"""
+    
+    def __init__(self):
+        super().__init__()
+        
+        # Mock temperature values
+        self.temp_values = {
+            'Temp 1': 22.5,
+            'Temp 2': 23.1,
+            'Temp 3': 21.8,
+            'Temp 4': 22.9
+        }
+        
+        # Sensor states
+        self.sensor_states = {}
+        
+        # Output states
+        self.compressor_on = False
+        self.stepper_position = 0
+        
+        self._create_widgets()
+        self._setup_layout()
+    
+    def _create_widgets(self):
+        """Create service tab widgets"""
+        # Sensors group
+        self.sensors_group = QGroupBox("Digital Sensors")
+        self.sensors_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                font-size: 12px;
+                border: 2px solid #3b82f6;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+        """)
+        
+        # Sensor labels
+        self.sensor_labels = {}
+        sensor_names = ['Level Low', 'Level Critical', 'Cartridge In Place']
+        for name in sensor_names:
+            label = QLabel(f"{name}: --")
+            label.setStyleSheet("font-size: 11px; padding: 5px;")
+            self.sensor_labels[name] = label
+        
+        # Temperature sensors group
+        self.temp_group = QGroupBox("Temperature Sensors (Mock)")
+        self.temp_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                font-size: 12px;
+                border: 2px solid #f59e0b;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+        """)
+        
+        # Temperature labels
+        self.temp_labels = {}
+        for name in ['Temp 1', 'Temp 2', 'Temp 3', 'Temp 4']:
+            label = QLabel(f"{name}: --°C")
+            label.setStyleSheet("font-size: 11px; padding: 5px;")
+            self.temp_labels[name] = label
+        
+        # Outputs group
+        self.outputs_group = QGroupBox("Outputs")
+        self.outputs_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                font-size: 12px;
+                border: 2px solid #16a34a;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+        """)
+        
+        # Output labels
+        self.compressor_label = QLabel("Compressor: OFF")
+        self.compressor_label.setStyleSheet("font-size: 11px; padding: 5px;")
+        
+        self.stepper_label = QLabel("Stepper Motor: Position 0")
+        self.stepper_label.setStyleSheet("font-size: 11px; padding: 5px;")
+    
+    def _setup_layout(self):
+        """Setup service tab layout"""
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
+        
+        # Sensors layout
+        sensors_layout = QVBoxLayout()
+        for name in ['Level Low', 'Level Critical', 'Cartridge In Place']:
+            sensors_layout.addWidget(self.sensor_labels[name])
+        self.sensors_group.setLayout(sensors_layout)
+        main_layout.addWidget(self.sensors_group)
+        
+        # Temperature sensors layout
+        temp_layout = QGridLayout()
+        temp_layout.addWidget(self.temp_labels['Temp 1'], 0, 0)
+        temp_layout.addWidget(self.temp_labels['Temp 2'], 0, 1)
+        temp_layout.addWidget(self.temp_labels['Temp 3'], 1, 0)
+        temp_layout.addWidget(self.temp_labels['Temp 4'], 1, 1)
+        self.temp_group.setLayout(temp_layout)
+        main_layout.addWidget(self.temp_group)
+        
+        # Outputs layout
+        outputs_layout = QVBoxLayout()
+        outputs_layout.addWidget(self.compressor_label)
+        outputs_layout.addWidget(self.stepper_label)
+        self.outputs_group.setLayout(outputs_layout)
+        main_layout.addWidget(self.outputs_group)
+        
+        # Add stretch to push everything to top
+        main_layout.addStretch()
+        
+        self.setLayout(main_layout)
+    
+    def update_sensors(self, sensor_states: dict):
+        """Update sensor display"""
+        self.sensor_states = sensor_states
+        for name, state in sensor_states.items():
+            if name in self.sensor_labels:
+                status = "HIGH" if state else "LOW"
+                color = "#16a34a" if state else "#dc2626"
+                self.sensor_labels[name].setText(f"{name}: {status}")
+                self.sensor_labels[name].setStyleSheet(
+                    f"font-size: 11px; padding: 5px; color: {color}; font-weight: bold;"
+                )
+    
+    def update_temperatures(self, temps: dict = None):
+        """Update temperature display (mock values)"""
+        import random
+        if temps is None:
+            # Generate mock values with slight variation
+            for name in self.temp_values:
+                self.temp_values[name] += random.uniform(-0.5, 0.5)
+                self.temp_values[name] = max(15.0, min(30.0, self.temp_values[name]))
+        else:
+            self.temp_values.update(temps)
+        
+        for name, value in self.temp_values.items():
+            self.temp_labels[name].setText(f"{name}: {value:.1f}°C")
+            # Color code based on temperature
+            if value < 20:
+                color = "#3b82f6"  # Blue - cold
+            elif value > 25:
+                color = "#ef4444"  # Red - hot
+            else:
+                color = "#16a34a"  # Green - normal
+            self.temp_labels[name].setStyleSheet(
+                f"font-size: 11px; padding: 5px; color: {color}; font-weight: bold;"
+            )
+    
+    def update_outputs(self, compressor_on: bool = None, stepper_pos: int = None):
+        """Update output display"""
+        if compressor_on is not None:
+            self.compressor_on = compressor_on
+        if stepper_pos is not None:
+            self.stepper_position = stepper_pos
+        
+        # Update compressor label
+        comp_status = "ON" if self.compressor_on else "OFF"
+        comp_color = "#16a34a" if self.compressor_on else "#6b7280"
+        self.compressor_label.setText(f"Compressor: {comp_status}")
+        self.compressor_label.setStyleSheet(
+            f"font-size: 11px; padding: 5px; color: {comp_color}; font-weight: bold;"
+        )
+        
+        # Update stepper label
+        self.stepper_label.setText(f"Stepper Motor: Position {self.stepper_position}")
+        self.stepper_label.setStyleSheet(
+            "font-size: 11px; padding: 5px; color: #3b82f6; font-weight: bold;"
+        )
+
+
 class EnhancedSensorMonitorWindow(QMainWindow):
     """Main window with enhanced cartridge visualization"""
     
@@ -281,27 +476,60 @@ class EnhancedSensorMonitorWindow(QMainWindow):
     def _setup_window(self):
         """Setup main window properties"""
         self.setWindowTitle("Cartridge Level Monitor")
-        self.setFixedSize(900, 750)
+        self.setFixedSize(800, 480)
         
         # Center window on screen
         screen = QApplication.primaryScreen().geometry()
-        x = (screen.width() - 900) // 2
-        y = (screen.height() - 750) // 2
+        x = (screen.width() - 800) // 2
+        y = (screen.height() - 480) // 2
         self.move(x, y)
     
     def _create_widgets(self):
         """Create UI widgets"""
+        # Create tab widget
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #cbd5e1;
+                border-radius: 5px;
+            }
+            QTabBar::tab {
+                background: #e2e8f0;
+                color: #334155;
+                padding: 8px 20px;
+                margin-right: 2px;
+                border-top-left-radius: 5px;
+                border-top-right-radius: 5px;
+                font-weight: bold;
+            }
+            QTabBar::tab:selected {
+                background: #3b82f6;
+                color: white;
+            }
+            QTabBar::tab:hover {
+                background: #60a5fa;
+                color: white;
+            }
+        """)
+        
         # Cartridge visualization widget
         self.cartridge_widget = CartridgeWidget()
         
+        # Service tab
+        self.service_tab = ServiceTab()
+        
+        # Add tabs
+        self.tab_widget.addTab(self.cartridge_widget, "Monitor")
+        self.tab_widget.addTab(self.service_tab, "Service")
+        
         # Start button
         self.start_button = QPushButton("START LOGGING")
-        self.start_button.setMinimumHeight(50)
+        self.start_button.setMinimumHeight(40)
         self.start_button.setStyleSheet("""
             QPushButton {
                 background-color: #16a34a;
                 color: white;
-                font-size: 14px;
+                font-size: 12px;
                 font-weight: bold;
                 border-radius: 5px;
             }
@@ -316,12 +544,12 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         
         # Stop button
         self.stop_button = QPushButton("STOP LOGGING")
-        self.stop_button.setMinimumHeight(50)
+        self.stop_button.setMinimumHeight(40)
         self.stop_button.setStyleSheet("""
             QPushButton {
                 background-color: #dc2626;
                 color: white;
-                font-size: 14px;
+                font-size: 12px;
                 font-weight: bold;
                 border-radius: 5px;
             }
@@ -341,15 +569,15 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(0, 0, 0, 10)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.setSpacing(5)
         
-        # Add cartridge widget
-        main_layout.addWidget(self.cartridge_widget)
+        # Add tab widget
+        main_layout.addWidget(self.tab_widget)
         
         # Button layout
         button_layout = QHBoxLayout()
-        button_layout.setContentsMargins(20, 0, 20, 0)
+        button_layout.setContentsMargins(10, 0, 10, 0)
         button_layout.addWidget(self.start_button)
         button_layout.addWidget(self.stop_button)
         main_layout.addLayout(button_layout)
@@ -390,6 +618,16 @@ class EnhancedSensorMonitorWindow(QMainWindow):
     def update_sensor_display(self, sensor_states: dict):
         """Update sensor display"""
         self.cartridge_widget.set_sensor_states(sensor_states)
+        self.service_tab.update_sensors(sensor_states)
+        self.service_tab.update_temperatures()  # Update mock temperatures
+        
+        # Mock output updates (simulate compressor and stepper)
+        import random
+        if random.random() < 0.1:  # 10% chance to toggle compressor
+            self.service_tab.update_outputs(compressor_on=random.choice([True, False]))
+        if random.random() < 0.05:  # 5% chance to move stepper
+            new_pos = self.service_tab.stepper_position + random.randint(-10, 10)
+            self.service_tab.update_outputs(stepper_pos=max(0, min(1000, new_pos)))
     
     def set_status_message(self, message: str, is_error: bool = False):
         """Set status message (for compatibility)"""
