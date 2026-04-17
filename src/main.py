@@ -168,8 +168,8 @@ class SensorMonitorApp:
             self.ui.on_start_callback = self.start_monitoring
             self.ui.on_stop_callback = self.stop_monitoring
             
-            # Override timer update to call our update method
-            self.ui._on_timer_update = self.update_display
+            # Set the timer update callback
+            self.ui.set_update_callback(self.update_display)
             
             # Start the display update timer immediately (runs continuously)
             self.ui.update_timer.start(1000)  # Update every 1 second

@@ -158,9 +158,17 @@ class SensorMonitorWindow(QMainWindow):
     def _setup_timer(self):
         """Setup update timer"""
         self.update_timer = QTimer(self)
-        self.update_timer.timeout.connect(self._on_timer_update)
+        # Don't connect here - will be connected by main app
         
-        # Timer will be started when monitoring begins
+    def set_update_callback(self, callback):
+        """Set the callback function for timer updates"""
+        # Disconnect any existing connection
+        try:
+            self.update_timer.timeout.disconnect()
+        except:
+            pass
+        # Connect new callback
+        self.update_timer.timeout.connect(callback)
     
     def _on_start_clicked(self):
         """Handle start button click"""
