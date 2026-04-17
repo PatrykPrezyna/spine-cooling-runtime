@@ -25,6 +25,8 @@ class SensorReader:
             config: Configuration dictionary with sensor settings
         """
         self.gpio_pin = config['sensor']['gpio_pin']
+        self.active_high = config['sensor']['active_high']
+        self.pull_up = config['sensor']['pull_up']
         self.sample_rate_hz = config['sensor']['sample_rate_hz']
         
         self.is_initialized = False
@@ -48,7 +50,10 @@ class SensorReader:
             GPIO.setwarnings(False)
             
             # Setup pin as input with pull-up or pull-down
-            GPIO.setup(14, GPIO.IN)
+            if self.pull_up:
+                GPIO.setup(self.gpio_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            else:
+                GPIO.setup(self.gpio_pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
             
             self.is_initialized = True
             print(f"GPIO pin {self.gpio_pin} initialized successfully")
