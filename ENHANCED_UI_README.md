@@ -108,7 +108,7 @@ python src/main.py
 - **Framework**: PyQt6
 - **Graphics**: QPainter with anti-aliasing
 - **Update Rate**: 1 second (1 Hz)
-- **Resolution**: 900x750 pixels (optimized for 7-inch display)
+- **Resolution**: 800×480 pixels (optimized for 7-inch display)
 
 ### Key Classes
 

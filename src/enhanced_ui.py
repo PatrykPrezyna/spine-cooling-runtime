@@ -23,7 +23,7 @@ class CartridgeWidget(QWidget):
     
     def __init__(self):
         super().__init__()
-        self.setMinimumSize(900, 650)
+        self.setMinimumSize(800, 420)
         
         # Sensor states
         self.level_low = False
@@ -79,50 +79,50 @@ class CartridgeWidget(QWidget):
     def _draw_title(self, painter: QPainter):
         """Draw title text"""
         painter.setPen(QColor("#0f172a"))
-        font = QFont("Arial", 32, QFont.Weight.Bold)
+        font = QFont("Arial", 24, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.drawText(self.rect().adjusted(0, 20, 0, 0),
+        painter.drawText(self.rect().adjusted(0, 10, 0, 0),
                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
                         "Cartridge With 2 Levels + Presence Sensor")
     
     def _draw_machine_slot(self, painter: QPainter):
         """Draw the machine slot"""
         painter.setBrush(QColor("#dbeafe"))
-        painter.setPen(QPen(QColor("#3b82f6"), 4))
-        painter.drawRoundedRect(120, 150, 560, 500, 24, 24)
+        painter.setPen(QPen(QColor("#3b82f6"), 3))
+        painter.drawRoundedRect(80, 90, 400, 320, 20, 20)
         
         # Label
         painter.setPen(QColor("#1e40af"))
-        font = QFont("Arial", 16, QFont.Weight.Bold)
+        font = QFont("Arial", 13, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.drawText(QRectF(120, 160, 560, 30),
+        painter.drawText(QRectF(80, 95, 400, 25),
                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
                         "Machine Slot")
     
     def _draw_cartridge(self, painter: QPainter):
         """Draw the cartridge"""
         painter.setBrush(QColor("white"))
-        painter.setPen(QPen(QColor("#0f172a"), 4))
-        painter.drawRoundedRect(220, 230, 360, 360, 20, 20)
+        painter.setPen(QPen(QColor("#0f172a"), 3))
+        painter.drawRoundedRect(150, 140, 260, 240, 16, 16)
         
         # Label
         painter.setPen(QColor("#0f172a"))
-        font = QFont("Arial", 14, QFont.Weight.Bold)
+        font = QFont("Arial", 11, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.drawText(QRectF(220, 600, 360, 30),
+        painter.drawText(QRectF(150, 385, 260, 25),
                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
                         "Cartridge")
     
     def _draw_level_chambers(self, painter: QPainter):
         """Draw the two level chambers with liquid"""
         chambers = [
-            {"x": 265, "level": self.level1_height, "color": "#38bdf8", "label": "Level 1", "critical": self.level_critical},
-            {"x": 415, "level": self.level2_height, "color": "#0ea5e9", "label": "Level 2", "critical": self.level_low}
+            {"x": 190, "level": self.level1_height, "color": "#38bdf8", "label": "Level 1", "critical": self.level_critical},
+            {"x": 300, "level": self.level2_height, "color": "#0ea5e9", "label": "Level 2", "critical": self.level_low}
         ]
         
-        chamber_y = 280
-        chamber_width = 120
-        chamber_height = 260
+        chamber_y = 180
+        chamber_width = 85
+        chamber_height = 180
         
         for chamber in chambers:
             x = chamber["x"]
@@ -170,8 +170,8 @@ class CartridgeWidget(QWidget):
     def _draw_sensor_module(self, painter: QPainter):
         """Draw the sensor module"""
         painter.setBrush(QColor("#dcfce7"))
-        painter.setPen(QPen(QColor("#16a34a"), 4))
-        painter.drawRoundedRect(700, 360, 160, 80, 12, 12)
+        painter.setPen(QPen(QColor("#16a34a"), 3))
+        painter.drawRoundedRect(540, 230, 120, 60, 10, 10)
         
         # Green indicator circle
         if self.cartridge_present:
@@ -179,31 +179,31 @@ class CartridgeWidget(QWidget):
         else:
             painter.setBrush(QColor("#94a3b8"))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(QPointF(730, 400), 16, 16)
+        painter.drawEllipse(QPointF(560, 260), 12, 12)
         
         # Text
         painter.setPen(QColor("#065f46"))
-        font = QFont("Arial", 14, QFont.Weight.Bold)
+        font = QFont("Arial", 12, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.drawText(QRectF(750, 360, 100, 80),
+        painter.drawText(QRectF(575, 230, 80, 60),
                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                         "Sensor")
     
     def _draw_detection_beam(self, painter: QPainter):
         """Draw detection beam from sensor to cartridge"""
         if self.cartridge_present:
-            pen = QPen(QColor("#0ea5e9"), 5)
+            pen = QPen(QColor("#0ea5e9"), 4)
         else:
-            pen = QPen(QColor("#94a3b8"), 5)
+            pen = QPen(QColor("#94a3b8"), 4)
         painter.setPen(pen)
         
         # Draw line
-        start_x, start_y = 700, 400
-        end_x, end_y = 590, 400
+        start_x, start_y = 540, 260
+        end_x, end_y = 420, 260
         painter.drawLine(start_x, start_y, end_x, end_y)
         
         # Draw arrowhead
-        arrow_size = 12
+        arrow_size = 10
         arrow = QPolygonF([
             QPointF(end_x, end_y),
             QPointF(end_x + arrow_size, end_y - arrow_size/2),
@@ -218,9 +218,9 @@ class CartridgeWidget(QWidget):
         
         # Helper text
         painter.setPen(QColor("#475569"))
-        font = QFont("Arial", 11)
+        font = QFont("Arial", 9)
         painter.setFont(font)
-        painter.drawText(QRectF(700, 450, 160, 40),
+        painter.drawText(QRectF(540, 300, 120, 35),
                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
                         "Checks cartridge\nis in place")
     
