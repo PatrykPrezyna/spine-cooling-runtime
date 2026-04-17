@@ -126,24 +126,8 @@ class SensorMonitorApp:
         except Exception as e:
             print(f"Error stopping monitoring: {e}")
     
-    def _initial_read(self):
-        """Do an initial sensor read to display current state"""
-        try:
-            # Read sensor
-            sensor_state = self.sensor_reader.read()
-            
-            # Update UI (but don't log to CSV yet)
-            if self.ui:
-                self.ui.update_sensor_display(sensor_state)
-                
-        except Exception as e:
-            print(f"Error during initial read: {e}")
-    
-    def update(self):
-        """Update sensor reading and UI (called by timer)"""
-        if not self.is_running:
-            return
-        
+    def update_display(self):
+        """Update sensor display continuously (called every 1 second)"""
         try:
             # Read sensor
             sensor_state = self.sensor_reader.read()
@@ -152,8 +136,9 @@ class SensorMonitorApp:
             if self.ui:
                 self.ui.update_sensor_display(sensor_state)
             
-            # Log to CSV
-            self.csv_logger.log(sensor_state)
+            # If monitoring is active, also log to CSV
+            if self.is_running:
+                self.csv_logger.log(sensor_state)
             
         except Exception as e:
             print(f"Error during update: {e}")
@@ -184,13 +169,13 @@ class SensorMonitorApp:
             self.ui.on_stop_callback = self.stop_monitoring
             
             # Override timer update to call our update method
-            self.ui._on_timer_update = self.update
+            self.ui._on_timer_update = self.update_display
+            
+            # Start the display update timer immediately (runs continuously)
+            self.ui.update_timer.start(1000)  # Update every 1 second
             
             # Show window
             self.ui.show()
-            
-            # Do an initial sensor read to show current state
-            self._initial_read()
             
             print("Application started. Close window to exit.")
             

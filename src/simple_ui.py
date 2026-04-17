@@ -170,12 +170,10 @@ class SensorMonitorWindow(QMainWindow):
                 self.is_monitoring = True
                 self.start_button.setEnabled(False)
                 self.stop_button.setEnabled(True)
-                self.status_label.setText("Status: Monitoring active...")
+                self.status_label.setText("Status: Logging active...")
                 self.status_label.setStyleSheet("color: #28a745; font-style: italic;")
                 
-                # Start update timer
-                interval_ms = self.config['ui']['update_interval_ms']
-                self.update_timer.start(interval_ms)
+                # Timer is already running continuously, no need to start it here
     
     def _on_stop_clicked(self):
         """Handle stop button click"""
@@ -185,11 +183,10 @@ class SensorMonitorWindow(QMainWindow):
         self.is_monitoring = False
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
-        self.status_label.setText("Status: Monitoring stopped")
+        self.status_label.setText("Status: Logging stopped (display continues)")
         self.status_label.setStyleSheet("color: #dc3545; font-style: italic;")
         
-        # Stop update timer
-        self.update_timer.stop()
+        # Don't stop the timer - keep reading and displaying sensor
     
     def _on_timer_update(self):
         """Handle timer update (placeholder for main app to override)"""
@@ -234,6 +231,9 @@ class SensorMonitorWindow(QMainWindow):
         # Stop monitoring if active
         if self.is_monitoring:
             self._on_stop_clicked()
+        
+        # Stop the update timer
+        self.update_timer.stop()
         
         event.accept()
 
