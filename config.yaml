@@ -2,10 +2,10 @@
 # Medical Device Prototype - Spine Cooling Runtime
 
 sensor:
-  gpio_pin: 23              # GPIO pin for level sensor
+  gpio_pin: 14              # GPIO pin for level sensor
   active_high: true         # true if sensor is HIGH when triggered
   pull_up: true             # Enable internal pull-up resistor
-  sample_rate_hz: 1.0       # Read sensor once per second
+  sample_rate_hz: 0.1       # Read sensor once per second
 
 logging:
   csv_directory: "data/csv"
