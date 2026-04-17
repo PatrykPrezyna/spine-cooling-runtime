@@ -1,0 +1,19 @@
+# Phase 1 Configuration - Simple Level Sensor Monitor
+# Medical Device Prototype - Spine Cooling Runtime
+
+sensor:
+  gpio_pin: 23              # GPIO pin for level sensor
+  active_high: true         # true if sensor is HIGH when triggered
+  pull_up: true             # Enable internal pull-up resistor
+  sample_rate_hz: 1.0       # Read sensor once per second
+
+logging:
+  csv_directory: "data/csv"
+  filename_format: "sensor_log_%Y%m%d_%H%M%S.csv"
+
+ui:
+  window_width: 400
+  window_height: 300
+  update_interval_ms: 100   # Update UI every 100ms
+
+# Made with Bob

@@ -1,7 +1,43 @@
-PyQt6
-adafruit-circuitpython-max31855
-pyserial
-python-daemon
-PyYAML
-RPi.GPIO
-spidev
+# Medical Device Prototype - Python Dependencies
+# Spine Cooling Runtime
+
+# ============================================================================
+# PHASE 1 DEPENDENCIES (Digital Sensor Monitor)
+# ============================================================================
+
+# User Interface
+PyQt6>=6.4.0
+
+# Configuration Management
+PyYAML>=6.0
+
+# Hardware Interface (Raspberry Pi)
+RPi.GPIO>=0.7.1
+
+# ============================================================================
+# FUTURE PHASES DEPENDENCIES
+# ============================================================================
+
+# Phase 2+ : Thermocouple Support (MAX31855 via SPI)
+adafruit-circuitpython-max31855>=3.2.0
+spidev>=3.5
+
+# Phase 3+ : Compressor Control (UART)
+pyserial>=3.5
+
+# Phase 4+ : Service/Daemon Support
+python-daemon>=2.3.0
+
+# ============================================================================
+# OPTIONAL DEPENDENCIES
+# ============================================================================
+
+# For Phase 2: Real-time charting
+# pyqtgraph>=0.13.0
+
+# For Phase 2: Analog sensor support (MCP3008)
+# adafruit-circuitpython-mcp3xxx>=1.4.0
+
+# For testing
+# pytest>=7.0.0
+# pytest-cov>=4.0.0
