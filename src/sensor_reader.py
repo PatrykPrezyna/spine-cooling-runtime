@@ -87,9 +87,9 @@ class SensorReader:
                 sensor_active = not bool(pin_state)
             
             self.last_state = sensor_active
-            state_text = "HIGH" if state == 1 else "LOW"
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            print(f"[{timestamp}] GPIO 14: {state_text} ({state})")
+            #state_text = "HIGH" if state == 1 else "LOW"
+            #timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            #print(f"[{timestamp}] GPIO 14: {state_text} ({state})")
             return sensor_active
             
         except Exception as e:

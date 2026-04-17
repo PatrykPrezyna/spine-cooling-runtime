@@ -126,6 +126,19 @@ class SensorMonitorApp:
         except Exception as e:
             print(f"Error stopping monitoring: {e}")
     
+    def _initial_read(self):
+        """Do an initial sensor read to display current state"""
+        try:
+            # Read sensor
+            sensor_state = self.sensor_reader.read()
+            
+            # Update UI (but don't log to CSV yet)
+            if self.ui:
+                self.ui.update_sensor_display(sensor_state)
+                
+        except Exception as e:
+            print(f"Error during initial read: {e}")
+    
     def update(self):
         """Update sensor reading and UI (called by timer)"""
         if not self.is_running:
@@ -175,6 +188,9 @@ class SensorMonitorApp:
             
             # Show window
             self.ui.show()
+            
+            # Do an initial sensor read to show current state
+            self._initial_read()
             
             print("Application started. Close window to exit.")
             
