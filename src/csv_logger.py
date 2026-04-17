@@ -51,8 +51,8 @@ class CSVLogger:
             self.file_handle = open(self.csv_file, 'w', newline='')
             self.csv_writer = csv.writer(self.file_handle)
             
-            # Write header
-            self.csv_writer.writerow(['timestamp', 'sensor_state'])
+            # Write header - now with multiple sensor columns
+            self.csv_writer.writerow(['timestamp', 'level_low', 'level_critical', 'cartridge_in_place'])
             self.file_handle.flush()
             
             self.is_logging = True
@@ -64,12 +64,12 @@ class CSVLogger:
             self.is_logging = False
             return False
     
-    def log(self, sensor_state: bool):
+    def log(self, sensor_states: dict):
         """
-        Log a sensor reading
+        Log sensor readings
         
         Args:
-            sensor_state: Current sensor state (True/False)
+            sensor_states: Dictionary of sensor names to states (True/False)
         """
         if not self.is_logging:
             return
@@ -78,11 +78,13 @@ class CSVLogger:
             # Get current timestamp in ISO 8601 format
             timestamp = datetime.now().isoformat()
             
-            # Convert boolean to integer (1/0)
-            state_value = 1 if sensor_state else 0
+            # Convert boolean states to integers (1/0)
+            level_low = 1 if sensor_states.get('Level Low', False) else 0
+            level_critical = 1 if sensor_states.get('Level Critical', False) else 0
+            cartridge = 1 if sensor_states.get('Cartridge In Place', False) else 0
             
             # Write row
-            self.csv_writer.writerow([timestamp, state_value])
+            self.csv_writer.writerow([timestamp, level_low, level_critical, cartridge])
             
             # Flush to ensure data is written
             self.file_handle.flush()

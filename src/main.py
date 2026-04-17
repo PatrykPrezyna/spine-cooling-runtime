@@ -10,7 +10,7 @@ from typing import Optional
 
 from PyQt6.QtWidgets import QApplication
 
-from sensor_reader import SensorReader
+from multi_sensor_reader import MultiSensorReader
 from csv_logger import CSVLogger
 from simple_ui import SensorMonitorWindow
 
@@ -29,7 +29,7 @@ class SensorMonitorApp:
         self.config = self._load_config(config_path)
         
         # Initialize components
-        self.sensor_reader: Optional[SensorReader] = None
+        self.sensor_reader: Optional[MultiSensorReader] = None
         self.csv_logger: Optional[CSVLogger] = None
         self.ui: Optional[SensorMonitorWindow] = None
         
@@ -71,7 +71,7 @@ class SensorMonitorApp:
             print("Initializing components...")
             
             # Initialize sensor reader
-            self.sensor_reader = SensorReader(self.config)
+            self.sensor_reader = MultiSensorReader(self.config)
             if not self.sensor_reader.is_initialized:
                 print("Error: Sensor reader initialization failed")
                 return False
@@ -129,16 +129,16 @@ class SensorMonitorApp:
     def update_display(self):
         """Update sensor display continuously (called every 1 second)"""
         try:
-            # Read sensor
-            sensor_state = self.sensor_reader.read()
+            # Read all sensors
+            sensor_states = self.sensor_reader.read_all()
             
             # Update UI
             if self.ui:
-                self.ui.update_sensor_display(sensor_state)
+                self.ui.update_sensor_display(sensor_states)
             
             # If monitoring is active, also log to CSV
             if self.is_running:
-                self.csv_logger.log(sensor_state)
+                self.csv_logger.log(sensor_states)
             
         except Exception as e:
             print(f"Error during update: {e}")

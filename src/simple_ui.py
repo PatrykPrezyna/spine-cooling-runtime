@@ -63,12 +63,21 @@ class SensorMonitorWindow(QMainWindow):
         self.title_label.setFont(title_font)
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # Sensor status label
-        self.sensor_label = QLabel("Sensor Status: --")
+        # Sensor status labels - one for each sensor
         sensor_font = QFont()
-        sensor_font.setPointSize(14)
-        self.sensor_label.setFont(sensor_font)
-        self.sensor_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sensor_font.setPointSize(12)
+        
+        self.sensor_label_1 = QLabel("Level Low: --")
+        self.sensor_label_1.setFont(sensor_font)
+        self.sensor_label_1.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.sensor_label_2 = QLabel("Level Critical: --")
+        self.sensor_label_2.setFont(sensor_font)
+        self.sensor_label_2.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.sensor_label_3 = QLabel("Cartridge In Place: --")
+        self.sensor_label_3.setFont(sensor_font)
+        self.sensor_label_3.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # Last update label
         self.update_label = QLabel("Last Update: --")
@@ -137,8 +146,10 @@ class SensorMonitorWindow(QMainWindow):
         # Add spacing
         main_layout.addSpacing(10)
         
-        # Add sensor status
-        main_layout.addWidget(self.sensor_label)
+        # Add sensor status labels
+        main_layout.addWidget(self.sensor_label_1)
+        main_layout.addWidget(self.sensor_label_2)
+        main_layout.addWidget(self.sensor_label_3)
         main_layout.addWidget(self.update_label)
         
         # Add stretch to push buttons to bottom
@@ -200,21 +211,30 @@ class SensorMonitorWindow(QMainWindow):
         """Handle timer update (placeholder for main app to override)"""
         pass
     
-    def update_sensor_display(self, sensor_state: bool):
+    def update_sensor_display(self, sensor_states: dict):
         """
         Update sensor status display
         
         Args:
-            sensor_state: Current sensor state
+            sensor_states: Dictionary of sensor names to states
         """
-        state_text = "HIGH" if sensor_state else "LOW"
-        self.sensor_label.setText(f"Sensor Status: {state_text}")
+        # Update each sensor label
+        sensors = [
+            ('Level Low', self.sensor_label_1),
+            ('Level Critical', self.sensor_label_2),
+            ('Cartridge In Place', self.sensor_label_3)
+        ]
         
-        # Color code the status
-        if sensor_state:
-            self.sensor_label.setStyleSheet("color: #28a745; font-size: 14pt;")
-        else:
-            self.sensor_label.setStyleSheet("color: #dc3545; font-size: 14pt;")
+        for sensor_name, label in sensors:
+            state = sensor_states.get(sensor_name, False)
+            state_text = "HIGH" if state else "LOW"
+            label.setText(f"{sensor_name}: {state_text}")
+            
+            # Color code the status
+            if state:
+                label.setStyleSheet("color: #28a745; font-size: 12pt;")
+            else:
+                label.setStyleSheet("color: #dc3545; font-size: 12pt;")
         
         # Update timestamp
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
