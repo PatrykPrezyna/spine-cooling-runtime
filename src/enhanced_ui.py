@@ -574,6 +574,9 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.on_stop_callback: Optional[Callable] = None
         self.on_sensor_change_callback: Optional[Callable[[str, bool], None]] = None
         self.on_mode_change_callback: Optional[Callable[[bool], None]] = None
+        self.on_start_pumping_callback: Optional[Callable] = None
+        self.on_stop_pumping_callback: Optional[Callable] = None
+        self.on_acknowledge_callback: Optional[Callable] = None
         
         self._setup_window()
         self._create_widgets()
@@ -695,6 +698,101 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             }
         """)
         self.mode_button.clicked.connect(self._on_mode_toggle_clicked)
+        
+        # State indicator label
+        self.state_label = QLabel("State: INIT")
+        self.state_label.setStyleSheet("""
+            QLabel {
+                background-color: #f3f4f6;
+                color: #1f2937;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 10px;
+                border-radius: 5px;
+                border: 2px solid #d1d5db;
+            }
+        """)
+        self.state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Start Pumping button (visible only in COOLING state)
+        self.start_pumping_button = QPushButton("START PUMPING")
+        self.start_pumping_button.setMinimumHeight(40)
+        self.start_pumping_button.setStyleSheet("""
+            QPushButton {
+                background-color: #0ea5e9;
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #0284c7;
+            }
+            QPushButton:disabled {
+                background-color: #9ca3af;
+            }
+        """)
+        self.start_pumping_button.clicked.connect(self._on_start_pumping_clicked)
+        self.start_pumping_button.setVisible(False)
+        
+        # Stop Pumping button (visible only in PUMPING state)
+        self.stop_pumping_button = QPushButton("STOP PUMPING")
+        self.stop_pumping_button.setMinimumHeight(40)
+        self.stop_pumping_button.setStyleSheet("""
+            QPushButton {
+                background-color: #f59e0b;
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #d97706;
+            }
+            QPushButton:disabled {
+                background-color: #9ca3af;
+            }
+        """)
+        self.stop_pumping_button.clicked.connect(self._on_stop_pumping_clicked)
+        self.stop_pumping_button.setVisible(False)
+        
+        # Acknowledge Error button (visible only in ERROR state)
+        self.acknowledge_button = QPushButton("ACKNOWLEDGE ERROR")
+        self.acknowledge_button.setMinimumHeight(40)
+        self.acknowledge_button.setStyleSheet("""
+            QPushButton {
+                background-color: #ef4444;
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #dc2626;
+            }
+            QPushButton:disabled {
+                background-color: #9ca3af;
+            }
+        """)
+        self.acknowledge_button.clicked.connect(self._on_acknowledge_clicked)
+        self.acknowledge_button.setVisible(False)
+        
+        # Error message label
+        self.error_label = QLabel("")
+        self.error_label.setStyleSheet("""
+            QLabel {
+                background-color: #fee2e2;
+                color: #991b1b;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 8px;
+                border-radius: 5px;
+                border: 2px solid #fca5a5;
+            }
+        """)
+        self.error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.error_label.setVisible(False)
+        self.error_label.setWordWrap(True)
     
     def _setup_layout(self):
         """Setup widget layout"""
@@ -708,7 +806,21 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # Add tab widget
         main_layout.addWidget(self.tab_widget)
         
-        # Button layout
+        # State indicator
+        main_layout.addWidget(self.state_label)
+        
+        # Error message (only visible in ERROR state)
+        main_layout.addWidget(self.error_label)
+        
+        # State-specific buttons layout
+        state_button_layout = QHBoxLayout()
+        state_button_layout.setContentsMargins(10, 0, 10, 0)
+        state_button_layout.addWidget(self.start_pumping_button)
+        state_button_layout.addWidget(self.stop_pumping_button)
+        state_button_layout.addWidget(self.acknowledge_button)
+        main_layout.addLayout(state_button_layout)
+        
+        # Control button layout
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(10, 0, 10, 0)
         button_layout.addWidget(self.mode_button)
@@ -773,9 +885,85 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         if self.on_mode_change_callback:
             self.on_mode_change_callback(self.simulation_mode)
     
+    def _on_start_pumping_clicked(self):
+        """Handle start pumping button click"""
+        if self.on_start_pumping_callback:
+            self.on_start_pumping_callback()
+    
+    def _on_stop_pumping_clicked(self):
+        """Handle stop pumping button click"""
+        if self.on_stop_pumping_callback:
+            self.on_stop_pumping_callback()
+    
+    def _on_acknowledge_clicked(self):
+        """Handle acknowledge error button click"""
+        if self.on_acknowledge_callback:
+            self.on_acknowledge_callback()
+    
     def set_mode_button_enabled(self, enabled: bool):
         """Enable or disable mode toggle button"""
         self.mode_button.setEnabled(enabled)
+    
+    def update_state_display(self, state_name: str, error_message: Optional[str] = None):
+        """
+        Update state display and button visibility
+        
+        Args:
+            state_name: Current state name
+            error_message: Error message if in ERROR state
+        """
+        # Update state label
+        self.state_label.setText(f"State: {state_name}")
+        
+        # Update state label color based on state
+        if state_name == "Init":
+            bg_color = "#dbeafe"
+            border_color = "#3b82f6"
+            text_color = "#1e40af"
+        elif state_name == "Ready":
+            bg_color = "#d1fae5"
+            border_color = "#10b981"
+            text_color = "#065f46"
+        elif state_name == "Cooling":
+            bg_color = "#ddd6fe"
+            border_color = "#8b5cf6"
+            text_color = "#5b21b6"
+        elif state_name == "Pumping":
+            bg_color = "#fef3c7"
+            border_color = "#f59e0b"
+            text_color = "#92400e"
+        elif state_name == "Error":
+            bg_color = "#fee2e2"
+            border_color = "#ef4444"
+            text_color = "#991b1b"
+        else:
+            bg_color = "#f3f4f6"
+            border_color = "#d1d5db"
+            text_color = "#1f2937"
+        
+        self.state_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg_color};
+                color: {text_color};
+                font-size: 14px;
+                font-weight: bold;
+                padding: 10px;
+                border-radius: 5px;
+                border: 2px solid {border_color};
+            }}
+        """)
+        
+        # Show/hide state-specific buttons
+        self.start_pumping_button.setVisible(state_name == "Cooling")
+        self.stop_pumping_button.setVisible(state_name == "Pumping")
+        self.acknowledge_button.setVisible(state_name == "Error")
+        
+        # Show/hide error message
+        if state_name == "Error" and error_message:
+            self.error_label.setText(f"⚠️ {error_message}")
+            self.error_label.setVisible(True)
+        else:
+            self.error_label.setVisible(False)
     
     def update_sensor_display(self, sensor_states: dict):
         """Update sensor display"""
