@@ -694,17 +694,18 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.tab_widget.addTab(self.service_tab, "Service")
         self.tab_widget.addTab(self.simulation_tab, "Simulation")
         
-        # State indicator label
+        # State indicator label (at top, 20px height)
         self.state_label = QLabel("State: INIT")
+        self.state_label.setFixedHeight(20)
         self.state_label.setStyleSheet("""
             QLabel {
                 background-color: #f3f4f6;
                 color: #1f2937;
-                font-size: 14px;
+                font-size: 11px;
                 font-weight: bold;
-                padding: 10px;
-                border-radius: 5px;
-                border: 2px solid #d1d5db;
+                padding: 2px;
+                border-radius: 3px;
+                border: 1px solid #d1d5db;
             }
         """)
         self.state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -728,9 +729,9 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             }
         """)
         self.start_pumping_button.clicked.connect(self._on_start_pumping_clicked)
-        self.start_pumping_button.setVisible(False)
+        self.start_pumping_button.setEnabled(False)
         
-        # Stop Pumping button (visible only in PUMPING state)
+        # Stop Pumping button (initially disabled)
         self.stop_pumping_button = QPushButton("STOP PUMPING")
         self.stop_pumping_button.setMinimumHeight(40)
         self.stop_pumping_button.setStyleSheet("""
@@ -749,9 +750,9 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             }
         """)
         self.stop_pumping_button.clicked.connect(self._on_stop_pumping_clicked)
-        self.stop_pumping_button.setVisible(False)
+        self.stop_pumping_button.setEnabled(False)
         
-        # Acknowledge Error button (visible only in ERROR state)
+        # Acknowledge Error button (initially disabled)
         self.acknowledge_button = QPushButton("ACKNOWLEDGE ERROR")
         self.acknowledge_button.setMinimumHeight(40)
         self.acknowledge_button.setStyleSheet("""
@@ -770,7 +771,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             }
         """)
         self.acknowledge_button.clicked.connect(self._on_acknowledge_clicked)
-        self.acknowledge_button.setVisible(False)
+        self.acknowledge_button.setEnabled(False)
         
         # Error message label
         self.error_label = QLabel("")
@@ -798,11 +799,11 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(5)
         
+        # State indicator at top (20px height)
+        main_layout.addWidget(self.state_label)
+        
         # Add tab widget
         main_layout.addWidget(self.tab_widget)
-        
-        # State indicator
-        main_layout.addWidget(self.state_label)
         
         # Error message (only visible in ERROR state)
         main_layout.addWidget(self.error_label)
@@ -918,10 +919,10 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             }}
         """)
         
-        # Show/hide state-specific buttons
-        self.start_pumping_button.setVisible(state_name == "Cooling")
-        self.stop_pumping_button.setVisible(state_name == "Pumping")
-        self.acknowledge_button.setVisible(state_name == "Error")
+        # Enable/disable state-specific buttons (always visible, grayed out when not usable)
+        self.start_pumping_button.setEnabled(state_name == "Cooling")
+        self.stop_pumping_button.setEnabled(state_name == "Pumping")
+        self.acknowledge_button.setEnabled(state_name == "Error")
         
         # Show/hide error message
         if state_name == "Error" and error_message:
