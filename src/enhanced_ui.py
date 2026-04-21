@@ -463,7 +463,7 @@ class SimulationTab(QWidget):
         
         self._create_widgets()
         self._setup_layout()
-    
+
     def _create_widgets(self):
         """Create simulation tab widgets"""
         
@@ -473,7 +473,7 @@ class SimulationTab(QWidget):
             QGroupBox {
                 font-weight: bold;
                 font-size: 12px;
-                border: 2px solid #8b5cf6;
+                border: 2px solid #3b82f6;
                 border-radius: 5px;
                 margin-top: 10px;
                 padding-top: 10px;
@@ -561,8 +561,8 @@ class SimulationTab(QWidget):
         # Add title
         main_layout.addWidget(self.info_label)
         
-        # Sensors layout
-        sensors_layout = QVBoxLayout()
+        # Sensors layout (horizontal)
+        sensors_layout = QHBoxLayout()
         sensors_layout.setSpacing(5)
         for sensor_name in self.sensor_names:
             sensors_layout.addWidget(self.checkboxes[sensor_name])

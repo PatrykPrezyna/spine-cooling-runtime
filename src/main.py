@@ -313,13 +313,13 @@ def main():
     print("=" * 50)
     print()
     
-    # Start in simulation mode by default (can be changed at runtime)
-    print("Starting in SIMULATION MODE (default)")
-    print("Use the mode toggle button to switch between Simulation and Real Sensor modes")
+    # Start in real sensor mode by default (can be changed at runtime)
+    print("Starting in REAL SENSOR MODE (default)")
+    print("Use the mode toggle button to switch between Real Sensor and Simulation modes")
     print()
     
-    # Create and run application (starts in simulation mode)
-    app = SensorMonitorApp(simulation_mode=True)
+    # Create and run application (starts in real sensor mode)
+    app = SensorMonitorApp(simulation_mode=False)
     exit_code = app.run()
     
     print()
