@@ -102,6 +102,16 @@ class SensorMonitorApp:
                 csv_dir.mkdir(parents=True, exist_ok=True)
                 print(f"Created CSV directory: {csv_dir}")
             
+            # Start CSV logging automatically
+            if not self.csv_logger.start_logging():
+                error_msg = "Failed to start CSV logging"
+                print(f"Error: {error_msg}")
+                self.state_machine.handle_init_complete(False, error_msg)
+                return False
+            
+            self.is_running = True
+            print("CSV logging started automatically")
+            
             print("All components initialized successfully")
             
             # Transition to READY state
@@ -116,54 +126,6 @@ class SensorMonitorApp:
                 self.state_machine.handle_init_complete(False, error_msg)
             return False
     
-    def start_monitoring(self) -> bool:
-        """
-        Start sensor monitoring and logging
-        
-        Returns:
-            bool: True if started successfully
-        """
-        if self.is_running:
-            print("Warning: Monitoring already active")
-            return False
-        
-        try:
-            # Disable mode switching while monitoring
-            if self.ui:
-                self.ui.set_mode_button_enabled(False)
-            
-            # Start CSV logging
-            if not self.csv_logger.start_logging():
-                print("Error: Failed to start logging")
-                return False
-            
-            self.is_running = True
-            print("Monitoring started")
-            return True
-            
-        except Exception as e:
-            print(f"Error starting monitoring: {e}")
-            return False
-    
-    def stop_monitoring(self):
-        """Stop sensor monitoring and logging"""
-        if not self.is_running:
-            return
-        
-        try:
-            # Stop CSV logging
-            self.csv_logger.stop_logging()
-            
-            self.is_running = False
-            
-            # Re-enable mode switching
-            if self.ui:
-                self.ui.set_mode_button_enabled(True)
-            
-            print("Monitoring stopped")
-            
-        except Exception as e:
-            print(f"Error stopping monitoring: {e}")
     
     def _on_state_changed(self, old_state: State, new_state: State):
         """
@@ -191,8 +153,8 @@ class SensorMonitorApp:
             if self.ui:
                 self.ui.update_sensor_display(sensor_states)
             
-            # If monitoring is active, also log to CSV
-            if self.is_running:
+            # Log to CSV (always active)
+            if self.csv_logger:
                 self.csv_logger.log(sensor_states)
             
         except Exception as e:
@@ -227,11 +189,6 @@ class SensorMonitorApp:
     
     def on_mode_changed(self, simulation_mode: bool):
         """Handle mode change from UI"""
-        if self.is_running:
-            # Cannot change mode while monitoring
-            print("Cannot change mode while monitoring is active")
-            return
-        
         print(f"Switching to {'SIMULATION' if simulation_mode else 'REAL SENSOR'} mode...")
         
         # Cleanup old sensor reader
@@ -272,8 +229,6 @@ class SensorMonitorApp:
             self.ui = EnhancedSensorMonitorWindow(self.config, simulation_mode=self.simulation_mode)
             
             # Connect callbacks
-            self.ui.on_start_callback = self.start_monitoring
-            self.ui.on_stop_callback = self.stop_monitoring
             self.ui.on_mode_change_callback = self.on_mode_changed
             
             # Connect simulation sensor change callback
@@ -313,9 +268,10 @@ class SensorMonitorApp:
         """Cleanup resources"""
         print("Cleaning up...")
         
-        # Stop monitoring if active
-        if self.is_running:
-            self.stop_monitoring()
+        # Stop CSV logging if active
+        if self.is_running and self.csv_logger:
+            self.csv_logger.stop_logging()
+            print("CSV logging stopped")
         
         # Cleanup sensor reader
         if self.sensor_reader:

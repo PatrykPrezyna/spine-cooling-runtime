@@ -446,12 +446,14 @@ class ServiceTab(QWidget):
 class SimulationTab(QWidget):
     """Simulation tab for manual sensor control"""
     
-    def __init__(self, sensor_names: list):
+    def __init__(self, sensor_names: list, simulation_mode: bool = True):
         super().__init__()
         
         self.sensor_names = sensor_names
         self.checkboxes = {}
+        self.simulation_mode = simulation_mode
         self.on_sensor_change_callback: Optional[Callable[[str, bool], None]] = None
+        self.on_mode_change_callback: Optional[Callable[[bool], None]] = None
         
         self._create_widgets()
         self._setup_layout()
@@ -503,9 +505,32 @@ class SimulationTab(QWidget):
             checkbox.stateChanged.connect(lambda state, name=sensor_name: self._on_checkbox_changed(name, state))
             self.checkboxes[sensor_name] = checkbox
         
+        # Mode toggle button
+        self.mode_button = QPushButton("SIMULATION MODE" if self.simulation_mode else "REAL SENSOR MODE")
+        self.mode_button.setMinimumHeight(40)
+        self.mode_button.setStyleSheet("""
+            QPushButton {
+                background-color: #8b5cf6;
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #7c3aed;
+            }
+            QPushButton:disabled {
+                background-color: #9ca3af;
+            }
+        """)
+        self.mode_button.clicked.connect(self._on_mode_toggle_clicked)
+        
         # Info label
         self.info_label = QLabel(
-            "Error"
+            "ℹ️ Simulation Mode\n\n"
+            "Use the checkboxes above to manually control sensor states.\n"
+            "Toggle between Simulation and Real Sensor modes using the button below.\n"
+            "Changes take effect immediately."
         )
         self.info_label.setStyleSheet("""
             QLabel {
@@ -534,8 +559,11 @@ class SimulationTab(QWidget):
         self.sensors_group.setLayout(sensors_layout)
         main_layout.addWidget(self.sensors_group)
         
-        # Add info label
+        # Add mode toggle button
+        main_layout.addWidget(self.mode_button)
         
+        # Add info label
+        main_layout.addWidget(self.info_label)
         
         # Add stretch to push everything to top
         main_layout.addStretch()
@@ -547,6 +575,33 @@ class SimulationTab(QWidget):
         is_checked = state == Qt.CheckState.Checked.value
         if self.on_sensor_change_callback:
             self.on_sensor_change_callback(sensor_name, is_checked)
+    
+    def _on_mode_toggle_clicked(self):
+        """Handle mode toggle button click"""
+        # Toggle mode
+        self.simulation_mode = not self.simulation_mode
+        
+        # Update button text
+        if self.simulation_mode:
+            self.mode_button.setText("SIMULATION MODE")
+        else:
+            self.mode_button.setText("REAL SENSOR MODE")
+        
+        # Notify callback
+        if self.on_mode_change_callback:
+            self.on_mode_change_callback(self.simulation_mode)
+    
+    def set_mode_button_enabled(self, enabled: bool):
+        """Enable or disable mode toggle button"""
+        self.mode_button.setEnabled(enabled)
+    
+    def update_mode_display(self, simulation_mode: bool):
+        """Update mode button text"""
+        self.simulation_mode = simulation_mode
+        if simulation_mode:
+            self.mode_button.setText("SIMULATION MODE")
+        else:
+            self.mode_button.setText("REAL SENSOR MODE")
     
     def set_sensor_state(self, sensor_name: str, state: bool):
         """Set a sensor state programmatically"""
@@ -630,74 +685,14 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         
         # Simulation tab (always create it)
         sensor_names = [sensor['name'] for sensor in self.config['sensors']]
-        self.simulation_tab = SimulationTab(sensor_names)
+        self.simulation_tab = SimulationTab(sensor_names, self.simulation_mode)
         self.simulation_tab.on_sensor_change_callback = self._on_simulation_sensor_changed
+        self.simulation_tab.on_mode_change_callback = self._on_simulation_mode_changed
         
         # Add tabs
         self.tab_widget.addTab(self.cartridge_widget, "Monitor")
         self.tab_widget.addTab(self.service_tab, "Service")
         self.tab_widget.addTab(self.simulation_tab, "Simulation")
-        
-        # Start button
-        self.start_button = QPushButton("START LOGGING")
-        self.start_button.setMinimumHeight(40)
-        self.start_button.setStyleSheet("""
-            QPushButton {
-                background-color: #16a34a;
-                color: white;
-                font-size: 12px;
-                font-weight: bold;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #15803d;
-            }
-            QPushButton:disabled {
-                background-color: #9ca3af;
-            }
-        """)
-        self.start_button.clicked.connect(self._on_start_clicked)
-        
-        # Stop button
-        self.stop_button = QPushButton("STOP LOGGING")
-        self.stop_button.setMinimumHeight(40)
-        self.stop_button.setStyleSheet("""
-            QPushButton {
-                background-color: #dc2626;
-                color: white;
-                font-size: 12px;
-                font-weight: bold;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #b91c1c;
-            }
-            QPushButton:disabled {
-                background-color: #9ca3af;
-            }
-        """)
-        self.stop_button.clicked.connect(self._on_stop_clicked)
-        self.stop_button.setEnabled(False)
-        
-        # Mode toggle button
-        self.mode_button = QPushButton("SIMULATION MODE" if self.simulation_mode else "REAL SENSOR MODE")
-        self.mode_button.setMinimumHeight(40)
-        self.mode_button.setStyleSheet("""
-            QPushButton {
-                background-color: #8b5cf6;
-                color: white;
-                font-size: 12px;
-                font-weight: bold;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #7c3aed;
-            }
-            QPushButton:disabled {
-                background-color: #9ca3af;
-            }
-        """)
-        self.mode_button.clicked.connect(self._on_mode_toggle_clicked)
         
         # State indicator label
         self.state_label = QLabel("State: INIT")
@@ -820,14 +815,6 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         state_button_layout.addWidget(self.acknowledge_button)
         main_layout.addLayout(state_button_layout)
         
-        # Control button layout
-        button_layout = QHBoxLayout()
-        button_layout.setContentsMargins(10, 0, 10, 0)
-        button_layout.addWidget(self.mode_button)
-        button_layout.addWidget(self.start_button)
-        button_layout.addWidget(self.stop_button)
-        main_layout.addLayout(button_layout)
-        
         central_widget.setLayout(main_layout)
     
     def _setup_timer(self):
@@ -843,43 +830,20 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             pass
         self.update_timer.timeout.connect(callback)
     
-    def _on_start_clicked(self):
-        """Handle start button click"""
-        if self.on_start_callback:
-            success = self.on_start_callback()
-            if success:
-                self.is_monitoring = True
-                self.start_button.setEnabled(False)
-                self.stop_button.setEnabled(True)
-    
-    def _on_stop_clicked(self):
-        """Handle stop button click"""
-        if self.on_stop_callback:
-            self.on_stop_callback()
-        
-        self.is_monitoring = False
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-    
     def _on_simulation_sensor_changed(self, sensor_name: str, state: bool):
         """Handle simulation sensor change"""
         if self.on_sensor_change_callback:
             self.on_sensor_change_callback(sensor_name, state)
     
-    def _on_mode_toggle_clicked(self):
-        """Handle mode toggle button click"""
+    def _on_simulation_mode_changed(self, simulation_mode: bool):
+        """Handle mode change from simulation tab"""
         if self.is_monitoring:
-            # Cannot change mode while monitoring
+            # Cannot change mode while monitoring - revert the change
+            self.simulation_tab.update_mode_display(self.simulation_mode)
             return
         
-        # Toggle mode
-        self.simulation_mode = not self.simulation_mode
-        
-        # Update button text
-        if self.simulation_mode:
-            self.mode_button.setText("SIMULATION MODE")
-        else:
-            self.mode_button.setText("REAL SENSOR MODE")
+        # Update internal state
+        self.simulation_mode = simulation_mode
         
         # Notify main app of mode change
         if self.on_mode_change_callback:
@@ -901,8 +865,9 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             self.on_acknowledge_callback()
     
     def set_mode_button_enabled(self, enabled: bool):
-        """Enable or disable mode toggle button"""
-        self.mode_button.setEnabled(enabled)
+        """Enable or disable mode toggle button in simulation tab"""
+        if self.simulation_tab:
+            self.simulation_tab.set_mode_button_enabled(enabled)
     
     def update_state_display(self, state_name: str, error_message: Optional[str] = None):
         """
