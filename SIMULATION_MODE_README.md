@@ -19,8 +19,6 @@ The application now includes a **Simulation Mode** that allows you to manually c
 ### 2. Simulation Tab
 A dedicated tab in the UI provides:
 - Individual checkboxes for each sensor
-- "Set All HIGH" button
-- "Set All LOW" button
 - Visual indicators (green for HIGH, red for LOW)
 - Information panel explaining simulation mode
 
@@ -68,15 +66,11 @@ python src/main.py
    - Check/uncheck boxes to set sensors HIGH/LOW
    - Changes apply immediately
 
-4. **Use quick controls**
-   - Click "Set All HIGH" to activate all sensors
-   - Click "Set All LOW" to deactivate all sensors
-
-5. **Monitor the effects**
+4. **Monitor the effects**
    - Switch to the "Monitor" tab to see the cartridge visualization
    - Switch to the "Service" tab to see detailed sensor states
 
-6. **Start logging (optional)**
+5. **Start logging (optional)**
    - Click "START LOGGING" to begin CSV logging
    - All manual sensor changes will be logged
 
@@ -157,17 +151,13 @@ In simulation mode, the GPIO pins are ignored, but sensor names are used for the
    - Check "Level Low" → Monitor tab should show level warning
    - Check "Cartridge In Place" → Monitor tab should show cartridge detected
 
-4. **Test quick controls**
-   - Click "Set All HIGH" → All sensors should activate
-   - Click "Set All LOW" → All sensors should deactivate
-
-5. **Test logging**
+4. **Test logging**
    - Click "START LOGGING"
    - Change sensor states
    - Click "STOP LOGGING"
    - Verify CSV file contains the changes
 
-6. **Test real-time updates**
+5. **Test real-time updates**
    - Keep Monitor tab visible
    - Switch to Simulation tab
    - Change sensors and observe immediate visual updates

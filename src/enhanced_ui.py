@@ -469,14 +469,6 @@ class SimulationTab(QWidget):
     
     def _create_widgets(self):
         """Create simulation tab widgets"""
-        # Title label
-        self.title_label = QLabel("Manual Sensor Control")
-        self.title_label.setStyleSheet("""
-            font-size: 16px;
-            font-weight: bold;
-            color: #0f172a;
-            padding: 10px;
-        """)
         
         # Sensors group
         self.sensors_group = QGroupBox("Sensor States")
@@ -522,44 +514,9 @@ class SimulationTab(QWidget):
             checkbox.stateChanged.connect(lambda state, name=sensor_name: self._on_checkbox_changed(name, state))
             self.checkboxes[sensor_name] = checkbox
         
-        # Control buttons
-        self.all_on_button = QPushButton("Set All HIGH")
-        self.all_on_button.setMinimumHeight(35)
-        self.all_on_button.setStyleSheet("""
-            QPushButton {
-                background-color: #16a34a;
-                color: white;
-                font-size: 11px;
-                font-weight: bold;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #15803d;
-            }
-        """)
-        self.all_on_button.clicked.connect(self._set_all_high)
-        
-        self.all_off_button = QPushButton("Set All LOW")
-        self.all_off_button.setMinimumHeight(35)
-        self.all_off_button.setStyleSheet("""
-            QPushButton {
-                background-color: #dc2626;
-                color: white;
-                font-size: 11px;
-                font-weight: bold;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #b91c1c;
-            }
-        """)
-        self.all_off_button.clicked.connect(self._set_all_low)
-        
         # Info label
         self.info_label = QLabel(
-            "ℹ️ Simulation Mode Active\n\n"
-            "Use the checkboxes above to manually control sensor states.\n"
-            "Changes take effect immediately."
+            "Error"
         )
         self.info_label.setStyleSheet("""
             QLabel {
@@ -579,7 +536,7 @@ class SimulationTab(QWidget):
         main_layout.setSpacing(10)
         
         # Add title
-        main_layout.addWidget(self.title_label)
+        main_layout.addWidget(self.info_label)
         
         # Sensors layout
         sensors_layout = QVBoxLayout()
@@ -588,14 +545,8 @@ class SimulationTab(QWidget):
         self.sensors_group.setLayout(sensors_layout)
         main_layout.addWidget(self.sensors_group)
         
-        # Control buttons layout
-        buttons_layout = QHBoxLayout()
-        buttons_layout.addWidget(self.all_on_button)
-        buttons_layout.addWidget(self.all_off_button)
-        main_layout.addLayout(buttons_layout)
-        
         # Add info label
-        main_layout.addWidget(self.info_label)
+        
         
         # Add stretch to push everything to top
         main_layout.addStretch()
@@ -607,16 +558,6 @@ class SimulationTab(QWidget):
         is_checked = state == Qt.CheckState.Checked.value
         if self.on_sensor_change_callback:
             self.on_sensor_change_callback(sensor_name, is_checked)
-    
-    def _set_all_high(self):
-        """Set all sensors to HIGH"""
-        for checkbox in self.checkboxes.values():
-            checkbox.setChecked(True)
-    
-    def _set_all_low(self):
-        """Set all sensors to LOW"""
-        for checkbox in self.checkboxes.values():
-            checkbox.setChecked(False)
     
     def set_sensor_state(self, sensor_name: str, state: bool):
         """Set a sensor state programmatically"""
