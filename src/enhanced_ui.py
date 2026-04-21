@@ -49,9 +49,7 @@ class CartridgeWidget(QWidget):
         
         # Draw background gradient
         self._draw_background(painter)
-        
-        # Draw title
-        self._draw_title(painter)
+    
         
         # Draw machine slot
         self._draw_machine_slot(painter)
@@ -76,15 +74,6 @@ class CartridgeWidget(QWidget):
         gradient.setColorAt(0, QColor("#f8fbff"))
         gradient.setColorAt(1, QColor("#eaf2ff"))
         painter.fillRect(self.rect(), gradient)
-    
-    def _draw_title(self, painter: QPainter):
-        """Draw title text"""
-        painter.setPen(QColor("#0f172a"))
-        font = QFont("Arial", 24, QFont.Weight.Bold)
-        painter.setFont(font)
-        painter.drawText(self.rect().adjusted(0, 10, 0, 0),
-                        Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-                        "Cartridge With 2 Levels + Presence Sensor")
     
     def _draw_machine_slot(self, painter: QPainter):
         """Draw the machine slot"""
@@ -584,6 +573,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.on_start_callback: Optional[Callable] = None
         self.on_stop_callback: Optional[Callable] = None
         self.on_sensor_change_callback: Optional[Callable[[str, bool], None]] = None
+        self.on_mode_change_callback: Optional[Callable[[bool], None]] = None
         
         self._setup_window()
         self._create_widgets()
@@ -635,18 +625,15 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # Service tab
         self.service_tab = ServiceTab()
         
-        # Simulation tab (if in simulation mode)
-        self.simulation_tab = None
-        if self.simulation_mode:
-            sensor_names = [sensor['name'] for sensor in self.config['sensors']]
-            self.simulation_tab = SimulationTab(sensor_names)
-            self.simulation_tab.on_sensor_change_callback = self._on_simulation_sensor_changed
+        # Simulation tab (always create it)
+        sensor_names = [sensor['name'] for sensor in self.config['sensors']]
+        self.simulation_tab = SimulationTab(sensor_names)
+        self.simulation_tab.on_sensor_change_callback = self._on_simulation_sensor_changed
         
         # Add tabs
         self.tab_widget.addTab(self.cartridge_widget, "Monitor")
         self.tab_widget.addTab(self.service_tab, "Service")
-        if self.simulation_mode:
-            self.tab_widget.addTab(self.simulation_tab, "Simulation")
+        self.tab_widget.addTab(self.simulation_tab, "Simulation")
         
         # Start button
         self.start_button = QPushButton("START LOGGING")
@@ -688,6 +675,26 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         """)
         self.stop_button.clicked.connect(self._on_stop_clicked)
         self.stop_button.setEnabled(False)
+        
+        # Mode toggle button
+        self.mode_button = QPushButton("SIMULATION MODE" if self.simulation_mode else "REAL SENSOR MODE")
+        self.mode_button.setMinimumHeight(40)
+        self.mode_button.setStyleSheet("""
+            QPushButton {
+                background-color: #8b5cf6;
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #7c3aed;
+            }
+            QPushButton:disabled {
+                background-color: #9ca3af;
+            }
+        """)
+        self.mode_button.clicked.connect(self._on_mode_toggle_clicked)
     
     def _setup_layout(self):
         """Setup widget layout"""
@@ -704,6 +711,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # Button layout
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(10, 0, 10, 0)
+        button_layout.addWidget(self.mode_button)
         button_layout.addWidget(self.start_button)
         button_layout.addWidget(self.stop_button)
         main_layout.addLayout(button_layout)
@@ -745,6 +753,29 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         """Handle simulation sensor change"""
         if self.on_sensor_change_callback:
             self.on_sensor_change_callback(sensor_name, state)
+    
+    def _on_mode_toggle_clicked(self):
+        """Handle mode toggle button click"""
+        if self.is_monitoring:
+            # Cannot change mode while monitoring
+            return
+        
+        # Toggle mode
+        self.simulation_mode = not self.simulation_mode
+        
+        # Update button text
+        if self.simulation_mode:
+            self.mode_button.setText("SIMULATION MODE")
+        else:
+            self.mode_button.setText("REAL SENSOR MODE")
+        
+        # Notify main app of mode change
+        if self.on_mode_change_callback:
+            self.on_mode_change_callback(self.simulation_mode)
+    
+    def set_mode_button_enabled(self, enabled: bool):
+        """Enable or disable mode toggle button"""
+        self.mode_button.setEnabled(enabled)
     
     def update_sensor_display(self, sensor_states: dict):
         """Update sensor display"""

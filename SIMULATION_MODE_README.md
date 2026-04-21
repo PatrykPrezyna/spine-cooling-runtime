@@ -1,12 +1,13 @@
-# Simulation Mode - Manual Sensor Control
+# Simulation Mode - Runtime Switchable Manual Sensor Control
 
 ## Overview
 
-The application now includes a **Simulation Mode** that allows you to manually control all sensor states through a graphical interface. This is perfect for:
+The application now includes a **Simulation Mode** that allows you to manually control all sensor states through a graphical interface. You can **switch between Simulation and Real Sensor modes at runtime** using a toggle button in the UI. This is perfect for:
 - Testing the application without physical hardware
 - Demonstrating sensor behavior
 - Development and debugging
 - Training and demonstrations
+- Switching between real and simulated sensors on the fly
 
 ## Features
 
@@ -30,47 +31,47 @@ A dedicated tab in the UI provides:
 
 ## How to Use
 
-### Starting in Simulation Mode
+### Starting the Application
 
-Run the application with the `--sim` flag:
-
-```bash
-python src/main.py --sim
-```
-
-Alternative flags also work:
-```bash
-python src/main.py --simulation
-python src/main.py -s
-```
-
-### Starting in Real Sensor Mode
-
-Run without any flags to use real GPIO sensors:
+Simply run the application (starts in Simulation Mode by default):
 
 ```bash
 python src/main.py
 ```
 
+The application always starts in **Simulation Mode** for safety and ease of testing.
+
+### Switching Modes at Runtime
+
+You can switch between Simulation and Real Sensor modes at any time using the **mode toggle button** in the UI:
+
+1. **Locate the mode button** - It's a purple button at the bottom of the window showing the current mode
+2. **Click to toggle** - Click the button to switch between modes
+3. **Note**: You cannot change modes while logging is active (stop logging first)
+
 ### Using the Simulation Tab
 
-1. **Start the application in simulation mode**
+1. **Start the application**
    ```bash
-   python src/main.py --sim
+   python src/main.py
    ```
 
-2. **Navigate to the Simulation tab**
+2. **Ensure you're in Simulation Mode**
+   - Check the mode button shows "SIMULATION MODE"
+   - If not, click it to switch to Simulation Mode
+
+3. **Navigate to the Simulation tab**
    - Click on the "Simulation" tab in the UI
 
-3. **Control individual sensors**
+4. **Control individual sensors**
    - Check/uncheck boxes to set sensors HIGH/LOW
    - Changes apply immediately
 
-4. **Monitor the effects**
+5. **Monitor the effects**
    - Switch to the "Monitor" tab to see the cartridge visualization
    - Switch to the "Service" tab to see detailed sensor states
 
-5. **Start logging (optional)**
+6. **Start logging (optional)**
    - Click "START LOGGING" to begin CSV logging
    - All manual sensor changes will be logged
 
@@ -91,13 +92,15 @@ python src/main.py
 - Real-time state synchronization
 
 #### 3. Enhanced Main Application (`src/main.py`)
-- Command-line flag parsing (`--sim`)
-- Conditional initialization (simulation vs. real)
+- Runtime mode switching capability
+- Mode toggle button integration
+- Automatic sensor reader switching
 - Callback integration for manual sensor changes
-- Mode indicator in console output
+- Mode change handling and validation
 
 ### Integration Flow
 
+#### Sensor Control Flow
 ```
 User clicks checkbox in Simulation Tab
     ↓
@@ -110,6 +113,21 @@ SimulationSensorReader.set_sensor()
 SensorMonitorApp.update_display()
     ↓
 UI updates (Monitor, Service, Simulation tabs)
+```
+
+#### Mode Switching Flow
+```
+User clicks Mode Toggle Button
+    ↓
+EnhancedSensorMonitorWindow._on_mode_toggle_clicked()
+    ↓
+SensorMonitorApp.on_mode_changed()
+    ↓
+Cleanup old sensor reader
+    ↓
+Initialize new sensor reader (Simulation or Real)
+    ↓
+Update display with new sensor states
 ```
 
 ## Configuration
@@ -132,32 +150,45 @@ sensors:
     pull_up: true
 ```
 
-In simulation mode, the GPIO pins are ignored, but sensor names are used for the UI.
+- **In Simulation Mode**: GPIO pins are ignored, sensor names are used for the UI
+- **In Real Sensor Mode**: GPIO pins are used to read actual hardware sensors
+- **Mode switching**: Automatically handled at runtime, no restart required
 
 ## Testing
 
 ### Manual Testing Steps
 
-1. **Start in simulation mode**
+1. **Start the application**
    ```bash
-   python src/main.py --sim
+   python src/main.py
    ```
 
-2. **Verify the Simulation tab appears**
+2. **Verify the UI elements**
    - Should see three tabs: Monitor, Service, Simulation
+   - Should see purple "SIMULATION MODE" button at bottom
+   - Should see green "START LOGGING" and red "STOP LOGGING" buttons
 
-3. **Test individual sensor control**
+3. **Test simulation mode**
+   - Verify mode button shows "SIMULATION MODE"
    - Go to Simulation tab
    - Check "Level Low" → Monitor tab should show level warning
    - Check "Cartridge In Place" → Monitor tab should show cartridge detected
 
-4. **Test logging**
+4. **Test mode switching**
+   - Click mode button to switch to "REAL SENSOR MODE"
+   - Verify console shows mode change message
+   - Click mode button again to return to "SIMULATION MODE"
+   - Verify you cannot switch modes while logging is active
+
+5. **Test logging**
    - Click "START LOGGING"
-   - Change sensor states
+   - Verify mode button is disabled
+   - Change sensor states in Simulation tab
    - Click "STOP LOGGING"
+   - Verify mode button is re-enabled
    - Verify CSV file contains the changes
 
-5. **Test real-time updates**
+6. **Test real-time updates**
    - Keep Monitor tab visible
    - Switch to Simulation tab
    - Change sensors and observe immediate visual updates
@@ -175,7 +206,8 @@ python src/simulation_sensor_reader.py
 |---------|----------------|------------------|
 | Hardware Required | No | Yes (Raspberry Pi + GPIO) |
 | Sensor Control | Manual via UI | Automatic from GPIO |
-| Simulation Tab | Visible | Hidden |
+| Simulation Tab | Always visible | Always visible |
+| Mode Switching | ✓ At runtime | ✓ At runtime |
 | CSV Logging | ✓ Works | ✓ Works |
 | Monitor Tab | ✓ Works | ✓ Works |
 | Service Tab | ✓ Works | ✓ Works |
@@ -203,9 +235,9 @@ python src/simulation_sensor_reader.py
 
 ## Troubleshooting
 
-### Simulation tab not appearing
-- Ensure you started with `--sim` flag
-- Check console output for "SIMULATION MODE" message
+### Mode button not working
+- Ensure logging is stopped before switching modes
+- Check console for error messages
 
 ### Sensor changes not taking effect
 - Verify you're in the Simulation tab
@@ -269,9 +301,16 @@ if app.simulation_mode:
 
 ## Summary
 
-Simulation mode provides a complete testing and demonstration environment without requiring physical hardware. It integrates seamlessly with all existing features while adding powerful manual control capabilities through an intuitive UI.
+Simulation mode provides a complete testing and demonstration environment without requiring physical hardware. It integrates seamlessly with all existing features while adding powerful manual control capabilities through an intuitive UI. **You can now switch between Simulation and Real Sensor modes at runtime** using the mode toggle button, making it easy to test and demonstrate without restarting the application.
 
-**To get started:** `python src/main.py --sim`
+**To get started:** `python src/main.py`
+
+**Key Features:**
+- ✅ Runtime mode switching via UI button
+- ✅ Always starts in safe Simulation Mode
+- ✅ Manual sensor control through Simulation tab
+- ✅ Seamless transition between modes
+- ✅ Mode switching disabled during logging for safety
 
 ---
 

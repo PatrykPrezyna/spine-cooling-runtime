@@ -19,13 +19,13 @@ from enhanced_ui import EnhancedSensorMonitorWindow
 class SensorMonitorApp:
     """Main application class"""
     
-    def __init__(self, config_path: str = "config.yaml", simulation_mode: bool = False):
+    def __init__(self, config_path: str = "config.yaml", simulation_mode: bool = True):
         """
         Initialize application
         
         Args:
             config_path: Path to configuration file
-            simulation_mode: If True, use simulation mode with manual sensor control
+            simulation_mode: If True, use simulation mode with manual sensor control (default: True)
         """
         # Load configuration
         self.config = self._load_config(config_path)
@@ -107,6 +107,10 @@ class SensorMonitorApp:
             return False
         
         try:
+            # Disable mode switching while monitoring
+            if self.ui:
+                self.ui.set_mode_button_enabled(False)
+            
             # Start CSV logging
             if not self.csv_logger.start_logging():
                 print("Error: Failed to start logging")
@@ -130,6 +134,11 @@ class SensorMonitorApp:
             self.csv_logger.stop_logging()
             
             self.is_running = False
+            
+            # Re-enable mode switching
+            if self.ui:
+                self.ui.set_mode_button_enabled(True)
+            
             print("Monitoring stopped")
             
         except Exception as e:
@@ -161,6 +170,33 @@ class SensorMonitorApp:
             # Immediately update display
             self.update_display()
     
+    def on_mode_changed(self, simulation_mode: bool):
+        """Handle mode change from UI"""
+        if self.is_running:
+            # Cannot change mode while monitoring
+            print("Cannot change mode while monitoring is active")
+            return
+        
+        print(f"Switching to {'SIMULATION' if simulation_mode else 'REAL SENSOR'} mode...")
+        
+        # Cleanup old sensor reader
+        if self.sensor_reader:
+            self.sensor_reader.cleanup()
+        
+        # Update mode
+        self.simulation_mode = simulation_mode
+        
+        # Initialize new sensor reader
+        if self.simulation_mode:
+            self.sensor_reader = SimulationSensorReader(self.config)
+            print("Simulation mode activated - use Simulation tab to control sensors")
+        else:
+            self.sensor_reader = MultiSensorReader(self.config)
+            print("Real sensor mode activated - reading from GPIO")
+        
+        # Update display immediately
+        self.update_display()
+    
     def run(self) -> int:
         """
         Run the application
@@ -183,10 +219,10 @@ class SensorMonitorApp:
             # Connect callbacks
             self.ui.on_start_callback = self.start_monitoring
             self.ui.on_stop_callback = self.stop_monitoring
+            self.ui.on_mode_change_callback = self.on_mode_changed
             
-            # Connect simulation sensor change callback if in simulation mode
-            if self.simulation_mode:
-                self.ui.on_sensor_change_callback = self.on_simulation_sensor_changed
+            # Connect simulation sensor change callback
+            self.ui.on_sensor_change_callback = self.on_simulation_sensor_changed
             
             # Set the timer update callback
             self.ui.set_update_callback(self.update_display)
@@ -236,19 +272,13 @@ def main():
     print("=" * 50)
     print()
     
-    # Check for simulation mode flag
-    simulation_mode = False
-    if len(sys.argv) > 1 and sys.argv[1] in ['--sim', '--simulation', '-s']:
-        simulation_mode = True
-        print("Starting in SIMULATION MODE")
-        print("Use the Simulation tab to manually control sensors")
-    else:
-        print("Starting in REAL SENSOR MODE")
-        print("Use --sim flag to start in simulation mode")
+    # Start in simulation mode by default (can be changed at runtime)
+    print("Starting in SIMULATION MODE (default)")
+    print("Use the mode toggle button to switch between Simulation and Real Sensor modes")
     print()
     
-    # Create and run application
-    app = SensorMonitorApp(simulation_mode=simulation_mode)
+    # Create and run application (starts in simulation mode)
+    app = SensorMonitorApp(simulation_mode=True)
     exit_code = app.run()
     
     print()
