@@ -4,6 +4,8 @@ PyQt6-based user interface with graphical sensor display
 """
 
 import sys
+import time
+from collections import deque
 from datetime import datetime
 from typing import Optional, Callable
 
@@ -49,6 +51,9 @@ class CartridgeWidget(QWidget):
         # Callback for temperature changes
         self.on_temperature_change_callback: Optional[Callable[[float], None]] = None
         
+        # Temperature history for the graph (timestamp, set_temp, temp1, temp2)
+        self._temp_history: deque = deque()
+        
         # Touch-friendly +/- buttons for fine adjustment
         self._create_temp_buttons()
     
@@ -67,6 +72,9 @@ class CartridgeWidget(QWidget):
         # Draw background gradient
         self._draw_background(painter)
         
+        # Draw temperature history graph on the left
+        self._draw_temperature_graph(painter)
+        
         # Draw single chamber with liquid and threshold levels
         self._draw_single_chamber(painter)
         
@@ -82,6 +90,173 @@ class CartridgeWidget(QWidget):
         gradient.setColorAt(0, QColor("#f8fbff"))
         gradient.setColorAt(1, QColor("#eaf2ff"))
         painter.fillRect(self.rect(), gradient)
+    
+    # Temperature history graph configuration
+    _HISTORY_DURATION_SEC = 300  # 5 minutes
+    _GRAPH_TEMP_MIN = 25.0
+    _GRAPH_TEMP_MAX = 40.0
+    _GRAPH_SERIES = (
+        # (history tuple index, label, color)
+        (1, "Set",    "#0ea5e9"),
+        (2, "Temp 1", "#16a34a"),
+        (3, "Temp 2", "#f59e0b"),
+    )
+    
+    def add_temperature_sample(self, temp1: float, temp2: float):
+        """Record a new sample of (set temperature, Temp 1, Temp 2) at current time"""
+        now = time.monotonic()
+        self._temp_history.append((now, self.set_temperature, float(temp1), float(temp2)))
+        
+        # Drop samples older than the history window
+        cutoff = now - self._HISTORY_DURATION_SEC
+        while self._temp_history and self._temp_history[0][0] < cutoff:
+            self._temp_history.popleft()
+        
+        self.update()
+    
+    def _draw_temperature_graph(self, painter: QPainter):
+        """Draw the temperature history graph on the left side of the chamber"""
+        # Graph container
+        graph_x = 15
+        graph_y = 40
+        graph_width = 270
+        graph_height = 280
+        
+        # Background
+        painter.setBrush(QColor("#ffffff"))
+        painter.setPen(QPen(QColor("#cbd5e1"), 2))
+        painter.drawRoundedRect(graph_x, graph_y, graph_width, graph_height, 10, 10)
+        
+        # Title
+        painter.setPen(QColor("#1e293b"))
+        font = QFont("Arial", 10, QFont.Weight.Bold)
+        painter.setFont(font)
+        painter.drawText(
+            QRectF(graph_x, graph_y + 6, graph_width, 16),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+            "Temperature (last 5 min)"
+        )
+        
+        # Plot area (inside with padding for axes / legend)
+        plot_left = graph_x + 36
+        plot_right = graph_x + graph_width - 10
+        plot_top = graph_y + 48
+        plot_bottom = graph_y + graph_height - 22
+        plot_width = plot_right - plot_left
+        plot_height = plot_bottom - plot_top
+        
+        # Legend (just below the title)
+        self._draw_graph_legend(painter, graph_x, graph_y + 24, graph_width)
+        
+        # Y-axis grid lines and labels
+        y_ticks = [25, 30, 35, 40]
+        font = QFont("Arial", 8)
+        painter.setFont(font)
+        for t in y_ticks:
+            ratio = (t - self._GRAPH_TEMP_MIN) / (self._GRAPH_TEMP_MAX - self._GRAPH_TEMP_MIN)
+            py = int(plot_bottom - ratio * plot_height)
+            painter.setPen(QPen(QColor("#e5e7eb"), 1))
+            painter.drawLine(plot_left, py, plot_right, py)
+            painter.setPen(QColor("#475569"))
+            painter.drawText(
+                QRectF(graph_x + 2, py - 8, 30, 16),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                f"{t}"
+            )
+        
+        # X-axis labels (minutes ago)
+        painter.setPen(QColor("#475569"))
+        for mins_ago in [5, 4, 3, 2, 1, 0]:
+            ratio = (5 - mins_ago) / 5.0
+            px = int(plot_left + ratio * plot_width)
+            label = "now" if mins_ago == 0 else f"-{mins_ago}m"
+            painter.drawText(
+                QRectF(px - 20, plot_bottom + 4, 40, 14),
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                label
+            )
+        
+        # Plot axes
+        painter.setPen(QPen(QColor("#94a3b8"), 1))
+        painter.drawLine(plot_left, plot_top, plot_left, plot_bottom)
+        painter.drawLine(plot_left, plot_bottom, plot_right, plot_bottom)
+        
+        # Plot data series
+        if len(self._temp_history) >= 1:
+            now = time.monotonic()
+            
+            def temp_to_y(t: float) -> float:
+                t_clamped = max(self._GRAPH_TEMP_MIN, min(self._GRAPH_TEMP_MAX, t))
+                ratio = (t_clamped - self._GRAPH_TEMP_MIN) / (self._GRAPH_TEMP_MAX - self._GRAPH_TEMP_MIN)
+                return plot_bottom - ratio * plot_height
+            
+            def time_to_x(ts: float) -> float:
+                delta = now - ts
+                ratio = 1.0 - (delta / self._HISTORY_DURATION_SEC)
+                ratio = max(0.0, min(1.0, ratio))
+                return plot_left + ratio * plot_width
+            
+            # Clip drawing to the plot area to avoid overshoot
+            painter.save()
+            painter.setClipRect(QRectF(plot_left, plot_top, plot_width, plot_height))
+            
+            for series_index, _label, color_hex in self._GRAPH_SERIES:
+                pen = QPen(QColor(color_hex), 2)
+                if series_index == 1:  # Set temperature: dashed line
+                    pen.setDashPattern([6, 3])
+                painter.setPen(pen)
+                
+                path = QPainterPath()
+                first = True
+                for entry in self._temp_history:
+                    ts = entry[0]
+                    value = entry[series_index]
+                    px = time_to_x(ts)
+                    py = temp_to_y(value)
+                    if first:
+                        path.moveTo(px, py)
+                        first = False
+                    else:
+                        path.lineTo(px, py)
+                painter.drawPath(path)
+            
+            painter.restore()
+        else:
+            # Empty-state message
+            painter.setPen(QColor("#94a3b8"))
+            font = QFont("Arial", 10)
+            painter.setFont(font)
+            painter.drawText(
+                QRectF(plot_left, plot_top, plot_width, plot_height),
+                Qt.AlignmentFlag.AlignCenter,
+                "Waiting for data..."
+            )
+    
+    def _draw_graph_legend(self, painter: QPainter, graph_x: int, y: int, graph_width: int):
+        """Draw legend entries for the graph series"""
+        # Calculate entry width based on count
+        entries = self._GRAPH_SERIES
+        entry_width = graph_width // len(entries)
+        font = QFont("Arial", 8, QFont.Weight.Bold)
+        painter.setFont(font)
+        
+        for i, (series_index, label, color_hex) in enumerate(entries):
+            ex = graph_x + i * entry_width + 8
+            
+            # Color line swatch
+            pen = QPen(QColor(color_hex), 3)
+            if series_index == 1:
+                pen.setDashPattern([3, 2])
+            painter.setPen(pen)
+            painter.drawLine(ex, y + 8, ex + 18, y + 8)
+            
+            # Label
+            painter.setPen(QColor("#334155"))
+            painter.drawText(
+                QRectF(ex + 22, y, entry_width - 30, 16),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                label
+            )
     
     def _draw_single_chamber(self, painter: QPainter):
         """Draw single chamber with liquid level and threshold markers"""
@@ -1212,6 +1387,11 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.cartridge_widget.set_sensor_states(sensor_states)
         self.service_tab.update_sensors(sensor_states)
         self.service_tab.update_temperatures()  # Update mock temperatures
+        
+        # Feed Temp 1/Temp 2 into the cartridge graph for trend display
+        temp1 = self.service_tab.temp_values.get('Temp 1', 0.0)
+        temp2 = self.service_tab.temp_values.get('Temp 2', 0.0)
+        self.cartridge_widget.add_temperature_sample(temp1, temp2)
         
         # Update simulation tab if in simulation mode
         if self.simulation_mode and self.simulation_tab:
