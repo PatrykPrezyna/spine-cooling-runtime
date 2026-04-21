@@ -11,6 +11,7 @@ from typing import Optional
 from PyQt6.QtWidgets import QApplication
 
 from multi_sensor_reader import MultiSensorReader
+from simulation_sensor_reader import SimulationSensorReader
 from csv_logger import CSVLogger
 from enhanced_ui import EnhancedSensorMonitorWindow
 
@@ -18,18 +19,20 @@ from enhanced_ui import EnhancedSensorMonitorWindow
 class SensorMonitorApp:
     """Main application class"""
     
-    def __init__(self, config_path: str = "config.yaml"):
+    def __init__(self, config_path: str = "config.yaml", simulation_mode: bool = False):
         """
         Initialize application
         
         Args:
             config_path: Path to configuration file
+            simulation_mode: If True, use simulation mode with manual sensor control
         """
         # Load configuration
         self.config = self._load_config(config_path)
+        self.simulation_mode = simulation_mode
         
         # Initialize components
-        self.sensor_reader: Optional[MultiSensorReader] = None
+        self.sensor_reader: Optional[MultiSensorReader | SimulationSensorReader] = None
         self.csv_logger: Optional[CSVLogger] = None
         self.ui: Optional[EnhancedSensorMonitorWindow] = None
         
@@ -70,8 +73,14 @@ class SensorMonitorApp:
         try:
             print("Initializing components...")
             
-            # Initialize sensor reader
-            self.sensor_reader = MultiSensorReader(self.config)
+            # Initialize sensor reader (simulation or real)
+            if self.simulation_mode:
+                print("Using SIMULATION mode with manual sensor control")
+                self.sensor_reader = SimulationSensorReader(self.config)
+            else:
+                print("Using REAL sensor mode")
+                self.sensor_reader = MultiSensorReader(self.config)
+            
             if not self.sensor_reader.is_initialized:
                 print("Error: Sensor reader initialization failed")
                 return False
@@ -145,6 +154,13 @@ class SensorMonitorApp:
             if self.ui:
                 self.ui.set_status_message(f"Error: {e}", is_error=True)
     
+    def on_simulation_sensor_changed(self, sensor_name: str, state: bool):
+        """Handle manual sensor change in simulation mode"""
+        if self.simulation_mode and isinstance(self.sensor_reader, SimulationSensorReader):
+            self.sensor_reader.set_sensor(sensor_name, state)
+            # Immediately update display
+            self.update_display()
+    
     def run(self) -> int:
         """
         Run the application
@@ -161,12 +177,16 @@ class SensorMonitorApp:
             # Create Qt application
             app = QApplication(sys.argv)
             
-            # Create main window
-            self.ui = EnhancedSensorMonitorWindow(self.config)
+            # Create main window (pass simulation mode flag)
+            self.ui = EnhancedSensorMonitorWindow(self.config, simulation_mode=self.simulation_mode)
             
             # Connect callbacks
             self.ui.on_start_callback = self.start_monitoring
             self.ui.on_stop_callback = self.stop_monitoring
+            
+            # Connect simulation sensor change callback if in simulation mode
+            if self.simulation_mode:
+                self.ui.on_sensor_change_callback = self.on_simulation_sensor_changed
             
             # Set the timer update callback
             self.ui.set_update_callback(self.update_display)
@@ -177,7 +197,8 @@ class SensorMonitorApp:
             # Show window
             self.ui.show()
             
-            print("Application started. Close window to exit.")
+            mode_text = "SIMULATION MODE" if self.simulation_mode else "REAL SENSOR MODE"
+            print(f"Application started in {mode_text}. Close window to exit.")
             
             # Run Qt event loop
             exit_code = app.exec()
@@ -215,8 +236,19 @@ def main():
     print("=" * 50)
     print()
     
+    # Check for simulation mode flag
+    simulation_mode = False
+    if len(sys.argv) > 1 and sys.argv[1] in ['--sim', '--simulation', '-s']:
+        simulation_mode = True
+        print("Starting in SIMULATION MODE")
+        print("Use the Simulation tab to manually control sensors")
+    else:
+        print("Starting in REAL SENSOR MODE")
+        print("Use --sim flag to start in simulation mode")
+    print()
+    
     # Create and run application
-    app = SensorMonitorApp()
+    app = SensorMonitorApp(simulation_mode=simulation_mode)
     exit_code = app.run()
     
     print()

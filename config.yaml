@@ -1,6 +1,11 @@
 # Phase 1 Configuration - Multiple Sensor Monitor
 # Medical Device Prototype - Spine Cooling Runtime
 
+# SIMULATION MODE:
+# Run with: python src/main.py --sim
+# This enables manual sensor control via the Simulation tab in the UI
+# Without --sim flag, the application uses real GPIO sensors
+
 sensors:
   - name: "Level Low"
     gpio_pin: 14

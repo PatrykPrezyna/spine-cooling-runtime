@@ -5,13 +5,13 @@ PyQt6-based user interface with graphical sensor display
 
 import sys
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Callable
 
 from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget, QTabWidget,
-    QLabel, QGridLayout, QGroupBox, QFrame
+    QLabel, QGridLayout, QGroupBox, QFrame, QCheckBox
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QBrush, QColor, QLinearGradient,
@@ -454,19 +454,195 @@ class ServiceTab(QWidget):
         )
 
 
+class SimulationTab(QWidget):
+    """Simulation tab for manual sensor control"""
+    
+    def __init__(self, sensor_names: list):
+        super().__init__()
+        
+        self.sensor_names = sensor_names
+        self.checkboxes = {}
+        self.on_sensor_change_callback: Optional[Callable[[str, bool], None]] = None
+        
+        self._create_widgets()
+        self._setup_layout()
+    
+    def _create_widgets(self):
+        """Create simulation tab widgets"""
+        # Title label
+        self.title_label = QLabel("Manual Sensor Control")
+        self.title_label.setStyleSheet("""
+            font-size: 16px;
+            font-weight: bold;
+            color: #0f172a;
+            padding: 10px;
+        """)
+        
+        # Sensors group
+        self.sensors_group = QGroupBox("Sensor States")
+        self.sensors_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                font-size: 12px;
+                border: 2px solid #8b5cf6;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+        """)
+        
+        # Create checkboxes for each sensor
+        for sensor_name in self.sensor_names:
+            checkbox = QCheckBox(sensor_name)
+            checkbox.setStyleSheet("""
+                QCheckBox {
+                    font-size: 12px;
+                    padding: 8px;
+                }
+                QCheckBox::indicator {
+                    width: 20px;
+                    height: 20px;
+                }
+                QCheckBox::indicator:unchecked {
+                    background-color: #fee2e2;
+                    border: 2px solid #dc2626;
+                    border-radius: 4px;
+                }
+                QCheckBox::indicator:checked {
+                    background-color: #dcfce7;
+                    border: 2px solid #16a34a;
+                    border-radius: 4px;
+                }
+            """)
+            checkbox.stateChanged.connect(lambda state, name=sensor_name: self._on_checkbox_changed(name, state))
+            self.checkboxes[sensor_name] = checkbox
+        
+        # Control buttons
+        self.all_on_button = QPushButton("Set All HIGH")
+        self.all_on_button.setMinimumHeight(35)
+        self.all_on_button.setStyleSheet("""
+            QPushButton {
+                background-color: #16a34a;
+                color: white;
+                font-size: 11px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #15803d;
+            }
+        """)
+        self.all_on_button.clicked.connect(self._set_all_high)
+        
+        self.all_off_button = QPushButton("Set All LOW")
+        self.all_off_button.setMinimumHeight(35)
+        self.all_off_button.setStyleSheet("""
+            QPushButton {
+                background-color: #dc2626;
+                color: white;
+                font-size: 11px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #b91c1c;
+            }
+        """)
+        self.all_off_button.clicked.connect(self._set_all_low)
+        
+        # Info label
+        self.info_label = QLabel(
+            "ℹ️ Simulation Mode Active\n\n"
+            "Use the checkboxes above to manually control sensor states.\n"
+            "Changes take effect immediately."
+        )
+        self.info_label.setStyleSheet("""
+            QLabel {
+                font-size: 10px;
+                color: #64748b;
+                padding: 10px;
+                background-color: #f1f5f9;
+                border-radius: 5px;
+            }
+        """)
+        self.info_label.setWordWrap(True)
+    
+    def _setup_layout(self):
+        """Setup simulation tab layout"""
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
+        
+        # Add title
+        main_layout.addWidget(self.title_label)
+        
+        # Sensors layout
+        sensors_layout = QVBoxLayout()
+        for sensor_name in self.sensor_names:
+            sensors_layout.addWidget(self.checkboxes[sensor_name])
+        self.sensors_group.setLayout(sensors_layout)
+        main_layout.addWidget(self.sensors_group)
+        
+        # Control buttons layout
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addWidget(self.all_on_button)
+        buttons_layout.addWidget(self.all_off_button)
+        main_layout.addLayout(buttons_layout)
+        
+        # Add info label
+        main_layout.addWidget(self.info_label)
+        
+        # Add stretch to push everything to top
+        main_layout.addStretch()
+        
+        self.setLayout(main_layout)
+    
+    def _on_checkbox_changed(self, sensor_name: str, state: int):
+        """Handle checkbox state change"""
+        is_checked = state == Qt.CheckState.Checked.value
+        if self.on_sensor_change_callback:
+            self.on_sensor_change_callback(sensor_name, is_checked)
+    
+    def _set_all_high(self):
+        """Set all sensors to HIGH"""
+        for checkbox in self.checkboxes.values():
+            checkbox.setChecked(True)
+    
+    def _set_all_low(self):
+        """Set all sensors to LOW"""
+        for checkbox in self.checkboxes.values():
+            checkbox.setChecked(False)
+    
+    def set_sensor_state(self, sensor_name: str, state: bool):
+        """Set a sensor state programmatically"""
+        if sensor_name in self.checkboxes:
+            self.checkboxes[sensor_name].setChecked(state)
+    
+    def get_sensor_states(self) -> dict:
+        """Get current sensor states"""
+        return {name: checkbox.isChecked() for name, checkbox in self.checkboxes.items()}
+
+
 class EnhancedSensorMonitorWindow(QMainWindow):
     """Main window with enhanced cartridge visualization"""
     
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, simulation_mode: bool = False):
         """Initialize main window"""
         super().__init__()
         
         self.config = config
         self.is_monitoring = False
+        self.simulation_mode = simulation_mode
         
         # Callbacks
-        self.on_start_callback: Optional[callable] = None
-        self.on_stop_callback: Optional[callable] = None
+        self.on_start_callback: Optional[Callable] = None
+        self.on_stop_callback: Optional[Callable] = None
+        self.on_sensor_change_callback: Optional[Callable[[str, bool], None]] = None
         
         self._setup_window()
         self._create_widgets()
@@ -518,9 +694,18 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # Service tab
         self.service_tab = ServiceTab()
         
+        # Simulation tab (if in simulation mode)
+        self.simulation_tab = None
+        if self.simulation_mode:
+            sensor_names = [sensor['name'] for sensor in self.config['sensors']]
+            self.simulation_tab = SimulationTab(sensor_names)
+            self.simulation_tab.on_sensor_change_callback = self._on_simulation_sensor_changed
+        
         # Add tabs
         self.tab_widget.addTab(self.cartridge_widget, "Monitor")
         self.tab_widget.addTab(self.service_tab, "Service")
+        if self.simulation_mode:
+            self.tab_widget.addTab(self.simulation_tab, "Simulation")
         
         # Start button
         self.start_button = QPushButton("START LOGGING")
@@ -615,11 +800,21 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
     
+    def _on_simulation_sensor_changed(self, sensor_name: str, state: bool):
+        """Handle simulation sensor change"""
+        if self.on_sensor_change_callback:
+            self.on_sensor_change_callback(sensor_name, state)
+    
     def update_sensor_display(self, sensor_states: dict):
         """Update sensor display"""
         self.cartridge_widget.set_sensor_states(sensor_states)
         self.service_tab.update_sensors(sensor_states)
         self.service_tab.update_temperatures()  # Update mock temperatures
+        
+        # Update simulation tab if in simulation mode
+        if self.simulation_mode and self.simulation_tab:
+            for sensor_name, state in sensor_states.items():
+                self.simulation_tab.set_sensor_state(sensor_name, state)
         
         # Mock output updates (simulate compressor and stepper)
         import random
