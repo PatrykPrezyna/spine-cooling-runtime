@@ -207,6 +207,10 @@ class SensorMonitorApp:
                 self.sensor_reader = MultiSensorReader(self.config, force_simulation=False)
                 print("Real sensor mode activated - reading from GPIO")
             
+            # Update UI to reflect actual mode
+            if self.ui:
+                self.ui.simulation_mode = self.simulation_mode
+            
             # Update display immediately
             self.update_display()
             

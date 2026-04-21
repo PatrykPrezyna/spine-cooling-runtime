@@ -52,7 +52,7 @@ class CartridgeWidget(QWidget):
     
         
         # Draw machine slot
-        self._draw_machine_slot(painter)
+        # self._draw_machine_slot(painter)
         
         # Draw cartridge (if present)
         if self.cartridge_present:
@@ -285,11 +285,13 @@ class ServiceTab(QWidget):
                 border-radius: 5px;
                 margin-top: 10px;
                 padding-top: 10px;
+                background-color: white;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 5px;
+                color: #1f2937;
             }
         """)
         
@@ -298,7 +300,7 @@ class ServiceTab(QWidget):
         sensor_names = ['Level Low', 'Level Critical', 'Cartridge In Place']
         for name in sensor_names:
             label = QLabel(f"{name}: --")
-            label.setStyleSheet("font-size: 11px; padding: 5px;")
+            label.setStyleSheet("font-size: 11px; padding: 5px; color: #6b7280;")
             self.sensor_labels[name] = label
         
         # Temperature sensors group
@@ -311,11 +313,13 @@ class ServiceTab(QWidget):
                 border-radius: 5px;
                 margin-top: 10px;
                 padding-top: 10px;
+                background-color: white;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 5px;
+                color: #1f2937;
             }
         """)
         
@@ -323,7 +327,7 @@ class ServiceTab(QWidget):
         self.temp_labels = {}
         for name in ['Temp 1', 'Temp 2', 'Temp 3', 'Temp 4']:
             label = QLabel(f"{name}: --°C")
-            label.setStyleSheet("font-size: 11px; padding: 5px;")
+            label.setStyleSheet("font-size: 11px; padding: 5px; color: #6b7280;")
             self.temp_labels[name] = label
         
         # Outputs group
@@ -336,20 +340,22 @@ class ServiceTab(QWidget):
                 border-radius: 5px;
                 margin-top: 10px;
                 padding-top: 10px;
+                background-color: white;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 5px;
+                color: #1f2937;
             }
         """)
         
         # Output labels
         self.compressor_label = QLabel("Compressor: OFF")
-        self.compressor_label.setStyleSheet("font-size: 11px; padding: 5px;")
+        self.compressor_label.setStyleSheet("font-size: 11px; padding: 5px; color: #6b7280;")
         
         self.stepper_label = QLabel("Stepper Motor: Position 0")
-        self.stepper_label.setStyleSheet("font-size: 11px; padding: 5px;")
+        self.stepper_label.setStyleSheet("font-size: 11px; padding: 5px; color: #6b7280;")
     
     def _setup_layout(self):
         """Setup service tab layout"""
@@ -471,11 +477,13 @@ class SimulationTab(QWidget):
                 border-radius: 5px;
                 margin-top: 10px;
                 padding-top: 10px;
+                background-color: white;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 5px;
+                color: #1f2937;
             }
         """)
         
@@ -486,6 +494,7 @@ class SimulationTab(QWidget):
                 QCheckBox {
                     font-size: 12px;
                     padding: 8px;
+                    color: #1f2937;
                 }
                 QCheckBox::indicator {
                     width: 20px;
@@ -524,24 +533,6 @@ class SimulationTab(QWidget):
             }
         """)
         self.mode_button.clicked.connect(self._on_mode_toggle_clicked)
-        
-        # Info label
-        self.info_label = QLabel(
-            "ℹ️ Simulation Mode\n\n"
-            "Use the checkboxes above to manually control sensor states.\n"
-            "Toggle between Simulation and Real Sensor modes using the button below.\n"
-            "Changes take effect immediately."
-        )
-        self.info_label.setStyleSheet("""
-            QLabel {
-                font-size: 10px;
-                color: #64748b;
-                padding: 10px;
-                background-color: #f1f5f9;
-                border-radius: 5px;
-            }
-        """)
-        self.info_label.setWordWrap(True)
     
     def _setup_layout(self):
         """Setup simulation tab layout"""
@@ -554,6 +545,7 @@ class SimulationTab(QWidget):
         
         # Sensors layout
         sensors_layout = QVBoxLayout()
+        sensors_layout.setSpacing(5)
         for sensor_name in self.sensor_names:
             sensors_layout.addWidget(self.checkboxes[sensor_name])
         self.sensors_group.setLayout(sensors_layout)
@@ -561,9 +553,6 @@ class SimulationTab(QWidget):
         
         # Add mode toggle button
         main_layout.addWidget(self.mode_button)
-        
-        # Add info label
-        main_layout.addWidget(self.info_label)
         
         # Add stretch to push everything to top
         main_layout.addStretch()
@@ -583,9 +572,9 @@ class SimulationTab(QWidget):
         
         # Update button text
         if self.simulation_mode:
-            self.mode_button.setText("SIMULATION MODE")
+            self.mode_button.setText("Switch to REAL SENSOR MODE")
         else:
-            self.mode_button.setText("REAL SENSOR MODE")
+            self.mode_button.setText("Switch to SIMULATION MODE")
         
         # Notify callback
         if self.on_mode_change_callback:
@@ -846,6 +835,10 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # Update internal state
         self.simulation_mode = simulation_mode
         
+        # Refresh state display with new colors based on simulation mode
+        state_text = self.state_label.text().replace("State: ", "")
+        self.update_state_display(state_text)
+        
         # Notify main app of mode change
         if self.on_mode_change_callback:
             self.on_mode_change_callback(self.simulation_mode)
@@ -881,31 +874,24 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # Update state label
         self.state_label.setText(f"State: {state_name}")
         
-        # Update state label color based on state
-        if state_name == "Init":
-            bg_color = "#dbeafe"
-            border_color = "#3b82f6"
-            text_color = "#1e40af"
-        elif state_name == "Ready":
-            bg_color = "#d1fae5"
-            border_color = "#10b981"
-            text_color = "#065f46"
-        elif state_name == "Cooling":
-            bg_color = "#ddd6fe"
-            border_color = "#8b5cf6"
-            text_color = "#5b21b6"
-        elif state_name == "Pumping":
-            bg_color = "#fef3c7"
-            border_color = "#f59e0b"
-            text_color = "#92400e"
-        elif state_name == "Error":
+        # Update state label color based on state and simulation mode
+        if state_name == "Error":
+            # Error state is always red
             bg_color = "#fee2e2"
             border_color = "#ef4444"
             text_color = "#991b1b"
         else:
-            bg_color = "#f3f4f6"
-            border_color = "#d1d5db"
-            text_color = "#1f2937"
+            # Non-error states: green if real mode, yellow if simulation mode
+            if self.simulation_mode:
+                # Simulation mode: yellow
+                bg_color = "#fef3c7"
+                border_color = "#f59e0b"
+                text_color = "#92400e"
+            else:
+                # Real mode: green
+                bg_color = "#dcfce7"
+                border_color = "#16a34a"
+                text_color = "#15803d"
         
         self.state_label.setStyleSheet(f"""
             QLabel {{
