@@ -198,16 +198,37 @@ class SensorMonitorApp:
         # Update mode
         self.simulation_mode = simulation_mode
         
-        # Initialize new sensor reader
-        if self.simulation_mode:
+        try:
+            # Initialize new sensor reader
+            if self.simulation_mode:
+                self.sensor_reader = SimulationSensorReader(self.config)
+                print("Simulation mode activated - use Simulation tab to control sensors")
+            else:
+                self.sensor_reader = MultiSensorReader(self.config, force_simulation=False)
+                print("Real sensor mode activated - reading from GPIO")
+            
+            # Update display immediately
+            self.update_display()
+            
+        except RuntimeError as e:
+            error_msg = str(e)
+            print(f"Error switching to real sensor mode: {error_msg}")
+            
+            # Revert to simulation mode
+            self.simulation_mode = True
             self.sensor_reader = SimulationSensorReader(self.config)
-            print("Simulation mode activated - use Simulation tab to control sensors")
-        else:
-            self.sensor_reader = MultiSensorReader(self.config)
-            print("Real sensor mode activated - reading from GPIO")
-        
-        # Update display immediately
-        self.update_display()
+            
+            # Update UI to show simulation mode
+            if self.ui:
+                self.ui.simulation_mode = True
+                self.ui.simulation_tab.update_mode_display(True)
+            
+            # Show error message
+            if self.ui:
+                self.ui.set_status_message(f"Real sensors not available: {error_msg}", is_error=True)
+            
+            # Update display
+            self.update_display()
     
     def run(self) -> int:
         """

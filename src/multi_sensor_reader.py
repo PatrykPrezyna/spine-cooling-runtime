@@ -17,20 +17,24 @@ except (ImportError, RuntimeError):
 class MultiSensorReader:
     """Read multiple digital sensors via GPIO pins"""
     
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, force_simulation: bool = False):
         """
         Initialize multi-sensor reader
         
         Args:
             config: Configuration dictionary with sensors settings
+            force_simulation: If True, force simulation mode regardless of GPIO availability
         """
         self.sensors = config['sensors']
         self.sample_rate_hz = config['sample_rate_hz']
         
         self.is_initialized = False
         self.sensor_states: Dict[str, bool] = {}
-        self.simulation_mode = not GPIO_AVAILABLE
+        self.simulation_mode = force_simulation
         self.simulation_counter = 0
+        
+        if not self.simulation_mode and not GPIO_AVAILABLE:
+            raise RuntimeError("GPIO not available. Real sensor mode requires Raspberry Pi with GPIO support.")
         
         if not self.simulation_mode:
             self._initialize_gpio()
