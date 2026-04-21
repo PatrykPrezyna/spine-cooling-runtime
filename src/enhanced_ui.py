@@ -14,8 +14,8 @@ from PyQt6.QtWidgets import (
     QLabel, QGridLayout, QGroupBox, QFrame, QCheckBox
 )
 from PyQt6.QtGui import (
-    QPainter, QPen, QBrush, QColor, QLinearGradient,
-    QFont, QPainterPath, QPolygonF
+    QPainter, QPen, QColor, QLinearGradient,
+    QFont, QPainterPath
 )
 
 
@@ -31,9 +31,12 @@ class CartridgeWidget(QWidget):
         self.level_critical = False
         self.cartridge_present = False
         
-        # Level heights (0.0 to 1.0, where 1.0 is full)
-        self.level1_height = 0.6  # 60% full
-        self.level2_height = 0.8  # 80% full
+        # Liquid level (0.0 to 1.0, where 1.0 is full)
+        self.liquid_level = 0.7  # 70% full
+        
+        # Threshold positions (as fraction of container height)
+        self.low_threshold = 0.4      # Low warning at 40%
+        self.critical_threshold = 0.2  # Critical warning at 20%
     
     def set_sensor_states(self, states: dict):
         """Update sensor states and trigger repaint"""
@@ -49,24 +52,12 @@ class CartridgeWidget(QWidget):
         
         # Draw background gradient
         self._draw_background(painter)
-    
         
-        # Draw machine slot
-        # self._draw_machine_slot(painter)
+        # Draw single chamber with liquid and threshold levels
+        self._draw_single_chamber(painter)
         
-        # Draw cartridge (if present)
-        if self.cartridge_present:
-            self._draw_cartridge(painter)
-            self._draw_level_chambers(painter)
-        
-        # Draw sensor module
-        self._draw_sensor_module(painter)
-        
-        # Draw detection beam
-        self._draw_detection_beam(painter)
-        
-        # Draw status indicator
-        self._draw_status_indicator(painter)
+        # Draw present sensor indicator below the chamber
+        self._draw_present_sensor(painter)
     
     def _draw_background(self, painter: QPainter):
         """Draw gradient background"""
@@ -75,178 +66,150 @@ class CartridgeWidget(QWidget):
         gradient.setColorAt(1, QColor("#eaf2ff"))
         painter.fillRect(self.rect(), gradient)
     
-    def _draw_machine_slot(self, painter: QPainter):
-        """Draw the machine slot"""
-        painter.setBrush(QColor("#dbeafe"))
-        painter.setPen(QPen(QColor("#3b82f6"), 3))
-        painter.drawRoundedRect(80, 90, 400, 320, 20, 20)
+    def _draw_single_chamber(self, painter: QPainter):
+        """Draw single chamber with liquid level and threshold markers"""
+        # Chamber dimensions - centered in widget
+        chamber_x = (self.width() - 200) // 2
+        chamber_y = 40
+        chamber_width = 200
+        chamber_height = 280
         
-        # Label
-        painter.setPen(QColor("#1e40af"))
-        font = QFont("Arial", 13, QFont.Weight.Bold)
-        painter.setFont(font)
-        painter.drawText(QRectF(80, 95, 400, 25),
-                        Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-                        "Machine Slot")
-    
-    def _draw_cartridge(self, painter: QPainter):
-        """Draw the cartridge"""
-        painter.setBrush(QColor("white"))
-        painter.setPen(QPen(QColor("#0f172a"), 3))
-        painter.drawRoundedRect(150, 140, 260, 240, 16, 16)
+        # Draw chamber outline (container)
+        painter.setBrush(QColor("#f1f5f9"))
+        painter.setPen(QPen(QColor("#334155"), 3))
+        painter.drawRoundedRect(chamber_x, chamber_y, chamber_width, chamber_height, 12, 12)
         
-        # Label
-        painter.setPen(QColor("#0f172a"))
-        font = QFont("Arial", 11, QFont.Weight.Bold)
-        painter.setFont(font)
-        painter.drawText(QRectF(150, 385, 260, 25),
-                        Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-                        "Cartridge")
-    
-    def _draw_level_chambers(self, painter: QPainter):
-        """Draw the two level chambers with liquid"""
-        chambers = [
-            {"x": 190, "level": self.level1_height, "color": "#38bdf8", "label": "Level 1", "critical": self.level_critical},
-            {"x": 300, "level": self.level2_height, "color": "#0ea5e9", "label": "Level 2", "critical": self.level_low}
-        ]
-        
-        chamber_y = 180
-        chamber_width = 85
-        chamber_height = 180
-        
-        for chamber in chambers:
-            x = chamber["x"]
-            
-            # Draw chamber outline
-            painter.setBrush(QColor("#f1f5f9"))
-            painter.setPen(QPen(QColor("#64748b"), 3))
-            painter.drawRoundedRect(x, chamber_y, chamber_width, chamber_height, 10, 10)
-            
-            # Draw liquid level
-            liquid_height = chamber_height * chamber["level"]
+        # Draw liquid fill
+        if self.cartridge_present:
+            liquid_height = int(chamber_height * self.liquid_level)
             liquid_y = chamber_y + chamber_height - liquid_height
             
-            # Liquid color with opacity
-            liquid_color = QColor(chamber["color"])
-            liquid_color.setAlphaF(0.85)
-            painter.setBrush(liquid_color)
+            # Liquid gradient
+            liquid_gradient = QLinearGradient(chamber_x, liquid_y, chamber_x, chamber_y + chamber_height)
+            liquid_gradient.setColorAt(0, QColor("#38bdf8"))
+            liquid_gradient.setColorAt(1, QColor("#0284c7"))
+            
+            painter.setBrush(liquid_gradient)
             painter.setPen(Qt.PenStyle.NoPen)
             
-            # Create rounded bottom for liquid
+            # Draw liquid with rounded bottom
             path = QPainterPath()
-            path.addRoundedRect(QRectF(x + 3, liquid_y, chamber_width - 6, liquid_height - 3), 8, 8)
+            path.addRoundedRect(
+                QRectF(chamber_x + 4, liquid_y, chamber_width - 8, liquid_height - 4),
+                10, 10
+            )
             painter.drawPath(path)
-            
-            # Draw level line (dashed)
-            pen = QPen(QColor("#0284c7"), 2)
-            pen.setDashPattern([10, 8])
-            painter.setPen(pen)
-            painter.drawLine(x, int(liquid_y), x + chamber_width, int(liquid_y))
-            
-            # Draw level label
-            painter.setPen(QColor("#0f172a"))
-            font = QFont("Arial", 11, QFont.Weight.Bold)
-            painter.setFont(font)
-            painter.drawText(QRectF(x, liquid_y - 25, chamber_width, 20),
-                            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-                            chamber["label"])
-            
-            # Draw warning indicator if level is critical
-            if chamber["critical"]:
-                painter.setBrush(QColor("#ef4444"))
-                painter.setPen(QPen(QColor("#991b1b"), 2))
-                painter.drawEllipse(QPointF(x + chamber_width + 15, liquid_y), 8, 8)
-    
-    def _draw_sensor_module(self, painter: QPainter):
-        """Draw the sensor module"""
-        painter.setBrush(QColor("#dcfce7"))
-        painter.setPen(QPen(QColor("#16a34a"), 3))
-        painter.drawRoundedRect(540, 230, 120, 60, 10, 10)
         
-        # Green indicator circle
-        if self.cartridge_present:
-            painter.setBrush(QColor("#22c55e"))
-        else:
-            painter.setBrush(QColor("#94a3b8"))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(QPointF(560, 260), 12, 12)
+        # Draw threshold lines
+        self._draw_threshold_line(
+            painter, chamber_x, chamber_y, chamber_width, chamber_height,
+            self.low_threshold, "LOW", self.level_low, QColor("#f59e0b")
+        )
+        self._draw_threshold_line(
+            painter, chamber_x, chamber_y, chamber_width, chamber_height,
+            self.critical_threshold, "CRITICAL", self.level_critical, QColor("#ef4444")
+        )
         
-        # Text
-        painter.setPen(QColor("#065f46"))
+        # Draw chamber label
+        painter.setPen(QColor("#1e293b"))
         font = QFont("Arial", 12, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.drawText(QRectF(575, 230, 80, 60),
-                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                        "Sensor")
+        painter.drawText(
+            QRectF(chamber_x, chamber_y + chamber_height + 5, chamber_width, 25),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+            "Cartridge Level"
+        )
     
-    def _draw_detection_beam(self, painter: QPainter):
-        """Draw detection beam from sensor to cartridge"""
-        if self.cartridge_present:
-            pen = QPen(QColor("#0ea5e9"), 4)
-        else:
-            pen = QPen(QColor("#94a3b8"), 4)
+    def _draw_threshold_line(self, painter: QPainter, chamber_x: int, chamber_y: int,
+                              chamber_width: int, chamber_height: int,
+                              threshold: float, label: str, is_triggered: bool, color: QColor):
+        """Draw a single threshold line with label"""
+        line_y = int(chamber_y + chamber_height * (1 - threshold))
+        
+        # Draw dashed threshold line
+        pen = QPen(color, 2)
+        pen.setDashPattern([8, 4])
         painter.setPen(pen)
+        painter.drawLine(chamber_x + 10, line_y, chamber_x + chamber_width - 10, line_y)
         
-        # Draw line
-        start_x, start_y = 540, 260
-        end_x, end_y = 420, 260
-        painter.drawLine(start_x, start_y, end_x, end_y)
+        # Draw label on the right side
+        label_x = chamber_x + chamber_width + 10
         
-        # Draw arrowhead
-        arrow_size = 10
-        arrow = QPolygonF([
-            QPointF(end_x, end_y),
-            QPointF(end_x + arrow_size, end_y - arrow_size/2),
-            QPointF(end_x + arrow_size, end_y + arrow_size/2)
-        ])
-        if self.cartridge_present:
-            painter.setBrush(QColor("#0ea5e9"))
+        # Draw indicator circle
+        if is_triggered:
+            painter.setBrush(color)
         else:
             painter.setBrush(QColor("#94a3b8"))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawPolygon(arrow)
+        painter.drawEllipse(QPointF(label_x + 8, line_y), 6, 6)
         
-        # Helper text
-        painter.setPen(QColor("#475569"))
-        font = QFont("Arial", 9)
-        painter.setFont(font)
-        painter.drawText(QRectF(540, 300, 120, 35),
-                        Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-                        "Checks cartridge\nis in place")
-    
-    def _draw_status_indicator(self, painter: QPainter):
-        """Draw status indicator at bottom right"""
-        # Status circle
-        if self.cartridge_present:
-            painter.setBrush(QColor("#16a34a"))
-            status_text = "Cartridge detected"
-            text_color = "#16a34a"
+        # Draw label text
+        if is_triggered:
+            painter.setPen(color)
         else:
-            painter.setBrush(QColor("#dc2626"))
-            status_text = "No cartridge"
-            text_color = "#dc2626"
+            painter.setPen(QColor("#64748b"))
+        font = QFont("Arial", 10, QFont.Weight.Bold)
+        painter.setFont(font)
+        painter.drawText(
+            QRectF(label_x + 20, line_y - 10, 80, 20),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            label
+        )
+    
+    def _draw_present_sensor(self, painter: QPainter):
+        """Draw cartridge present sensor indicator below the chamber"""
+        # Position below the chamber
+        indicator_x = (self.width() - 250) // 2
+        indicator_y = 360
+        indicator_width = 250
+        indicator_height = 50
         
+        # Draw indicator background
+        if self.cartridge_present:
+            bg_color = QColor("#dcfce7")
+            border_color = QColor("#16a34a")
+            circle_color = QColor("#22c55e")
+            text_color = QColor("#15803d")
+            status_text = "Cartridge Present"
+        else:
+            bg_color = QColor("#fee2e2")
+            border_color = QColor("#ef4444")
+            circle_color = QColor("#dc2626")
+            text_color = QColor("#991b1b")
+            status_text = "No Cartridge"
+        
+        painter.setBrush(bg_color)
+        painter.setPen(QPen(border_color, 2))
+        painter.drawRoundedRect(indicator_x, indicator_y, indicator_width, indicator_height, 10, 10)
+        
+        # Draw status circle
+        circle_x = indicator_x + 30
+        circle_y = indicator_y + indicator_height // 2
+        painter.setBrush(circle_color)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(QPointF(720, 580), 20, 20)
+        painter.drawEllipse(QPointF(circle_x, circle_y), 12, 12)
         
-        # Checkmark or X
-        painter.setPen(QPen(QColor("white"), 3))
+        # Draw checkmark or X inside circle
+        painter.setPen(QPen(QColor("white"), 2))
         if self.cartridge_present:
             # Draw checkmark
-            painter.drawLine(712, 580, 718, 586)
-            painter.drawLine(718, 586, 728, 574)
+            painter.drawLine(circle_x - 5, circle_y, circle_x - 1, circle_y + 4)
+            painter.drawLine(circle_x - 1, circle_y + 4, circle_x + 6, circle_y - 5)
         else:
             # Draw X
-            painter.drawLine(710, 570, 730, 590)
-            painter.drawLine(730, 570, 710, 590)
+            painter.drawLine(circle_x - 5, circle_y - 5, circle_x + 5, circle_y + 5)
+            painter.drawLine(circle_x + 5, circle_y - 5, circle_x - 5, circle_y + 5)
         
-        # Status text
-        painter.setPen(QColor(text_color))
+        # Draw status text
+        painter.setPen(text_color)
         font = QFont("Arial", 13, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.drawText(QRectF(750, 565, 140, 30),
-                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                        status_text)
+        painter.drawText(
+            QRectF(circle_x + 25, indicator_y, indicator_width - 60, indicator_height),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            status_text
+        )
+    
 
 
 class ServiceTab(QWidget):
