@@ -357,8 +357,8 @@ class ServiceTab(QWidget):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
         
-        # Sensors layout
-        sensors_layout = QVBoxLayout()
+        # Sensors layout - horizontal arrangement
+        sensors_layout = QHBoxLayout()
         for name in ['Level Low', 'Level Critical', 'Cartridge In Place']:
             sensors_layout.addWidget(self.sensor_labels[name])
         self.sensors_group.setLayout(sensors_layout)
