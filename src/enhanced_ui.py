@@ -37,6 +37,20 @@ class CartridgeWidget(QWidget):
         # Threshold positions (as fraction of container height)
         self.low_threshold = 0.4      # Low warning at 40%
         self.critical_threshold = 0.2  # Critical warning at 20%
+        
+        # Set temperature gauge configuration
+        self.temp_min = 30.0
+        self.temp_max = 35.0
+        self.temp_step = 0.2
+        self.set_temperature = 32.0
+        self._temp_gauge_rect = QRectF()  # Updated during paint, used for hit testing
+        self._dragging_temp = False
+        
+        # Callback for temperature changes
+        self.on_temperature_change_callback: Optional[Callable[[float], None]] = None
+        
+        # Touch-friendly +/- buttons for fine adjustment
+        self._create_temp_buttons()
     
     def set_sensor_states(self, states: dict):
         """Update sensor states and trigger repaint"""
@@ -58,6 +72,9 @@ class CartridgeWidget(QWidget):
         
         # Draw present sensor indicator below the chamber
         self._draw_present_sensor(painter)
+        
+        # Draw set temperature gauge on the right side
+        self._draw_temperature_gauge(painter)
     
     def _draw_background(self, painter: QPainter):
         """Draw gradient background"""
@@ -210,6 +227,298 @@ class CartridgeWidget(QWidget):
             status_text
         )
     
+    # Touch-friendly gauge geometry
+    _GAUGE_WIDTH = 55
+    _GAUGE_HEIGHT = 240
+    _GAUGE_TOP = 50
+    _GAUGE_RIGHT_MARGIN = 140  # gauge_x = self.width() - _GAUGE_RIGHT_MARGIN
+    _TEMP_BUTTON_SIZE = 48
+    _TEMP_BUTTON_GAP = 10
+    
+    def _gauge_geometry(self):
+        """Return the gauge track rectangle dimensions based on widget size"""
+        gauge_x = self.width() - self._GAUGE_RIGHT_MARGIN
+        return gauge_x, self._GAUGE_TOP, self._GAUGE_WIDTH, self._GAUGE_HEIGHT
+    
+    def _draw_temperature_gauge(self, painter: QPainter):
+        """Draw vertical set temperature gauge on the right side"""
+        gauge_x, gauge_y, gauge_width, gauge_height = self._gauge_geometry()
+        
+        # Store gauge track rectangle for hit testing
+        self._temp_gauge_rect = QRectF(gauge_x, gauge_y, gauge_width, gauge_height)
+        
+        # Title label
+        painter.setPen(QColor("#1e293b"))
+        font = QFont("Arial", 10, QFont.Weight.Bold)
+        painter.setFont(font)
+        painter.drawText(
+            QRectF(gauge_x - 30, gauge_y - 36, gauge_width + 80, 18),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+            "SET TEMP"
+        )
+        
+        # Current value display
+        painter.setPen(QColor("#0284c7"))
+        font = QFont("Arial", 15, QFont.Weight.Bold)
+        painter.setFont(font)
+        painter.drawText(
+            QRectF(gauge_x - 30, gauge_y - 18, gauge_width + 80, 18),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+            f"{self.set_temperature:.1f}\u00b0C"
+        )
+        
+        # Draw gauge track
+        track_gradient = QLinearGradient(gauge_x, gauge_y, gauge_x, gauge_y + gauge_height)
+        track_gradient.setColorAt(0, QColor("#fecaca"))  # Warm at top (high temp)
+        track_gradient.setColorAt(1, QColor("#bae6fd"))  # Cool at bottom (low temp)
+        painter.setBrush(track_gradient)
+        painter.setPen(QPen(QColor("#334155"), 2))
+        painter.drawRoundedRect(gauge_x, gauge_y, gauge_width, gauge_height, 10, 10)
+        
+        # Draw tick marks every 0.2 degrees
+        num_steps = int(round((self.temp_max - self.temp_min) / self.temp_step))
+        for i in range(num_steps + 1):
+            temp_value = self.temp_min + i * self.temp_step
+            ratio = (temp_value - self.temp_min) / (self.temp_max - self.temp_min)
+            # Higher temperature at top, lower at bottom
+            tick_y = int(gauge_y + gauge_height - ratio * gauge_height)
+            
+            # Major tick (every 1.0 deg) vs minor tick (every 0.2 deg)
+            is_major = abs(temp_value - round(temp_value)) < 0.01
+            
+            if is_major:
+                tick_length = 12
+                painter.setPen(QPen(QColor("#0f172a"), 2))
+            else:
+                tick_length = 6
+                painter.setPen(QPen(QColor("#475569"), 1))
+            
+            # Tick marks on both sides of the track
+            painter.drawLine(gauge_x - tick_length, tick_y, gauge_x, tick_y)
+            painter.drawLine(
+                gauge_x + gauge_width, tick_y,
+                gauge_x + gauge_width + tick_length, tick_y
+            )
+            
+            # Major tick labels
+            if is_major:
+                painter.setPen(QColor("#0f172a"))
+                font = QFont("Arial", 9, QFont.Weight.Bold)
+                painter.setFont(font)
+                painter.drawText(
+                    QRectF(gauge_x - 48, tick_y - 8, 30, 16),
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                    f"{int(round(temp_value))}"
+                )
+        
+        # Draw handle at current setpoint (bigger for touch)
+        handle_ratio = (self.set_temperature - self.temp_min) / (self.temp_max - self.temp_min)
+        handle_y = int(gauge_y + gauge_height - handle_ratio * gauge_height)
+        handle_half_height = 14
+        handle_overhang = 12
+        
+        # Handle shadow
+        painter.setBrush(QColor(0, 0, 0, 50))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(
+            QRectF(gauge_x - handle_overhang, handle_y - handle_half_height + 2,
+                   gauge_width + 2 * handle_overhang, 2 * handle_half_height),
+            8, 8
+        )
+        
+        # Handle body
+        handle_gradient = QLinearGradient(
+            gauge_x, handle_y - handle_half_height,
+            gauge_x, handle_y + handle_half_height
+        )
+        handle_gradient.setColorAt(0, QColor("#0ea5e9"))
+        handle_gradient.setColorAt(1, QColor("#0369a1"))
+        painter.setBrush(handle_gradient)
+        painter.setPen(QPen(QColor("#0c4a6e"), 2))
+        painter.drawRoundedRect(
+            QRectF(gauge_x - handle_overhang, handle_y - handle_half_height,
+                   gauge_width + 2 * handle_overhang, 2 * handle_half_height),
+            8, 8
+        )
+        
+        # Handle centerline indicator
+        painter.setPen(QPen(QColor("white"), 2))
+        painter.drawLine(
+            int(gauge_x - handle_overhang + 4), handle_y,
+            int(gauge_x + gauge_width + handle_overhang - 4), handle_y
+        )
+        
+        # Unit label below gauge
+        painter.setPen(QColor("#64748b"))
+        font = QFont("Arial", 9)
+        painter.setFont(font)
+        painter.drawText(
+            QRectF(gauge_x - 30, gauge_y + gauge_height + 6, gauge_width + 80, 14),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+            f"{self.temp_min:.0f}-{self.temp_max:.0f}\u00b0C / 0.2\u00b0 step"
+        )
+    
+    def _y_to_temperature(self, y: float) -> float:
+        """Convert a y-coordinate to a temperature value, snapped to the step"""
+        if self._temp_gauge_rect.height() <= 0:
+            return self.set_temperature
+        
+        gauge_top = self._temp_gauge_rect.top()
+        gauge_height = self._temp_gauge_rect.height()
+        
+        # Clamp y to the gauge range
+        y_clamped = max(gauge_top, min(gauge_top + gauge_height, y))
+        
+        # Top = max temp, bottom = min temp
+        ratio = 1.0 - (y_clamped - gauge_top) / gauge_height
+        temp_value = self.temp_min + ratio * (self.temp_max - self.temp_min)
+        
+        # Snap to nearest step
+        num_steps = round((temp_value - self.temp_min) / self.temp_step)
+        snapped = self.temp_min + num_steps * self.temp_step
+        return max(self.temp_min, min(self.temp_max, round(snapped, 1)))
+    
+    def _is_near_temp_gauge(self, pos: QPointF) -> bool:
+        """Check if a mouse position is within/near the gauge track"""
+        # Extend hit area slightly beyond the track for easier interaction
+        hit_rect = self._temp_gauge_rect.adjusted(-15, -10, 15, 10)
+        return hit_rect.contains(pos)
+    
+    def _update_temperature_from_mouse(self, y: float):
+        """Update set temperature from mouse y-position and notify callback"""
+        new_temp = self._y_to_temperature(y)
+        if abs(new_temp - self.set_temperature) > 1e-6:
+            self.set_temperature = new_temp
+            self._update_temp_button_enabled_state()
+            self.update()
+            if self.on_temperature_change_callback:
+                self.on_temperature_change_callback(self.set_temperature)
+    
+    def mousePressEvent(self, event):
+        """Handle mouse press for temperature gauge interaction"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position()
+            if self._is_near_temp_gauge(pos):
+                self._dragging_temp = True
+                self._update_temperature_from_mouse(pos.y())
+                event.accept()
+                return
+        super().mousePressEvent(event)
+    
+    def mouseMoveEvent(self, event):
+        """Handle mouse drag for temperature gauge interaction"""
+        if self._dragging_temp:
+            self._update_temperature_from_mouse(event.position().y())
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+    
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release to end temperature drag"""
+        if event.button() == Qt.MouseButton.LeftButton and self._dragging_temp:
+            self._dragging_temp = False
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+    
+    def set_temperature_value(self, temperature: float):
+        """Programmatically set the temperature value (snapped to step)"""
+        clamped = max(self.temp_min, min(self.temp_max, temperature))
+        num_steps = round((clamped - self.temp_min) / self.temp_step)
+        self.set_temperature = round(self.temp_min + num_steps * self.temp_step, 1)
+        self._update_temp_button_enabled_state()
+        self.update()
+    
+    def _create_temp_buttons(self):
+        """Create touch-friendly +/- buttons for temperature adjustment"""
+        button_style = """
+            QPushButton {
+                background-color: #0ea5e9;
+                color: white;
+                font-size: 22px;
+                font-weight: bold;
+                border: 2px solid #0369a1;
+                border-radius: 8px;
+            }
+            QPushButton:pressed {
+                background-color: #0369a1;
+            }
+            QPushButton:disabled {
+                background-color: #cbd5e1;
+                border-color: #94a3b8;
+                color: #64748b;
+            }
+        """
+        
+        self.temp_minus_button = QPushButton("-", self)
+        self.temp_minus_button.setFixedSize(self._TEMP_BUTTON_SIZE, self._TEMP_BUTTON_SIZE)
+        self.temp_minus_button.setStyleSheet(button_style)
+        self.temp_minus_button.clicked.connect(self._on_temp_decrement)
+        
+        self.temp_plus_button = QPushButton("+", self)
+        self.temp_plus_button.setFixedSize(self._TEMP_BUTTON_SIZE, self._TEMP_BUTTON_SIZE)
+        self.temp_plus_button.setStyleSheet(button_style)
+        self.temp_plus_button.clicked.connect(self._on_temp_increment)
+        
+        # Enable auto-repeat so holding the button steps continuously
+        for btn in (self.temp_minus_button, self.temp_plus_button):
+            btn.setAutoRepeat(True)
+            btn.setAutoRepeatDelay(400)
+            btn.setAutoRepeatInterval(120)
+    
+    def _position_temp_buttons(self):
+        """Position +/- buttons below the gauge"""
+        if not hasattr(self, "temp_minus_button"):
+            return
+        
+        gauge_x, gauge_y, gauge_width, gauge_height = self._gauge_geometry()
+        gauge_center_x = gauge_x + gauge_width // 2
+        
+        buttons_total_width = 2 * self._TEMP_BUTTON_SIZE + self._TEMP_BUTTON_GAP
+        buttons_left = gauge_center_x - buttons_total_width // 2
+        buttons_top = gauge_y + gauge_height + 26
+        
+        self.temp_minus_button.move(buttons_left, buttons_top)
+        self.temp_plus_button.move(
+            buttons_left + self._TEMP_BUTTON_SIZE + self._TEMP_BUTTON_GAP,
+            buttons_top,
+        )
+    
+    def _step_temperature(self, direction: int):
+        """Step the set temperature by `direction` steps (snapped and clamped)"""
+        new_temp = round(self.set_temperature + direction * self.temp_step, 1)
+        new_temp = max(self.temp_min, min(self.temp_max, new_temp))
+        if abs(new_temp - self.set_temperature) > 1e-6:
+            self.set_temperature = new_temp
+            self._update_temp_button_enabled_state()
+            self.update()
+            if self.on_temperature_change_callback:
+                self.on_temperature_change_callback(self.set_temperature)
+    
+    def _on_temp_increment(self):
+        """Handle + button click"""
+        self._step_temperature(1)
+    
+    def _on_temp_decrement(self):
+        """Handle - button click"""
+        self._step_temperature(-1)
+    
+    def _update_temp_button_enabled_state(self):
+        """Disable buttons at range limits"""
+        if hasattr(self, "temp_minus_button"):
+            self.temp_minus_button.setEnabled(self.set_temperature > self.temp_min + 1e-6)
+            self.temp_plus_button.setEnabled(self.set_temperature < self.temp_max - 1e-6)
+    
+    def resizeEvent(self, event):
+        """Reposition touch buttons when the widget is resized"""
+        super().resizeEvent(event)
+        self._position_temp_buttons()
+    
+    def showEvent(self, event):
+        """Ensure buttons are positioned and enabled state is correct when shown"""
+        super().showEvent(event)
+        self._position_temp_buttons()
+        self._update_temp_button_enabled_state()
 
 
 class ServiceTab(QWidget):
