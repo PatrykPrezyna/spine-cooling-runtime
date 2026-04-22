@@ -44,6 +44,9 @@ class SensorMonitorApp:
         self.jog_direction: int = 0
         self.jog_step_chunk: int = 4
         self.jog_timer: Optional[QTimer] = None
+        self.last_stepper_command: str = "init"
+        self.last_requested_steps: int = 0
+        self.last_moved_steps: int = 0
         
         self.is_running = False
     
@@ -153,6 +156,33 @@ class SensorMonitorApp:
             error_msg = self.state_machine.get_error_message() if new_state == State.ERROR else None
             self.ui.update_state_display(new_state.value, error_msg)
     
+    def _jog_direction_text(self) -> str:
+        if self.jog_direction > 0:
+            return "Forward"
+        if self.jog_direction < 0:
+            return "Reverse"
+        return "Stopped"
+    
+    def _update_stepper_ui_status(self):
+        """Push latest stepper status + debug information into the service tab."""
+        if not self.ui or not self.stepper_driver:
+            return
+        status = self.stepper_driver.get_status()
+        status['fault'] = self.stepper_driver.check_fault()
+        self.ui.service_tab.update_outputs(
+            stepper_pos=status.get('position_steps', 0),
+            stepper_enabled=status.get('enabled', False),
+            stepper_fault=status.get('fault', False),
+            stepper_microstepping=status.get('microstepping', 1),
+            stepper_speed_rpm=self.stepper_speed_rpm,
+            stepper_debug={
+                "Last Command": self.last_stepper_command,
+                "Jog Direction": self._jog_direction_text(),
+                "Requested Steps": self.last_requested_steps,
+                "Moved Steps": self.last_moved_steps,
+            },
+        )
+    
     def update_display(self):
         """Update sensor display continuously (called every 1 second)"""
         try:
@@ -167,15 +197,7 @@ class SensorMonitorApp:
             if self.ui:
                 self.ui.update_sensor_display(sensor_states)
                 if self.stepper_driver:
-                    status = self.stepper_driver.get_status()
-                    status['fault'] = self.stepper_driver.check_fault()
-                    self.ui.service_tab.update_outputs(
-                        stepper_pos=status.get('position_steps', 0),
-                        stepper_enabled=status.get('enabled', False),
-                        stepper_fault=status.get('fault', False),
-                        stepper_microstepping=status.get('microstepping', 1),
-                        stepper_speed_rpm=self.stepper_speed_rpm,
-                    )
+                    self._update_stepper_ui_status()
             
             # Log to CSV (always active)
             if self.csv_logger:
@@ -209,26 +231,29 @@ class SensorMonitorApp:
         if not self.stepper_driver:
             return
         if enabled:
+            self.last_stepper_command = "enable"
+            self.last_requested_steps = 0
+            self.last_moved_steps = 0
             self.stepper_driver.enable()
         else:
+            self.last_stepper_command = "disable"
+            self.last_requested_steps = 0
+            self.last_moved_steps = 0
             self.on_stepper_jog_stop()
             self.stepper_driver.disable()
         
         if self.ui:
-            status = self.stepper_driver.get_status()
-            status['fault'] = self.stepper_driver.check_fault()
-            self.ui.service_tab.update_outputs(
-                stepper_enabled=status.get('enabled', False),
-                stepper_fault=status.get('fault', False),
-                stepper_speed_rpm=self.stepper_speed_rpm,
-            )
+            self._update_stepper_ui_status()
     
     def on_stepper_speed_changed(self, speed_rpm: int):
         """Handle stepper speed RPM change from service tab."""
         self.stepper_speed_rpm = int(speed_rpm)
+        self.last_stepper_command = f"set_speed:{self.stepper_speed_rpm}"
+        self.last_requested_steps = 0
+        self.last_moved_steps = 0
         self._update_jog_timer_interval()
         if self.ui:
-            self.ui.service_tab.update_outputs(stepper_speed_rpm=self.stepper_speed_rpm)
+            self._update_stepper_ui_status()
     
     def on_stepper_jog_start(self, direction: int):
         """Start jog movement while jog button is held."""
@@ -237,16 +262,24 @@ class SensorMonitorApp:
         if not self.stepper_driver.enabled:
             return
         self.jog_direction = 1 if direction >= 0 else -1
+        self.last_stepper_command = "jog_start"
+        self.last_requested_steps = 0
+        self.last_moved_steps = 0
         if self.jog_timer:
             self._update_jog_timer_interval()
             if not self.jog_timer.isActive():
                 self.jog_timer.start()
+        self._update_stepper_ui_status()
     
     def on_stepper_jog_stop(self):
         """Stop jog movement."""
         self.jog_direction = 0
+        self.last_stepper_command = "jog_stop"
+        self.last_requested_steps = 0
+        self.last_moved_steps = 0
         if self.jog_timer and self.jog_timer.isActive():
             self.jog_timer.stop()
+        self._update_stepper_ui_status()
     
     def _compute_jog_interval_ms(self) -> int:
         """
@@ -275,19 +308,14 @@ class SensorMonitorApp:
             self.jog_direction * self.jog_step_chunk,
             speed_rpm=self.stepper_speed_rpm,
         )
+        self.last_stepper_command = "jog_tick"
+        self.last_requested_steps = self.jog_direction * self.jog_step_chunk
+        self.last_moved_steps = moved
         # Hit soft limit: stop jogging.
         if moved == 0:
             self.on_stepper_jog_stop()
         if self.ui:
-            status = self.stepper_driver.get_status()
-            status['fault'] = self.stepper_driver.check_fault()
-            self.ui.service_tab.update_outputs(
-                stepper_pos=status.get('position_steps', 0),
-                stepper_enabled=status.get('enabled', False),
-                stepper_fault=status.get('fault', False),
-                stepper_microstepping=status.get('microstepping', 1),
-                stepper_speed_rpm=self.stepper_speed_rpm,
-            )
+            self._update_stepper_ui_status()
     
     def on_simulation_sensor_changed(self, sensor_name: str, state: bool):
         """Handle manual sensor change in simulation mode"""
@@ -392,15 +420,7 @@ class SensorMonitorApp:
             
             # Sync initial stepper display values
             if self.stepper_driver:
-                status = self.stepper_driver.get_status()
-                status['fault'] = self.stepper_driver.check_fault()
-                self.ui.service_tab.update_outputs(
-                    stepper_pos=status.get('position_steps', 0),
-                    stepper_enabled=status.get('enabled', False),
-                    stepper_fault=status.get('fault', False),
-                    stepper_microstepping=status.get('microstepping', 1),
-                    stepper_speed_rpm=self.stepper_speed_rpm,
-                )
+                self._update_stepper_ui_status()
             
             mode_text = "SIMULATION MODE" if self.simulation_mode else "REAL SENSOR MODE"
             print(f"Application started in {mode_text}. Close window to exit.")

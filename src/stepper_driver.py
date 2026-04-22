@@ -41,6 +41,9 @@ class STSPIN220Driver:
         self.pin_stby_reset: int = pins_cfg.get('stby_reset', 4)
         self.pin_step: int = pins_cfg.get('step', 17)
         self.pin_dir: int = pins_cfg.get('dir', 27)
+        # Keep MODE pins explicitly driven for deterministic full-step operation.
+        self.pin_mode1: int = pins_cfg.get('mode1', 5)
+        self.pin_mode2: int = pins_cfg.get('mode2', 6)
         self.steps_per_revolution: int = stepper_cfg.get('steps_per_revolution', 200)
         self.microstepping: int = 1
         self.max_speed_rpm: float = stepper_cfg.get('max_speed_rpm', 60)
@@ -71,7 +74,13 @@ class STSPIN220Driver:
             GPIO.setmode(GPIO.BCM)
             GPIO.setwarnings(False)
 
-            for pin in (self.pin_stby_reset, self.pin_step, self.pin_dir):
+            for pin in (
+                self.pin_stby_reset,
+                self.pin_step,
+                self.pin_dir,
+                self.pin_mode1,
+                self.pin_mode2,
+            ):
                 GPIO.setup(pin, GPIO.OUT, initial=GPIO.LOW)
 
             # EN/FAULT is open-drain on the STSPIN220 side. Configure it as an
@@ -79,7 +88,9 @@ class STSPIN220Driver:
             # enable/disable) and read back the FAULT condition.
             GPIO.setup(self.pin_en_fault, GPIO.OUT, initial=GPIO.LOW)
 
-            # Leave standby and run in full-step mode.
+            # Force MODE1/MODE2 LOW for full-step mode, then leave standby.
+            GPIO.output(self.pin_mode1, GPIO.LOW)
+            GPIO.output(self.pin_mode2, GPIO.LOW)
             GPIO.output(self.pin_stby_reset, GPIO.HIGH)
             time.sleep(0.001)
 
@@ -87,7 +98,8 @@ class STSPIN220Driver:
             print(
                 f"{self.DRIVER_NAME} initialized on GPIO "
                 f"(EN/FAULT={self.pin_en_fault}, STBY={self.pin_stby_reset}, "
-                f"STCK={self.pin_step}, DIR={self.pin_dir}) "
+                f"STCK={self.pin_step}, DIR={self.pin_dir}, "
+                f"MODE1={self.pin_mode1}, MODE2={self.pin_mode2}) "
                 f"@ full-step mode"
             )
         except Exception as exc:
@@ -235,7 +247,14 @@ class STSPIN220Driver:
         try:
             GPIO.output(self.pin_en_fault, GPIO.LOW)
             GPIO.output(self.pin_stby_reset, GPIO.LOW)
-            for pin in (self.pin_en_fault, self.pin_stby_reset, self.pin_step, self.pin_dir):
+            for pin in (
+                self.pin_en_fault,
+                self.pin_stby_reset,
+                self.pin_step,
+                self.pin_dir,
+                self.pin_mode1,
+                self.pin_mode2,
+            ):
                 GPIO.cleanup(pin)
             print(f"{self.DRIVER_NAME}: GPIO cleaned up")
         except Exception as exc:
