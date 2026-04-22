@@ -106,6 +106,9 @@ class SensorMonitorApp:
             # Initialize stepper motor driver
             # In simulation mode we keep the same API but avoid real GPIO access.
             self.stepper_driver = STSPIN220Driver(self.config, force_simulation=self.simulation_mode)
+            # Service-tab manual control expects the motor to stay enabled until
+            # the user explicitly presses TURN MOTOR OFF.
+            self.stepper_driver.disable_on_idle = False
             
             # Check CSV directory exists (database check)
             csv_dir = Path(self.config['logging']['csv_directory'])
