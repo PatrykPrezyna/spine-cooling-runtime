@@ -15,6 +15,7 @@ from simulation_sensor_reader import SimulationSensorReader
 from csv_logger import CSVLogger
 from enhanced_ui import EnhancedSensorMonitorWindow
 from state_machine import StateMachine, State
+from stepper_driver import STSPIN220Driver
 
 
 class SensorMonitorApp:
@@ -37,6 +38,8 @@ class SensorMonitorApp:
         self.csv_logger: Optional[CSVLogger] = None
         self.ui: Optional[EnhancedSensorMonitorWindow] = None
         self.state_machine: Optional[StateMachine] = None
+        self.stepper_driver: Optional[STSPIN220Driver] = None
+        self.stepper_speed_rpm: int = int(self.config.get('stepper_motor', {}).get('default_speed_rpm', 30))
         
         self.is_running = False
     
@@ -96,6 +99,10 @@ class SensorMonitorApp:
             # Initialize CSV logger
             self.csv_logger = CSVLogger(self.config)
             
+            # Initialize stepper motor driver
+            # In simulation mode we keep the same API but avoid real GPIO access.
+            self.stepper_driver = STSPIN220Driver(self.config, force_simulation=self.simulation_mode)
+            
             # Check CSV directory exists (database check)
             csv_dir = Path(self.config['logging']['csv_directory'])
             if not csv_dir.exists():
@@ -152,6 +159,16 @@ class SensorMonitorApp:
             # Update UI
             if self.ui:
                 self.ui.update_sensor_display(sensor_states)
+                if self.stepper_driver:
+                    status = self.stepper_driver.get_status()
+                    status['fault'] = self.stepper_driver.check_fault()
+                    self.ui.service_tab.update_outputs(
+                        stepper_pos=status.get('position_steps', 0),
+                        stepper_enabled=status.get('enabled', False),
+                        stepper_fault=status.get('fault', False),
+                        stepper_microstepping=status.get('microstepping', 1),
+                        stepper_speed_rpm=self.stepper_speed_rpm,
+                    )
             
             # Log to CSV (always active)
             if self.csv_logger:
@@ -179,6 +196,30 @@ class SensorMonitorApp:
         """Handle acknowledge error button click"""
         if self.state_machine:
             self.state_machine.acknowledge_error()
+    
+    def on_stepper_enable_changed(self, enabled: bool):
+        """Handle stepper enable/disable from service tab."""
+        if not self.stepper_driver:
+            return
+        if enabled:
+            self.stepper_driver.enable()
+        else:
+            self.stepper_driver.disable()
+        
+        if self.ui:
+            status = self.stepper_driver.get_status()
+            status['fault'] = self.stepper_driver.check_fault()
+            self.ui.service_tab.update_outputs(
+                stepper_enabled=status.get('enabled', False),
+                stepper_fault=status.get('fault', False),
+                stepper_speed_rpm=self.stepper_speed_rpm,
+            )
+    
+    def on_stepper_speed_changed(self, speed_rpm: int):
+        """Handle stepper speed RPM change from service tab."""
+        self.stepper_speed_rpm = int(speed_rpm)
+        if self.ui:
+            self.ui.service_tab.update_outputs(stepper_speed_rpm=self.stepper_speed_rpm)
     
     def on_simulation_sensor_changed(self, sensor_name: str, state: bool):
         """Handle manual sensor change in simulation mode"""
@@ -263,6 +304,8 @@ class SensorMonitorApp:
             self.ui.on_start_pumping_callback = self.on_start_pumping
             self.ui.on_stop_pumping_callback = self.on_stop_pumping
             self.ui.on_acknowledge_callback = self.on_acknowledge_error
+            self.ui.on_stepper_enable_callback = self.on_stepper_enable_changed
+            self.ui.on_stepper_speed_change_callback = self.on_stepper_speed_changed
             
             # Set the timer update callback
             self.ui.set_update_callback(self.update_display)
@@ -272,6 +315,18 @@ class SensorMonitorApp:
             
             # Show window
             self.ui.show()
+            
+            # Sync initial stepper display values
+            if self.stepper_driver:
+                status = self.stepper_driver.get_status()
+                status['fault'] = self.stepper_driver.check_fault()
+                self.ui.service_tab.update_outputs(
+                    stepper_pos=status.get('position_steps', 0),
+                    stepper_enabled=status.get('enabled', False),
+                    stepper_fault=status.get('fault', False),
+                    stepper_microstepping=status.get('microstepping', 1),
+                    stepper_speed_rpm=self.stepper_speed_rpm,
+                )
             
             mode_text = "SIMULATION MODE" if self.simulation_mode else "REAL SENSOR MODE"
             print(f"Application started in {mode_text}. Close window to exit.")
@@ -301,6 +356,10 @@ class SensorMonitorApp:
         # Cleanup sensor reader
         if self.sensor_reader:
             self.sensor_reader.cleanup()
+        
+        # Cleanup stepper driver
+        if self.stepper_driver:
+            self.stepper_driver.cleanup()
         
         print("Cleanup complete")
 

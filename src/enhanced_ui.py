@@ -13,7 +13,7 @@ from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget, QTabWidget,
-    QLabel, QGridLayout, QGroupBox, QFrame, QCheckBox
+    QLabel, QGridLayout, QGroupBox, QFrame, QCheckBox, QSlider
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QColor, QLinearGradient,
@@ -699,7 +699,7 @@ class CartridgeWidget(QWidget):
 class ServiceTab(QWidget):
     """Service tab showing all sensors and outputs"""
     
-    def __init__(self):
+    def __init__(self, stepper_config: Optional[dict] = None):
         super().__init__()
         
         # Mock temperature values
@@ -718,8 +718,12 @@ class ServiceTab(QWidget):
         self.stepper_position = 0
         self.stepper_enabled = False
         self.stepper_fault = False
-        self.stepper_microstepping = 16
+        self.stepper_microstepping = 1
         self.stepper_driver_name = "STSPIN220"
+        self.stepper_speed_rpm = int((stepper_config or {}).get("default_speed_rpm", 30))
+        
+        self.on_stepper_toggle_callback: Optional[Callable[[bool], None]] = None
+        self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
         
         self._create_widgets()
         self._setup_layout()
@@ -809,6 +813,24 @@ class ServiceTab(QWidget):
             f"Stepper ({self.stepper_driver_name}): DISABLED - Position 0 - 1/{self.stepper_microstepping} step"
         )
         self.stepper_label.setStyleSheet("font-size: 11px; padding: 5px; color: #6b7280;")
+        
+        # Stepper controls
+        self.stepper_toggle_button = QPushButton("TURN MOTOR ON")
+        self.stepper_toggle_button.setMinimumHeight(34)
+        self.stepper_toggle_button.clicked.connect(self._on_stepper_toggle_clicked)
+        self._apply_stepper_button_style(False)
+        
+        self.stepper_speed_label = QLabel(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
+        self.stepper_speed_label.setStyleSheet("font-size: 11px; padding: 2px 5px; color: #1f2937;")
+        
+        self.stepper_speed_slider = QSlider(Qt.Orientation.Horizontal)
+        self.stepper_speed_slider.setRange(5, 120)
+        self.stepper_speed_slider.setTickInterval(5)
+        self.stepper_speed_slider.setSingleStep(1)
+        self.stepper_speed_slider.setPageStep(5)
+        self.stepper_speed_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.stepper_speed_slider.setValue(max(5, min(120, self.stepper_speed_rpm)))
+        self.stepper_speed_slider.valueChanged.connect(self._on_stepper_speed_changed)
     
     def _setup_layout(self):
         """Setup service tab layout"""
@@ -836,6 +858,9 @@ class ServiceTab(QWidget):
         outputs_layout = QVBoxLayout()
         outputs_layout.addWidget(self.compressor_label)
         outputs_layout.addWidget(self.stepper_label)
+        outputs_layout.addWidget(self.stepper_toggle_button)
+        outputs_layout.addWidget(self.stepper_speed_label)
+        outputs_layout.addWidget(self.stepper_speed_slider)
         self.outputs_group.setLayout(outputs_layout)
         main_layout.addWidget(self.outputs_group)
         
@@ -882,7 +907,7 @@ class ServiceTab(QWidget):
     
     def update_outputs(self, compressor_on: bool = None, stepper_pos: int = None,
                        stepper_enabled: bool = None, stepper_fault: bool = None,
-                       stepper_microstepping: int = None):
+                       stepper_microstepping: int = None, stepper_speed_rpm: int = None):
         """Update output display"""
         if compressor_on is not None:
             self.compressor_on = compressor_on
@@ -894,6 +919,10 @@ class ServiceTab(QWidget):
             self.stepper_fault = stepper_fault
         if stepper_microstepping is not None:
             self.stepper_microstepping = stepper_microstepping
+        if stepper_speed_rpm is not None:
+            self.stepper_speed_rpm = int(stepper_speed_rpm)
+            if self.stepper_speed_slider.value() != self.stepper_speed_rpm:
+                self.stepper_speed_slider.setValue(self.stepper_speed_rpm)
         
         # Update compressor label
         comp_status = "ON" if self.compressor_on else "OFF"
@@ -921,6 +950,51 @@ class ServiceTab(QWidget):
         self.stepper_label.setStyleSheet(
             f"font-size: 11px; padding: 5px; color: {stepper_color}; font-weight: bold;"
         )
+        
+        self.stepper_speed_label.setText(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
+        self._apply_stepper_button_style(self.stepper_enabled)
+    
+    def _apply_stepper_button_style(self, motor_on: bool):
+        """Apply style/text for the stepper toggle button."""
+        if motor_on:
+            text = "TURN MOTOR OFF"
+            bg = "#f59e0b"
+            hover = "#d97706"
+        else:
+            text = "TURN MOTOR ON"
+            bg = "#0ea5e9"
+            hover = "#0284c7"
+        
+        self.stepper_toggle_button.setText(text)
+        self.stepper_toggle_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: white;
+                font-size: 11px;
+                font-weight: bold;
+                border-radius: 5px;
+                padding: 6px 10px;
+            }}
+            QPushButton:hover {{
+                background-color: {hover};
+            }}
+            QPushButton:disabled {{
+                background-color: #9ca3af;
+            }}
+        """)
+    
+    def _on_stepper_toggle_clicked(self):
+        """Toggle stepper motor power state."""
+        target_enabled = not self.stepper_enabled
+        if self.on_stepper_toggle_callback:
+            self.on_stepper_toggle_callback(target_enabled)
+    
+    def _on_stepper_speed_changed(self, value: int):
+        """Handle speed slider changes."""
+        self.stepper_speed_rpm = int(value)
+        self.stepper_speed_label.setText(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
+        if self.on_stepper_speed_change_callback:
+            self.on_stepper_speed_change_callback(self.stepper_speed_rpm)
 
 
 class SimulationTab(QWidget):
@@ -1113,6 +1187,8 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.on_start_pumping_callback: Optional[Callable] = None
         self.on_stop_pumping_callback: Optional[Callable] = None
         self.on_acknowledge_callback: Optional[Callable] = None
+        self.on_stepper_enable_callback: Optional[Callable[[bool], None]] = None
+        self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
         
         self._setup_window()
         self._create_widgets()
@@ -1162,7 +1238,9 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.cartridge_widget = CartridgeWidget()
         
         # Service tab
-        self.service_tab = ServiceTab()
+        self.service_tab = ServiceTab(self.config.get('stepper_motor', {}))
+        self.service_tab.on_stepper_toggle_callback = self._on_service_stepper_toggle
+        self.service_tab.on_stepper_speed_change_callback = self._on_service_stepper_speed_change
         
         # Simulation tab (always create it)
         sensor_names = [sensor['name'] for sensor in self.config['sensors']]
@@ -1299,6 +1377,16 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # Notify main app of mode change
         if self.on_mode_change_callback:
             self.on_mode_change_callback(self.simulation_mode)
+    
+    def _on_service_stepper_toggle(self, enabled: bool):
+        """Forward service-tab stepper enable toggle to app callback."""
+        if self.on_stepper_enable_callback:
+            self.on_stepper_enable_callback(enabled)
+    
+    def _on_service_stepper_speed_change(self, speed_rpm: int):
+        """Forward service-tab speed slider updates to app callback."""
+        if self.on_stepper_speed_change_callback:
+            self.on_stepper_speed_change_callback(speed_rpm)
     
     def _on_pumping_toggle_clicked(self):
         """Handle the unified pumping toggle click.
@@ -1437,11 +1525,8 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             self.service_tab.update_outputs(compressor_on=random.choice([True, False]))
         if random.random() < 0.05:  # 5% chance to move stepper
             new_pos = self.service_tab.stepper_position + random.randint(-10, 10)
-            # Mock the STSPIN220 as enabled while stepping, with no fault
             self.service_tab.update_outputs(
                 stepper_pos=max(0, min(1000, new_pos)),
-                stepper_enabled=True,
-                stepper_fault=False,
             )
     
     def set_status_message(self, message: str, is_error: bool = False):

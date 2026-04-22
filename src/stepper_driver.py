@@ -1,34 +1,13 @@
 """
-STSPIN220 Stepper Motor Driver Module
+STSPIN220 Stepper Motor Driver Module (full-step simplified).
 
-Controls a stepper motor through an STMicroelectronics STSPIN220 low-voltage
-stepper driver via Raspberry Pi GPIO pins.
-
-The STSPIN220 uses the following control signals:
-    - EN/FAULT    : Active-high enable input; also reports a fault when pulled low
-                    by the driver (open-drain output).
-    - STBY/RESET  : Active-low standby/reset line. Must be driven HIGH to leave
-                    standby and accept step pulses.
-    - STCK/MODE3  : Step clock input (rising-edge triggered). Doubles as MODE3
-                    during the power-up microstep-latch sequence.
-    - DIR/MODE4   : Direction input. Doubles as MODE4 during the power-up
-                    microstep-latch sequence.
-    - MODE1       : Microstep selector bit 1 (latched on STBY release).
-    - MODE2       : Microstep selector bit 2 (latched on STBY release).
-
-Microstepping is selected by driving MODE1..MODE4 to the desired pattern while
-STBY/RESET is held LOW, then releasing STBY to latch the configuration. The
-supported step resolutions are: full, 1/2, 1/4, 1/8, 1/16, 1/32, 1/64, 1/128
-and 1/256 step.
-
-If RPi.GPIO is unavailable (e.g. running on a workstation) the driver
-transparently falls back to a simulation mode that tracks position without
-touching hardware.
+This version intentionally runs the driver in full-step mode only.
+No runtime microstep selection or MODE pin handling is performed.
 """
 
 import time
 from threading import Lock
-from typing import Dict, Optional
+from typing import Optional
 
 try:
     import RPi.GPIO as GPIO
@@ -36,23 +15,6 @@ try:
 except (ImportError, RuntimeError):
     GPIO_AVAILABLE = False
     print("Warning: RPi.GPIO not available. STSPIN220 driver running in simulation mode.")
-
-
-# Microstep selection table for the STSPIN220.
-# Keys are the target step divisor, values are a 4-tuple of logic levels to
-# apply to (MODE1, MODE2, MODE3/STCK, MODE4/DIR) while STBY/RESET is held LOW.
-# Reference: STSPIN220 datasheet, Table 4 "Step mode selection".
-STSPIN220_MICROSTEP_TABLE: Dict[int, tuple] = {
-    1:   (0, 0, 0, 0),   # Full step
-    2:   (1, 0, 1, 0),   # 1/2 step
-    4:   (0, 1, 0, 1),   # 1/4 step
-    8:   (1, 1, 0, 1),   # 1/8 step
-    16:  (1, 1, 1, 0),   # 1/16 step
-    32:  (1, 1, 1, 1),   # 1/32 step
-    64:  (0, 1, 1, 1),   # 1/64 step
-    128: (1, 0, 1, 1),   # 1/128 step
-    256: (0, 0, 1, 1),   # 1/256 step
-}
 
 
 class STSPIN220Driver:
@@ -68,7 +30,7 @@ class STSPIN220Driver:
             config: Configuration dictionary. The relevant section is
                 ``stepper_motor`` with ``driver: "STSPIN220"`` and a ``pins``
                 sub-section containing ``en_fault``, ``stby_reset``, ``step``,
-                ``dir``, ``mode1`` and ``mode2``.
+                and ``dir``.
             force_simulation: If True, skip hardware initialisation and run
                 in simulation mode even when RPi.GPIO is available.
         """
@@ -79,23 +41,13 @@ class STSPIN220Driver:
         self.pin_stby_reset: int = pins_cfg.get('stby_reset', 4)
         self.pin_step: int = pins_cfg.get('step', 17)
         self.pin_dir: int = pins_cfg.get('dir', 27)
-        self.pin_mode1: int = pins_cfg.get('mode1', 5)
-        self.pin_mode2: int = pins_cfg.get('mode2', 6)
-
         self.steps_per_revolution: int = stepper_cfg.get('steps_per_revolution', 200)
-        self.microstepping: int = stepper_cfg.get('microstepping', 16)
+        self.microstepping: int = 1
         self.max_speed_rpm: float = stepper_cfg.get('max_speed_rpm', 60)
         self.max_position_steps: int = stepper_cfg.get('max_position_steps', 10000)
         self.home_position_steps: int = stepper_cfg.get('home_position_steps', 0)
         self.disable_on_idle: bool = stepper_cfg.get('disable_on_idle', True)
         self.enable_on_startup: bool = stepper_cfg.get('enable_on_startup', False)
-
-        if self.microstepping not in STSPIN220_MICROSTEP_TABLE:
-            valid = sorted(STSPIN220_MICROSTEP_TABLE.keys())
-            raise ValueError(
-                f"Unsupported microstepping '{self.microstepping}' for STSPIN220. "
-                f"Valid values: {valid}"
-            )
 
         self.simulation_mode: bool = force_simulation or not GPIO_AVAILABLE
         self.is_initialized: bool = False
@@ -114,13 +66,12 @@ class STSPIN220Driver:
             self.enable()
 
     def _initialize_gpio(self) -> None:
-        """Configure GPIO pins and latch the microstepping mode."""
+        """Configure GPIO pins in full-step mode."""
         try:
             GPIO.setmode(GPIO.BCM)
             GPIO.setwarnings(False)
 
-            for pin in (self.pin_stby_reset, self.pin_step, self.pin_dir,
-                        self.pin_mode1, self.pin_mode2):
+            for pin in (self.pin_stby_reset, self.pin_step, self.pin_dir):
                 GPIO.setup(pin, GPIO.OUT, initial=GPIO.LOW)
 
             # EN/FAULT is open-drain on the STSPIN220 side. Configure it as an
@@ -128,13 +79,7 @@ class STSPIN220Driver:
             # enable/disable) and read back the FAULT condition.
             GPIO.setup(self.pin_en_fault, GPIO.OUT, initial=GPIO.LOW)
 
-            # Hold the driver in standby while we latch the microstep mode.
-            GPIO.output(self.pin_stby_reset, GPIO.LOW)
-            time.sleep(0.001)
-
-            self._apply_microstep_mode(self.microstepping)
-
-            # Release standby to latch the mode bits.
+            # Leave standby and run in full-step mode.
             GPIO.output(self.pin_stby_reset, GPIO.HIGH)
             time.sleep(0.001)
 
@@ -142,42 +87,13 @@ class STSPIN220Driver:
             print(
                 f"{self.DRIVER_NAME} initialized on GPIO "
                 f"(EN/FAULT={self.pin_en_fault}, STBY={self.pin_stby_reset}, "
-                f"STCK={self.pin_step}, DIR={self.pin_dir}, "
-                f"MODE1={self.pin_mode1}, MODE2={self.pin_mode2}) "
-                f"@ 1/{self.microstepping} microstep"
+                f"STCK={self.pin_step}, DIR={self.pin_dir}) "
+                f"@ full-step mode"
             )
         except Exception as exc:
             print(f"Error initializing {self.DRIVER_NAME}: {exc}")
             self.is_initialized = False
             raise
-
-    def _apply_microstep_mode(self, microstepping: int) -> None:
-        """Drive MODE1..MODE4 to the latch pattern for the requested resolution."""
-        m1, m2, m3, m4 = STSPIN220_MICROSTEP_TABLE[microstepping]
-        GPIO.output(self.pin_mode1, GPIO.HIGH if m1 else GPIO.LOW)
-        GPIO.output(self.pin_mode2, GPIO.HIGH if m2 else GPIO.LOW)
-        # STCK/DIR also serve as MODE3/MODE4 during the standby-release latch.
-        GPIO.output(self.pin_step, GPIO.HIGH if m3 else GPIO.LOW)
-        GPIO.output(self.pin_dir, GPIO.HIGH if m4 else GPIO.LOW)
-
-    def set_microstepping(self, microstepping: int) -> None:
-        """
-        Change the microstep resolution. Requires cycling STBY/RESET so the
-        STSPIN220 re-latches the MODE pins.
-        """
-        if microstepping not in STSPIN220_MICROSTEP_TABLE:
-            raise ValueError(f"Unsupported microstepping '{microstepping}' for STSPIN220")
-
-        with self._lock:
-            self.microstepping = microstepping
-            if self.simulation_mode or not self.is_initialized:
-                return
-
-            GPIO.output(self.pin_stby_reset, GPIO.LOW)
-            time.sleep(0.001)
-            self._apply_microstep_mode(microstepping)
-            GPIO.output(self.pin_stby_reset, GPIO.HIGH)
-            time.sleep(0.001)
 
     def enable(self) -> None:
         """Assert EN/FAULT HIGH to energise the motor coils."""
@@ -232,13 +148,13 @@ class STSPIN220Driver:
 
     def step(self, num_steps: int, speed_rpm: Optional[float] = None) -> int:
         """
-        Move the motor by ``num_steps`` microsteps.
+        Move the motor by ``num_steps`` full steps.
 
         Positive values step "forward" (DIR=HIGH), negative values step "reverse".
         Honors ``max_position_steps`` as a soft limit.
 
         Returns:
-            int: Number of microsteps actually executed.
+            int: Number of steps actually executed.
         """
         if num_steps == 0:
             return 0
@@ -286,7 +202,7 @@ class STSPIN220Driver:
             return direction * remaining
 
     def move_to(self, target_steps: int, speed_rpm: Optional[float] = None) -> int:
-        """Move to an absolute microstep position."""
+        """Move to an absolute step position."""
         delta = target_steps - self.position_steps
         return self.step(delta, speed_rpm=speed_rpm)
 
@@ -308,7 +224,7 @@ class STSPIN220Driver:
             'enabled': self.enabled,
             'fault': self.fault,
             'position_steps': self.position_steps,
-            'microstepping': self.microstepping,
+            'microstepping': 1,
         }
 
     def cleanup(self) -> None:
@@ -319,8 +235,7 @@ class STSPIN220Driver:
         try:
             GPIO.output(self.pin_en_fault, GPIO.LOW)
             GPIO.output(self.pin_stby_reset, GPIO.LOW)
-            for pin in (self.pin_en_fault, self.pin_stby_reset, self.pin_step,
-                        self.pin_dir, self.pin_mode1, self.pin_mode2):
+            for pin in (self.pin_en_fault, self.pin_stby_reset, self.pin_step, self.pin_dir):
                 GPIO.cleanup(pin)
             print(f"{self.DRIVER_NAME}: GPIO cleaned up")
         except Exception as exc:
@@ -347,10 +262,10 @@ if __name__ == "__main__":
 
     driver.enable()
     moved = driver.step(400, speed_rpm=30)
-    print(f"Moved {moved} microsteps -> position {driver.position_steps}")
+    print(f"Moved {moved} steps -> position {driver.position_steps}")
 
     moved = driver.step(-200, speed_rpm=30)
-    print(f"Moved {moved} microsteps -> position {driver.position_steps}")
+    print(f"Moved {moved} steps -> position {driver.position_steps}")
 
     driver.home()
     print(f"After home -> position {driver.position_steps}")
