@@ -11,13 +11,13 @@ This guide provides detailed instructions for setting up the hardware components
 - 7-inch touchscreen display (800x480 resolution)
 - MicroSD card (32GB+ Class 10)
 - 5V 3A USB-C power supply for Raspberry Pi
-- External 12V/24V power supply for compressor and motor
+- External power supply for the compressor (per compressor specs) and a low-voltage 1.8 V - 10 V supply for the STSPIN220-driven stepper motor
 
 ### Sensors and Actuators
 - MAX31855 thermocouple amplifier modules (quantity based on config)
 - K-type thermocouples (quantity based on config)
 - Compressor unit with UART interface
-- Stepper motor with driver (e.g., A4988, DRV8825)
+- Low-voltage stepper motor driven by an STMicroelectronics **STSPIN220** driver (1.8 V - 10 V, 1.3 A RMS, up to 1/256 microstepping)
 - Digital level sensors (2x)
 
 ### Connectivity
@@ -84,19 +84,44 @@ This guide provides detailed instructions for setting up the hardware components
 
 ### GPIO Interface (Stepper Motor)
 
-**Stepper Motor Driver (e.g., A4988)**
-- STEP → GPIO17 (Pin 11)
-- DIR → GPIO27 (Pin 13)
-- ENABLE → GPIO22 (Pin 15)
-- GND → GND (Pin 9)
-- VDD → 3.3V (Pin 1) - for logic
-- VMOT → External 12V/24V supply
-- Motor coils → Connect to driver outputs
+**Stepper Motor Driver (STSPIN220)**
 
-**Motor Power Supply**
-- Use separate power supply for motor (12V or 24V depending on motor)
-- Common ground with Raspberry Pi
-- Add decoupling capacitor (100µF) near driver
+The STSPIN220 is a 1.8 V - 10 V low-voltage stepper driver from STMicroelectronics
+with configurable microstepping up to 1/256. It requires six GPIO lines from the
+Raspberry Pi:
+
+| STSPIN220 Pin | Function                                   | Raspberry Pi  |
+|---------------|--------------------------------------------|---------------|
+| EN/FAULT      | Active-high enable, open-drain fault output| GPIO22 (Pin 15) |
+| STBY/RESET    | Active-low standby (latches MODE on release)| GPIO4 (Pin 7)  |
+| STCK / MODE3  | Step clock (rising edge) / MODE3 latch     | GPIO17 (Pin 11) |
+| DIR / MODE4   | Direction / MODE4 latch                    | GPIO27 (Pin 13) |
+| MODE1         | Microstep select bit 1                     | GPIO5 (Pin 29)  |
+| MODE2         | Microstep select bit 2                     | GPIO6 (Pin 31)  |
+| GND           | Logic ground (shared with Pi)              | GND (Pin 9)     |
+| VS            | Motor supply (1.8 V - 10 V, up to 1.3 A RMS)| External PSU   |
+| REF           | Current-limit reference (tie to resistor divider or PWM) | — |
+| OUTA/OUTB     | Motor coil A/B outputs                     | Motor windings |
+
+**Microstep selection**
+- The STSPIN220 latches MODE1..MODE4 on the rising edge of STBY/RESET.
+- The driver module (`src/stepper_driver.py`) pulls STBY/RESET LOW, drives the
+  MODE pins to the desired pattern, and then releases STBY/RESET HIGH.
+- Supported step resolutions: full, 1/2, 1/4, 1/8, 1/16, 1/32, 1/64, 1/128, 1/256.
+
+**Fault handling**
+- EN/FAULT is open-drain on the driver side. When the STSPIN220 reports a
+  thermal shutdown or over-current event it pulls the line LOW.
+- The Pi reads the line with its internal pull-up enabled; the UI shows a red
+  `FAULT` indicator on the Service tab when a fault is active.
+
+**Motor power supply**
+- Use a separate low-voltage supply for the motor (1.8 V - 10 V sized to the
+  motor, typically a 5 V or 9 V rail for small NEMA 17 class motors).
+- Common ground with the Raspberry Pi.
+- Place a 100 µF bulk capacitor and a 100 nF ceramic close to VS.
+- Set the REF voltage (or REF PWM duty cycle) so the peak coil current stays
+  within both the motor rating and the 1.3 A RMS driver limit.
 
 ### GPIO Interface (Level Sensors)
 
@@ -224,11 +249,13 @@ sudo apt install -y python3-rpi.gpio
 3. Ensure common ground connection
 4. Add level shifter if voltage mismatch
 
-#### Step 4: Connect Stepper Motor
-1. Wire stepper driver to GPIO pins
-2. Connect motor coils to driver outputs
-3. Connect external power supply to driver
-4. Ensure common ground with Raspberry Pi
+#### Step 4: Connect Stepper Motor (STSPIN220)
+1. Wire the STSPIN220 control lines (EN/FAULT, STBY/RESET, STCK, DIR, MODE1, MODE2)
+   to the Raspberry Pi GPIO pins listed in the table above
+2. Connect motor coil A to OUTA1/OUTA2 and coil B to OUTB1/OUTB2
+3. Connect the motor supply (VS) to a 1.8 V - 10 V power source matched to the motor
+4. Set REF (either fixed divider or PWM from a Pi GPIO) to the required coil current
+5. Ensure common ground between driver, motor supply and Raspberry Pi
 
 #### Step 5: Connect Level Sensors
 1. Wire sensor signals to GPIO pins
@@ -319,12 +346,16 @@ python3 -c "import RPi.GPIO as GPIO; GPIO.setmode(GPIO.BCM); GPIO.setup(17, GPIO
 - Ensure proper grounding
 - Test with known good thermocouple
 
-### Stepper Motor Not Moving
-- Verify driver power supply
-- Check ENABLE pin (should be LOW to enable)
-- Verify STEP and DIR connections
-- Check motor coil connections
-- Test with simple step sequence
+### Stepper Motor Not Moving (STSPIN220)
+- Verify VS supply is within 1.8 V - 10 V and GND is shared with the Pi
+- Confirm EN/FAULT is driven HIGH to enable the outputs (not LOW as on A4988/DRV8825)
+- Confirm STBY/RESET is HIGH - the driver is held in standby when LOW
+- Check that the microstep latch sequence ran (MODE1..MODE4 driven while
+  STBY/RESET is LOW, then STBY/RESET released HIGH)
+- Verify STCK (step) and DIR connections
+- Measure the REF voltage - if it is 0 V, no coil current will flow
+- Read EN/FAULT with the Pi's pull-up enabled; a LOW level indicates the
+  STSPIN220 is reporting a thermal or over-current fault
 
 ## Electrical Specifications
 
@@ -332,7 +363,7 @@ python3 -c "import RPi.GPIO as GPIO; GPIO.setmode(GPIO.BCM); GPIO.setup(17, GPIO
 - Raspberry Pi 4: 5V @ 3A (USB-C)
 - MAX31855: 3.3V @ 1.5mA each
 - Level Sensors: 3.3V or 5V @ 10mA each
-- Stepper Motor: 12-24V @ 1-2A (depends on motor)
+- Stepper Motor (STSPIN220): 1.8 V - 10 V @ up to 1.3 A RMS (set by REF pin)
 - Compressor: Per manufacturer specs
 
 ### Signal Levels

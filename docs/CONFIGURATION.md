@@ -41,11 +41,14 @@ hardware:
   
   # GPIO Pin Assignments
   gpio:
-    # Stepper Motor Control
+    # STSPIN220 Stepper Motor Driver Control
     stepper_pins:
-      step: 17                      # GPIO pin for step pulses
-      direction: 27                 # GPIO pin for direction
-      enable: 22                    # GPIO pin for enable/disable
+      en_fault: 22                  # EN/FAULT   (active-high enable, open-drain fault)
+      stby_reset: 4                 # STBY/RESET (active-low standby; latches MODE on release)
+      step: 17                      # STCK/MODE3 (step clock, rising-edge)
+      direction: 27                 # DIR/MODE4  (direction)
+      mode1: 5                      # MODE1      (microstep select bit 1)
+      mode2: 6                      # MODE2      (microstep select bit 2)
     
     # Level Sensors (digital inputs)
     level_sensors:
@@ -162,23 +165,35 @@ compressor:
 # ============================================================================
 
 stepper_motor:
+  # Driver selection
+  driver: "STSPIN220"               # STMicroelectronics low-voltage stepper driver
+
   # Motor Specifications
   steps_per_revolution: 200         # Full steps per revolution (1.8° motor)
-  microstepping: 16                 # Microstepping multiplier
-  
+  microstepping: 16                 # STSPIN220 supports 1, 2, 4, 8, 16, 32, 64, 128, 256
+
   # Speed and Acceleration
   max_speed_rpm: 60                 # Maximum rotation speed
   acceleration_steps_per_sec2: 100  # Acceleration rate
   deceleration_steps_per_sec2: 100  # Deceleration rate
-  
+
   # Position Control
   home_position_steps: 0            # Home position reference
   max_position_steps: 10000         # Maximum allowed position
-  
+
   # Safety
-  enable_on_startup: false          # Auto-enable motor on startup
-  disable_on_idle: true             # Disable motor when not moving
+  enable_on_startup: false          # Leave EN/FAULT LOW at boot (outputs tri-state)
+  disable_on_idle: true             # Release EN/FAULT between moves
   idle_timeout_seconds: 30          # Time before auto-disable
+
+  # STSPIN220 control line pin assignment (BCM numbering)
+  pins:
+    en_fault: 22                    # EN/FAULT   (active-high enable, open-drain fault)
+    stby_reset: 4                   # STBY/RESET (active-low standby; latches MODE on release)
+    step: 17                        # STCK/MODE3 (step clock, rising-edge)
+    dir: 27                         # DIR/MODE4  (direction)
+    mode1: 5                        # MODE1      (microstep select bit 1)
+    mode2: 6                        # MODE2      (microstep select bit 2)
 
 # ============================================================================
 # DATA LOGGING CONFIGURATION
@@ -451,7 +466,7 @@ The system validates all configuration parameters on startup:
 | Parameter | Location | Purpose |
 |-----------|----------|---------|
 | `chip_select_pins` | `sensors.thermocouples.chip_select_pins` | SPI CS pins for each sensor |
-| `stepper_pins` | `hardware.gpio.stepper_pins` | Motor control pins |
+| `stepper_pins` | `hardware.gpio.stepper_pins` | STSPIN220 control pins (EN/FAULT, STBY/RESET, STCK, DIR, MODE1, MODE2) |
 | `level_sensors` | `hardware.gpio.level_sensors` | Level sensor pins |
 
 ### Safety-Critical

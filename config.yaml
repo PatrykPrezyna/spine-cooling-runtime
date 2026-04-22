@@ -31,4 +31,30 @@ ui:
   window_height: 450
   update_interval_ms: 100   # Update UI every 100ms
 
+# Stepper motor driver configuration (STMicroelectronics STSPIN220)
+stepper_motor:
+  driver: "STSPIN220"         # Low-voltage stepper driver (1.8 V - 10 V, 1.3 A RMS)
+
+  # Motor specification
+  steps_per_revolution: 200   # Full steps per revolution (1.8° motor)
+  microstepping: 16           # Valid: 1, 2, 4, 8, 16, 32, 64, 128, 256
+
+  # Motion limits
+  max_speed_rpm: 60
+  max_position_steps: 10000
+  home_position_steps: 0
+
+  # Safety / power
+  enable_on_startup: false    # Leave motor de-energised at boot
+  disable_on_idle: true       # Release EN/FAULT between moves
+
+  # BCM GPIO pin assignment for the STSPIN220 control lines
+  pins:
+    en_fault: 22              # EN/FAULT   (active-high enable, open-drain fault out)
+    stby_reset: 4             # STBY/RESET (active-low standby, latches MODE on release)
+    step: 17                  # STCK/MODE3 (step clock, rising edge)
+    dir: 27                   # DIR/MODE4  (direction)
+    mode1: 5                  # MODE1      (microstep select bit 1)
+    mode2: 6                  # MODE2      (microstep select bit 2)
+
 # Made with Bob

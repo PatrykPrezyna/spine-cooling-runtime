@@ -17,7 +17,7 @@ A comprehensive Python-based medical device prototype for spine cooling applicat
 #### Peripheral Devices
 - **Thermocouples**: Configurable number (default 4) via MAX31855 SPI interface
 - **Compressor**: UART-controlled with adjustable baud rate and protocol
-- **Stepper Motor**: GPIO-controlled with acceleration/deceleration profiles
+- **Stepper Motor**: Driven by an STMicroelectronics STSPIN220 low-voltage stepper driver (GPIO-controlled, up to 1/256 microstepping)
 - **Level Sensors**: Digital GPIO inputs with debouncing (2 sensors)
 
 #### Communication Interfaces

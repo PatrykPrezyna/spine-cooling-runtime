@@ -716,6 +716,10 @@ class ServiceTab(QWidget):
         # Output states
         self.compressor_on = False
         self.stepper_position = 0
+        self.stepper_enabled = False
+        self.stepper_fault = False
+        self.stepper_microstepping = 16
+        self.stepper_driver_name = "STSPIN220"
         
         self._create_widgets()
         self._setup_layout()
@@ -801,7 +805,9 @@ class ServiceTab(QWidget):
         self.compressor_label = QLabel("Compressor: OFF")
         self.compressor_label.setStyleSheet("font-size: 11px; padding: 5px; color: #6b7280;")
         
-        self.stepper_label = QLabel("Stepper Motor: Position 0")
+        self.stepper_label = QLabel(
+            f"Stepper ({self.stepper_driver_name}): DISABLED - Position 0 - 1/{self.stepper_microstepping} step"
+        )
         self.stepper_label.setStyleSheet("font-size: 11px; padding: 5px; color: #6b7280;")
     
     def _setup_layout(self):
@@ -874,12 +880,20 @@ class ServiceTab(QWidget):
                 f"font-size: 11px; padding: 5px; color: {color}; font-weight: bold;"
             )
     
-    def update_outputs(self, compressor_on: bool = None, stepper_pos: int = None):
+    def update_outputs(self, compressor_on: bool = None, stepper_pos: int = None,
+                       stepper_enabled: bool = None, stepper_fault: bool = None,
+                       stepper_microstepping: int = None):
         """Update output display"""
         if compressor_on is not None:
             self.compressor_on = compressor_on
         if stepper_pos is not None:
             self.stepper_position = stepper_pos
+        if stepper_enabled is not None:
+            self.stepper_enabled = stepper_enabled
+        if stepper_fault is not None:
+            self.stepper_fault = stepper_fault
+        if stepper_microstepping is not None:
+            self.stepper_microstepping = stepper_microstepping
         
         # Update compressor label
         comp_status = "ON" if self.compressor_on else "OFF"
@@ -889,10 +903,23 @@ class ServiceTab(QWidget):
             f"font-size: 11px; padding: 5px; color: {comp_color}; font-weight: bold;"
         )
         
-        # Update stepper label
-        self.stepper_label.setText(f"Stepper Motor: Position {self.stepper_position}")
+        # Update stepper label with STSPIN220 driver state
+        if self.stepper_fault:
+            state_text = "FAULT"
+            stepper_color = "#dc2626"  # Red - fault
+        elif self.stepper_enabled:
+            state_text = "ENABLED"
+            stepper_color = "#16a34a"  # Green - energised
+        else:
+            state_text = "DISABLED"
+            stepper_color = "#6b7280"  # Grey - standby
+        
+        self.stepper_label.setText(
+            f"Stepper ({self.stepper_driver_name}): {state_text} - "
+            f"Position {self.stepper_position} - 1/{self.stepper_microstepping} step"
+        )
         self.stepper_label.setStyleSheet(
-            "font-size: 11px; padding: 5px; color: #3b82f6; font-weight: bold;"
+            f"font-size: 11px; padding: 5px; color: {stepper_color}; font-weight: bold;"
         )
 
 
@@ -1164,47 +1191,13 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         """)
         self.state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # Start Pumping button (visible only in COOLING state)
-        self.start_pumping_button = QPushButton("START PUMPING")
-        self.start_pumping_button.setMinimumHeight(40)
-        self.start_pumping_button.setStyleSheet("""
-            QPushButton {
-                background-color: #0ea5e9;
-                color: white;
-                font-size: 12px;
-                font-weight: bold;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #0284c7;
-            }
-            QPushButton:disabled {
-                background-color: #9ca3af;
-            }
-        """)
-        self.start_pumping_button.clicked.connect(self._on_start_pumping_clicked)
-        self.start_pumping_button.setEnabled(False)
-        
-        # Stop Pumping button (initially disabled)
-        self.stop_pumping_button = QPushButton("STOP PUMPING")
-        self.stop_pumping_button.setMinimumHeight(40)
-        self.stop_pumping_button.setStyleSheet("""
-            QPushButton {
-                background-color: #f59e0b;
-                color: white;
-                font-size: 12px;
-                font-weight: bold;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #d97706;
-            }
-            QPushButton:disabled {
-                background-color: #9ca3af;
-            }
-        """)
-        self.stop_pumping_button.clicked.connect(self._on_stop_pumping_clicked)
-        self.stop_pumping_button.setEnabled(False)
+        # Pumping toggle button - acts as "START PUMPING" in Cooling state
+        # and "STOP PUMPING" in Pumping state. Disabled in other states.
+        self.pumping_toggle_button = QPushButton("START PUMPING")
+        self.pumping_toggle_button.setMinimumHeight(40)
+        self.pumping_toggle_button.clicked.connect(self._on_pumping_toggle_clicked)
+        self.pumping_toggle_button.setEnabled(False)
+        self._apply_pumping_button_style(active=False)
         
         # Acknowledge Error button (initially disabled)
         self.acknowledge_button = QPushButton("ACKNOWLEDGE ERROR")
@@ -1265,8 +1258,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # State-specific buttons layout
         state_button_layout = QHBoxLayout()
         state_button_layout.setContentsMargins(10, 0, 10, 0)
-        state_button_layout.addWidget(self.start_pumping_button)
-        state_button_layout.addWidget(self.stop_pumping_button)
+        state_button_layout.addWidget(self.pumping_toggle_button)
         state_button_layout.addWidget(self.acknowledge_button)
         main_layout.addLayout(state_button_layout)
         
@@ -1308,15 +1300,49 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         if self.on_mode_change_callback:
             self.on_mode_change_callback(self.simulation_mode)
     
-    def _on_start_pumping_clicked(self):
-        """Handle start pumping button click"""
-        if self.on_start_pumping_callback:
-            self.on_start_pumping_callback()
+    def _on_pumping_toggle_clicked(self):
+        """Handle the unified pumping toggle click.
+        
+        Routes to the start or stop callback based on the current state:
+        - Cooling state  -> start pumping
+        - Pumping state  -> stop pumping
+        """
+        current_state = self.state_label.text().replace("State: ", "")
+        if current_state == "Pumping":
+            if self.on_stop_pumping_callback:
+                self.on_stop_pumping_callback()
+        elif current_state == "Cooling":
+            if self.on_start_pumping_callback:
+                self.on_start_pumping_callback()
     
-    def _on_stop_pumping_clicked(self):
-        """Handle stop pumping button click"""
-        if self.on_stop_pumping_callback:
-            self.on_stop_pumping_callback()
+    def _apply_pumping_button_style(self, active: bool):
+        """Style the pumping toggle button.
+        
+        active=False -> "START PUMPING" (blue)
+        active=True  -> "STOP PUMPING"  (orange)
+        """
+        if active:
+            bg = "#f59e0b"
+            hover = "#d97706"
+        else:
+            bg = "#0ea5e9"
+            hover = "#0284c7"
+        
+        self.pumping_toggle_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                border-radius: 5px;
+            }}
+            QPushButton:hover {{
+                background-color: {hover};
+            }}
+            QPushButton:disabled {{
+                background-color: #9ca3af;
+            }}
+        """)
     
     def _on_acknowledge_clicked(self):
         """Handle acknowledge error button click"""
@@ -1370,9 +1396,16 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             }}
         """)
         
-        # Enable/disable state-specific buttons (always visible, grayed out when not usable)
-        self.start_pumping_button.setEnabled(state_name == "Cooling")
-        self.stop_pumping_button.setEnabled(state_name == "Pumping")
+        # Update unified pumping toggle button (label + style + enabled state)
+        if state_name == "Pumping":
+            self.pumping_toggle_button.setText("STOP PUMPING")
+            self._apply_pumping_button_style(active=True)
+            self.pumping_toggle_button.setEnabled(True)
+        else:
+            self.pumping_toggle_button.setText("START PUMPING")
+            self._apply_pumping_button_style(active=False)
+            self.pumping_toggle_button.setEnabled(state_name == "Cooling")
+        
         self.acknowledge_button.setEnabled(state_name == "Error")
         
         # Show/hide error message
@@ -1398,13 +1431,18 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             for sensor_name, state in sensor_states.items():
                 self.simulation_tab.set_sensor_state(sensor_name, state)
         
-        # Mock output updates (simulate compressor and stepper)
+        # Mock output updates (simulate compressor and STSPIN220 stepper driver)
         import random
         if random.random() < 0.1:  # 10% chance to toggle compressor
             self.service_tab.update_outputs(compressor_on=random.choice([True, False]))
         if random.random() < 0.05:  # 5% chance to move stepper
             new_pos = self.service_tab.stepper_position + random.randint(-10, 10)
-            self.service_tab.update_outputs(stepper_pos=max(0, min(1000, new_pos)))
+            # Mock the STSPIN220 as enabled while stepping, with no fault
+            self.service_tab.update_outputs(
+                stepper_pos=max(0, min(1000, new_pos)),
+                stepper_enabled=True,
+                stepper_fault=False,
+            )
     
     def set_status_message(self, message: str, is_error: bool = False):
         """Set status message (for compatibility)"""

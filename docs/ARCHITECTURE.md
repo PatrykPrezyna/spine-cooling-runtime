@@ -137,10 +137,13 @@ hardware:
     max_speed_hz: 5000000
   
   gpio:
-    stepper_pins:
-      step: 17
-      direction: 27
-      enable: 22
+    stepper_pins:           # STSPIN220 control lines
+      en_fault: 22
+      stby_reset: 4
+      step: 17              # STCK/MODE3
+      direction: 27         # DIR/MODE4
+      mode1: 5
+      mode2: 6
     level_sensors:
       - pin: 23
         name: "Upper Level"
@@ -179,7 +182,9 @@ compressor:
   response_timeout_seconds: 2.0
 
 stepper_motor:
+  driver: "STSPIN220"
   steps_per_revolution: 200
+  microstepping: 16           # STSPIN220: 1, 2, 4, 8, 16, 32, 64, 128, 256
   max_speed_rpm: 60
   acceleration_steps_per_sec2: 100
 
@@ -242,19 +247,21 @@ logging:
 - Response parsing
 - Timeout handling
 
-### 5. Stepper Motor Manager
+### 5. Stepper Motor Manager (STSPIN220)
 
 **Responsibilities**:
-- Control stepper motor via GPIO
+- Drive the motor through an STMicroelectronics STSPIN220 low-voltage stepper driver
+- Latch the microstep mode on STBY/RESET release (MODE1..MODE4)
 - Implement acceleration/deceleration profiles
 - Position tracking
-- Emergency stop capability
+- Monitor the open-drain EN/FAULT line and surface faults to the state machine
+- Emergency stop capability (pull EN/FAULT LOW to tri-state the outputs)
 
 **Control Features**:
-- Step/direction interface
-- Enable/disable control
+- STCK (step) / DIR interface with configurable microstepping up to 1/256
+- Active-high enable via EN/FAULT plus active-low STBY/RESET
 - Speed and acceleration limits
-- Position feedback
+- Position feedback (software step counter)
 
 ### 6. Level Sensor Manager
 
