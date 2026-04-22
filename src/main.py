@@ -8,6 +8,7 @@ import yaml
 from pathlib import Path
 from typing import Optional
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
 
 from multi_sensor_reader import MultiSensorReader
@@ -40,6 +41,9 @@ class SensorMonitorApp:
         self.state_machine: Optional[StateMachine] = None
         self.stepper_driver: Optional[STSPIN220Driver] = None
         self.stepper_speed_rpm: int = int(self.config.get('stepper_motor', {}).get('default_speed_rpm', 30))
+        self.jog_direction: int = 0
+        self.jog_step_chunk: int = 4
+        self.jog_timer: Optional[QTimer] = None
         
         self.is_running = False
     
@@ -204,6 +208,7 @@ class SensorMonitorApp:
         if enabled:
             self.stepper_driver.enable()
         else:
+            self.on_stepper_jog_stop()
             self.stepper_driver.disable()
         
         if self.ui:
@@ -218,8 +223,68 @@ class SensorMonitorApp:
     def on_stepper_speed_changed(self, speed_rpm: int):
         """Handle stepper speed RPM change from service tab."""
         self.stepper_speed_rpm = int(speed_rpm)
+        self._update_jog_timer_interval()
         if self.ui:
             self.ui.service_tab.update_outputs(stepper_speed_rpm=self.stepper_speed_rpm)
+    
+    def on_stepper_jog_start(self, direction: int):
+        """Start jog movement while jog button is held."""
+        if not self.stepper_driver:
+            return
+        if not self.stepper_driver.enabled:
+            return
+        self.jog_direction = 1 if direction >= 0 else -1
+        if self.jog_timer:
+            self._update_jog_timer_interval()
+            if not self.jog_timer.isActive():
+                self.jog_timer.start()
+    
+    def on_stepper_jog_stop(self):
+        """Stop jog movement."""
+        self.jog_direction = 0
+        if self.jog_timer and self.jog_timer.isActive():
+            self.jog_timer.stop()
+    
+    def _compute_jog_interval_ms(self) -> int:
+        """
+        Compute jog timer interval from current RPM and step chunk.
+        Keeps update cadence in a practical UI-safe range.
+        """
+        steps_per_rev = int(self.config.get('stepper_motor', {}).get('steps_per_revolution', 200))
+        steps_per_second = max(1.0, (float(self.stepper_speed_rpm) / 60.0) * float(steps_per_rev))
+        chunk = max(1, self.jog_step_chunk)
+        interval_ms = int((1000.0 * chunk) / steps_per_second)
+        return max(20, min(250, interval_ms))
+    
+    def _update_jog_timer_interval(self):
+        """Apply current jog interval to timer."""
+        if not self.jog_timer:
+            return
+        self.jog_timer.setInterval(self._compute_jog_interval_ms())
+    
+    def _on_jog_tick(self):
+        """Execute one jog movement chunk."""
+        if not self.stepper_driver:
+            return
+        if self.jog_direction == 0 or not self.stepper_driver.enabled:
+            return
+        moved = self.stepper_driver.step(
+            self.jog_direction * self.jog_step_chunk,
+            speed_rpm=self.stepper_speed_rpm,
+        )
+        # Hit soft limit: stop jogging.
+        if moved == 0:
+            self.on_stepper_jog_stop()
+        if self.ui:
+            status = self.stepper_driver.get_status()
+            status['fault'] = self.stepper_driver.check_fault()
+            self.ui.service_tab.update_outputs(
+                stepper_pos=status.get('position_steps', 0),
+                stepper_enabled=status.get('enabled', False),
+                stepper_fault=status.get('fault', False),
+                stepper_microstepping=status.get('microstepping', 1),
+                stepper_speed_rpm=self.stepper_speed_rpm,
+            )
     
     def on_simulation_sensor_changed(self, sensor_name: str, state: bool):
         """Handle manual sensor change in simulation mode"""
@@ -291,6 +356,10 @@ class SensorMonitorApp:
             # Create Qt application
             app = QApplication(sys.argv)
             
+            self.jog_timer = QTimer()
+            self.jog_timer.timeout.connect(self._on_jog_tick)
+            self._update_jog_timer_interval()
+            
             # Create main window (pass simulation mode flag)
             self.ui = EnhancedSensorMonitorWindow(self.config, simulation_mode=self.simulation_mode)
             
@@ -306,6 +375,8 @@ class SensorMonitorApp:
             self.ui.on_acknowledge_callback = self.on_acknowledge_error
             self.ui.on_stepper_enable_callback = self.on_stepper_enable_changed
             self.ui.on_stepper_speed_change_callback = self.on_stepper_speed_changed
+            self.ui.on_stepper_jog_start_callback = self.on_stepper_jog_start
+            self.ui.on_stepper_jog_stop_callback = self.on_stepper_jog_stop
             
             # Set the timer update callback
             self.ui.set_update_callback(self.update_display)
@@ -358,6 +429,10 @@ class SensorMonitorApp:
             self.sensor_reader.cleanup()
         
         # Cleanup stepper driver
+        self.on_stepper_jog_stop()
+        if self.jog_timer:
+            self.jog_timer.stop()
+            self.jog_timer = None
         if self.stepper_driver:
             self.stepper_driver.cleanup()
         

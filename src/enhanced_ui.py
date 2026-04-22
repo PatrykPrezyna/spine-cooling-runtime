@@ -724,6 +724,8 @@ class ServiceTab(QWidget):
         
         self.on_stepper_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
+        self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
+        self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         
         self._create_widgets()
         self._setup_layout()
@@ -831,6 +833,49 @@ class ServiceTab(QWidget):
         self.stepper_speed_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.stepper_speed_slider.setValue(max(5, min(120, self.stepper_speed_rpm)))
         self.stepper_speed_slider.valueChanged.connect(self._on_stepper_speed_changed)
+        
+        # Jog controls (hold to move)
+        self.jog_reverse_button = QPushButton("JOG REVERSE")
+        self.jog_reverse_button.setMinimumHeight(34)
+        self.jog_reverse_button.setStyleSheet("""
+            QPushButton {
+                background-color: #475569;
+                color: white;
+                font-size: 11px;
+                font-weight: bold;
+                border-radius: 5px;
+                padding: 6px 10px;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+            }
+            QPushButton:disabled {
+                background-color: #9ca3af;
+            }
+        """)
+        self.jog_reverse_button.pressed.connect(lambda: self._on_jog_pressed(-1))
+        self.jog_reverse_button.released.connect(self._on_jog_released)
+        
+        self.jog_forward_button = QPushButton("JOG FORWARD")
+        self.jog_forward_button.setMinimumHeight(34)
+        self.jog_forward_button.setStyleSheet("""
+            QPushButton {
+                background-color: #475569;
+                color: white;
+                font-size: 11px;
+                font-weight: bold;
+                border-radius: 5px;
+                padding: 6px 10px;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+            }
+            QPushButton:disabled {
+                background-color: #9ca3af;
+            }
+        """)
+        self.jog_forward_button.pressed.connect(lambda: self._on_jog_pressed(1))
+        self.jog_forward_button.released.connect(self._on_jog_released)
     
     def _setup_layout(self):
         """Setup service tab layout"""
@@ -861,6 +906,10 @@ class ServiceTab(QWidget):
         outputs_layout.addWidget(self.stepper_toggle_button)
         outputs_layout.addWidget(self.stepper_speed_label)
         outputs_layout.addWidget(self.stepper_speed_slider)
+        jog_layout = QHBoxLayout()
+        jog_layout.addWidget(self.jog_reverse_button)
+        jog_layout.addWidget(self.jog_forward_button)
+        outputs_layout.addLayout(jog_layout)
         self.outputs_group.setLayout(outputs_layout)
         main_layout.addWidget(self.outputs_group)
         
@@ -953,6 +1002,8 @@ class ServiceTab(QWidget):
         
         self.stepper_speed_label.setText(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
         self._apply_stepper_button_style(self.stepper_enabled)
+        self.jog_reverse_button.setEnabled(self.stepper_enabled and not self.stepper_fault)
+        self.jog_forward_button.setEnabled(self.stepper_enabled and not self.stepper_fault)
     
     def _apply_stepper_button_style(self, motor_on: bool):
         """Apply style/text for the stepper toggle button."""
@@ -995,6 +1046,16 @@ class ServiceTab(QWidget):
         self.stepper_speed_label.setText(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
         if self.on_stepper_speed_change_callback:
             self.on_stepper_speed_change_callback(self.stepper_speed_rpm)
+    
+    def _on_jog_pressed(self, direction: int):
+        """Start jog in the given direction (-1 reverse, +1 forward)."""
+        if self.on_stepper_jog_start_callback:
+            self.on_stepper_jog_start_callback(direction)
+    
+    def _on_jog_released(self):
+        """Stop jog movement when the jog button is released."""
+        if self.on_stepper_jog_stop_callback:
+            self.on_stepper_jog_stop_callback()
 
 
 class SimulationTab(QWidget):
@@ -1189,6 +1250,8 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.on_acknowledge_callback: Optional[Callable] = None
         self.on_stepper_enable_callback: Optional[Callable[[bool], None]] = None
         self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
+        self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
+        self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         
         self._setup_window()
         self._create_widgets()
@@ -1241,6 +1304,8 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.service_tab = ServiceTab(self.config.get('stepper_motor', {}))
         self.service_tab.on_stepper_toggle_callback = self._on_service_stepper_toggle
         self.service_tab.on_stepper_speed_change_callback = self._on_service_stepper_speed_change
+        self.service_tab.on_stepper_jog_start_callback = self._on_service_stepper_jog_start
+        self.service_tab.on_stepper_jog_stop_callback = self._on_service_stepper_jog_stop
         
         # Simulation tab (always create it)
         sensor_names = [sensor['name'] for sensor in self.config['sensors']]
@@ -1387,6 +1452,16 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         """Forward service-tab speed slider updates to app callback."""
         if self.on_stepper_speed_change_callback:
             self.on_stepper_speed_change_callback(speed_rpm)
+    
+    def _on_service_stepper_jog_start(self, direction: int):
+        """Forward service-tab jog start to app callback."""
+        if self.on_stepper_jog_start_callback:
+            self.on_stepper_jog_start_callback(direction)
+    
+    def _on_service_stepper_jog_stop(self):
+        """Forward service-tab jog stop to app callback."""
+        if self.on_stepper_jog_stop_callback:
+            self.on_stepper_jog_stop_callback()
     
     def _on_pumping_toggle_clicked(self):
         """Handle the unified pumping toggle click.
