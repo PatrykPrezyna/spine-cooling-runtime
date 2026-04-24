@@ -55,10 +55,14 @@ class CartridgeWidget(QWidget):
         
         # Temperature history for the graph (timestamp, set_temp, temp1, temp2)
         self._temp_history: deque = deque()
+        self._x_window_minutes_options = [5, 15, 60]
+        self._x_window_minutes = 5
+        self._x_pan_windows = 0
         
         # Touch-friendly +/- buttons for fine adjustment
         if self.show_temp_controls:
             self._create_temp_buttons()
+            self._create_graph_nav_controls()
     
     def set_sensor_states(self, states: dict):
         """Update sensor states and trigger repaint"""
@@ -114,9 +118,11 @@ class CartridgeWidget(QWidget):
         painter.fillRect(self.rect(), gradient)
     
     # Temperature history graph configuration
-    _HISTORY_DURATION_SEC = 300  # 5 minutes
+    _MAX_HISTORY_SEC = 3600  # Keep up to 60 minutes for panning
     _GRAPH_TEMP_MIN = 25.0
     _GRAPH_TEMP_MAX = 40.0
+    _GRAPH_Y_MARGIN_DEG = 0.4
+    _GRAPH_Y_MARGIN_RATIO = 0.08
     _GRAPH_SERIES = (
         # (history tuple index, label, color)
         (1, "Set Tmp",    "#0ea5e9"),
@@ -129,8 +135,8 @@ class CartridgeWidget(QWidget):
         now = time.monotonic()
         self._temp_history.append((now, self.set_temperature, float(temp1), float(temp2)))
         
-        # Drop samples older than the history window
-        cutoff = now - self._HISTORY_DURATION_SEC
+        # Drop samples older than retained history window
+        cutoff = now - self._MAX_HISTORY_SEC
         while self._temp_history and self._temp_history[0][0] < cutoff:
             self._temp_history.popleft()
         
@@ -161,29 +167,39 @@ class CartridgeWidget(QWidget):
         # Legend with live values
         self._draw_graph_legend(painter, graph_x, graph_y + 8, graph_width)
         
+        now = time.monotonic()
+        window_sec = float(self._x_window_minutes) * 60.0
+        end_ts = now - (self._x_pan_windows * window_sec)
+        start_ts = end_ts - window_sec
+        visible_entries = [entry for entry in self._temp_history if start_ts <= entry[0] <= end_ts]
+        y_min, y_max = self._compute_visible_y_range(visible_entries)
+
         # Y-axis grid lines and labels
-        y_ticks = [25, 30, 35, 40]
+        y_ticks = self._build_y_ticks(y_min, y_max, count=4)
         font = QFont("Arial", 10, QFont.Weight.Bold)
         painter.setFont(font)
         for t in y_ticks:
-            ratio = (t - self._GRAPH_TEMP_MIN) / (self._GRAPH_TEMP_MAX - self._GRAPH_TEMP_MIN)
+            ratio = (t - y_min) / max(0.001, (y_max - y_min))
             py = int(plot_bottom - ratio * plot_height)
             painter.setPen(QPen(QColor("#cbd5e1"), 2))
             painter.drawLine(plot_left, py, plot_right, py)
             painter.setPen(QColor("#475569"))
+            label_text = f"{t:.1f}" if (y_max - y_min) < 10 else f"{t:.0f}"
             painter.drawText(
                 QRectF(graph_x + 2, py - 8, 30, 16),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                f"{t}"
+                label_text
             )
         
         # X-axis labels (minutes ago)
         painter.setPen(QColor("#334155"))
         font = QFont("Arial", 10, QFont.Weight.Bold)
         painter.setFont(font)
-        for mins_ago in [5, 4, 3, 2, 1, 0]:
-            ratio = (5 - mins_ago) / 5.0
+        for i in range(6):
+            ratio = i / 5.0
             px = int(plot_left + ratio * plot_width)
+            ts = start_ts + ratio * window_sec
+            mins_ago = int(round((now - ts) / 60.0))
             label = "now" if mins_ago == 0 else f"-{mins_ago}m"
             painter.drawText(
                 QRectF(px - 20, plot_bottom + 4, 40, 14),
@@ -197,17 +213,14 @@ class CartridgeWidget(QWidget):
         painter.drawLine(int(plot_left), int(plot_bottom), int(plot_right), int(plot_bottom))
         
         # Plot data series
-        if len(self._temp_history) >= 1:
-            now = time.monotonic()
-            
+        if len(visible_entries) >= 1:
             def temp_to_y(t: float) -> float:
-                t_clamped = max(self._GRAPH_TEMP_MIN, min(self._GRAPH_TEMP_MAX, t))
-                ratio = (t_clamped - self._GRAPH_TEMP_MIN) / (self._GRAPH_TEMP_MAX - self._GRAPH_TEMP_MIN)
+                t_clamped = max(y_min, min(y_max, t))
+                ratio = (t_clamped - y_min) / max(0.001, (y_max - y_min))
                 return plot_bottom - ratio * plot_height
             
             def time_to_x(ts: float) -> float:
-                delta = now - ts
-                ratio = 1.0 - (delta / self._HISTORY_DURATION_SEC)
+                ratio = (ts - start_ts) / max(0.001, window_sec)
                 ratio = max(0.0, min(1.0, ratio))
                 return plot_left + ratio * plot_width
             
@@ -223,7 +236,7 @@ class CartridgeWidget(QWidget):
                 
                 path = QPainterPath()
                 first = True
-                for entry in self._temp_history:
+                for entry in visible_entries:
                     ts = entry[0]
                     value = entry[series_index]
                     px = time_to_x(ts)
@@ -246,6 +259,29 @@ class CartridgeWidget(QWidget):
                 Qt.AlignmentFlag.AlignCenter,
                 "Waiting for data..."
             )
+
+    def _compute_visible_y_range(self, visible_entries):
+        if not visible_entries:
+            return self._GRAPH_TEMP_MIN, self._GRAPH_TEMP_MAX
+        values = [value for entry in visible_entries for value in entry[1:4]]
+        data_min = min(values)
+        data_max = max(values)
+        data_range = max(0.5, data_max - data_min)
+        margin = max(self._GRAPH_Y_MARGIN_DEG, data_range * self._GRAPH_Y_MARGIN_RATIO)
+        y_min = data_min - margin
+        y_max = data_max + margin
+        if y_max - y_min < 1.0:
+            midpoint = (y_min + y_max) / 2.0
+            y_min = midpoint - 0.5
+            y_max = midpoint + 0.5
+        return y_min, y_max
+
+    @staticmethod
+    def _build_y_ticks(y_min: float, y_max: float, count: int = 4):
+        if count < 2:
+            return [y_min, y_max]
+        step = (y_max - y_min) / float(count - 1)
+        return [y_min + i * step for i in range(count)]
     
     def _draw_graph_legend(self, painter: QPainter, graph_x: int, y: int, graph_width: int):
         """Draw legend entries for the graph series"""
@@ -661,6 +697,53 @@ class CartridgeWidget(QWidget):
             btn.setAutoRepeat(True)
             btn.setAutoRepeatDelay(400)
             btn.setAutoRepeatInterval(120)
+
+    def _create_graph_nav_controls(self):
+        """Create graph X-axis controls (window size and panning)."""
+        nav_button_style = """
+            QPushButton {
+                background-color: #475569;
+                color: white;
+                font-size: 14px;
+                font-weight: bold;
+                border: 2px solid #334155;
+                border-radius: 6px;
+            }
+            QPushButton:pressed {
+                background-color: #334155;
+            }
+            QPushButton:disabled {
+                background-color: #cbd5e1;
+                border-color: #94a3b8;
+                color: #64748b;
+            }
+        """
+        self.graph_nav_left_button = QPushButton("<", self)
+        self.graph_nav_left_button.setFixedSize(40, 32)
+        self.graph_nav_left_button.setStyleSheet(nav_button_style)
+        self.graph_nav_left_button.clicked.connect(self._on_graph_nav_left)
+
+        self.graph_nav_right_button = QPushButton(">", self)
+        self.graph_nav_right_button.setFixedSize(40, 32)
+        self.graph_nav_right_button.setStyleSheet(nav_button_style)
+        self.graph_nav_right_button.clicked.connect(self._on_graph_nav_right)
+
+        self.graph_window_combo = QComboBox(self)
+        for minutes in self._x_window_minutes_options:
+            self.graph_window_combo.addItem(f"{minutes} min", minutes)
+        self.graph_window_combo.setCurrentIndex(self._x_window_minutes_options.index(self._x_window_minutes))
+        self.graph_window_combo.currentIndexChanged.connect(self._on_graph_window_changed)
+        self.graph_window_combo.setStyleSheet("""
+            QComboBox {
+                font-size: 11px;
+                font-weight: bold;
+                color: #1f2937;
+                background-color: white;
+                border: 2px solid #94a3b8;
+                border-radius: 6px;
+                padding: 4px 8px;
+            }
+        """)
     
     def _position_temp_buttons(self):
         """Position +/- buttons below the gauge"""
@@ -669,9 +752,17 @@ class CartridgeWidget(QWidget):
         if not self.show_temp_controls:
             self.temp_minus_button.hide()
             self.temp_plus_button.hide()
+            if hasattr(self, "graph_nav_left_button"):
+                self.graph_nav_left_button.hide()
+                self.graph_window_combo.hide()
+                self.graph_nav_right_button.hide()
             return
         self.temp_minus_button.show()
         self.temp_plus_button.show()
+        if hasattr(self, "graph_nav_left_button"):
+            self.graph_nav_left_button.show()
+            self.graph_window_combo.show()
+            self.graph_nav_right_button.show()
         
         gauge_x, gauge_y, gauge_width, gauge_height = self._gauge_geometry()
         gauge_center_x = gauge_x + gauge_width // 2
@@ -689,6 +780,47 @@ class CartridgeWidget(QWidget):
             buttons_left + self._TEMP_BUTTON_SIZE + self._TEMP_BUTTON_GAP,
             buttons_top,
         )
+        self._position_graph_nav_controls()
+        self._update_graph_nav_button_states()
+
+    def _position_graph_nav_controls(self):
+        if not hasattr(self, "graph_window_combo"):
+            return
+        top = 10
+        left = 12
+        self.graph_nav_left_button.move(left, top)
+        self.graph_window_combo.setFixedSize(86, 32)
+        self.graph_window_combo.move(left + 44, top)
+        self.graph_nav_right_button.move(left + 44 + 90, top)
+
+    def _on_graph_window_changed(self, index: int):
+        self._x_window_minutes = int(self.graph_window_combo.itemData(index))
+        self._x_pan_windows = 0
+        self._update_graph_nav_button_states()
+        self.update()
+
+    def _on_graph_nav_left(self):
+        self._x_pan_windows += 1
+        self._update_graph_nav_button_states()
+        self.update()
+
+    def _on_graph_nav_right(self):
+        self._x_pan_windows = max(0, self._x_pan_windows - 1)
+        self._update_graph_nav_button_states()
+        self.update()
+
+    def _update_graph_nav_button_states(self):
+        if not hasattr(self, "graph_nav_left_button"):
+            return
+        self.graph_nav_right_button.setEnabled(self._x_pan_windows > 0)
+        if not self._temp_history:
+            self.graph_nav_left_button.setEnabled(False)
+            return
+        oldest_ts = self._temp_history[0][0]
+        now = time.monotonic()
+        window_sec = float(self._x_window_minutes) * 60.0
+        max_pan = int(max(0.0, (now - oldest_ts) // window_sec))
+        self.graph_nav_left_button.setEnabled(self._x_pan_windows < max_pan)
     
     def _step_temperature(self, direction: int):
         """Step the set temperature by `direction` steps (snapped and clamped)"""
@@ -725,6 +857,7 @@ class CartridgeWidget(QWidget):
         super().showEvent(event)
         self._position_temp_buttons()
         self._update_temp_button_enabled_state()
+        self._update_graph_nav_button_states()
 
 
 class ServiceTab(QWidget):
@@ -753,14 +886,6 @@ class ServiceTab(QWidget):
     
     def __init__(self, stepper_config: Optional[dict] = None):
         super().__init__()
-        
-        # Mock temperature values
-        self.temp_values = {
-            'Body Temp': 22.5,
-            'Plate Temp': 23.1,
-            'Temp 3': 21.8,
-            'Temp 4': 22.9
-        }
         
         # Sensor states
         self.sensor_states = {}
@@ -809,17 +934,6 @@ class ServiceTab(QWidget):
             label = QLabel(f"{name}: --")
             label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
             self.sensor_labels[name] = label
-        
-        # Temperature sensors group
-        self.temp_group = QGroupBox("Temperature Sensors (Mock)")
-        self.temp_group.setStyleSheet(self._group_box_style("#f59e0b", "12px"))
-        
-        # Temperature labels
-        self.temp_labels = {}
-        for name in ['Body Temp', 'Plate Temp', 'Temp 3', 'Temp 4']:
-            label = QLabel(f"{name}: --°C")
-            label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-            self.temp_labels[name] = label
         
         # Outputs group
         self.outputs_group = QGroupBox("Outputs")
@@ -907,15 +1021,6 @@ class ServiceTab(QWidget):
         self.sensors_group.setLayout(sensors_layout)
         main_layout.addWidget(self.sensors_group)
         
-        # Temperature sensors layout
-        temp_layout = QGridLayout()
-        temp_layout.addWidget(self.temp_labels['Body Temp'], 0, 0)
-        temp_layout.addWidget(self.temp_labels['Plate Temp'], 0, 1)
-        temp_layout.addWidget(self.temp_labels['Temp 3'], 1, 0)
-        temp_layout.addWidget(self.temp_labels['Temp 4'], 1, 1)
-        self.temp_group.setLayout(temp_layout)
-        main_layout.addWidget(self.temp_group)
-        
         # Outputs layout
         outputs_layout = QVBoxLayout()
         outputs_layout.addWidget(self.compressor_label)
@@ -947,28 +1052,6 @@ class ServiceTab(QWidget):
                 color = "#16a34a" if state else "#dc2626"
                 self.sensor_labels[name].setText(f"{name}: {status}")
                 self.sensor_labels[name].setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
-    
-    def update_temperatures(self, temps: dict = None):
-        """Update temperature display (mock values)"""
-        import random
-        if temps is None:
-            # Generate mock values with slight variation
-            for name in self.temp_values:
-                self.temp_values[name] += random.uniform(-0.5, 0.5)
-                self.temp_values[name] = max(15.0, min(30.0, self.temp_values[name]))
-        else:
-            self.temp_values.update(temps)
-        
-        for name, value in self.temp_values.items():
-            self.temp_labels[name].setText(f"{name}: {value:.1f}°C")
-            # Color code based on temperature
-            if value < 20:
-                color = "#3b82f6"  # Blue - cold
-            elif value > 25:
-                color = "#ef4444"  # Red - hot
-            else:
-                color = "#16a34a"  # Green - normal
-            self.temp_labels[name].setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
     
     def update_outputs(self, compressor_on: bool = None, stepper_pos: int = None,
                        stepper_enabled: bool = None, stepper_fault: bool = None,
@@ -1086,6 +1169,67 @@ class ServiceTab(QWidget):
                 color: #1f2937;
             }}
         """
+
+
+class Service2Tab(QWidget):
+    """Service 2 tab showing temperature channels."""
+    _LABEL_NEUTRAL_STYLE = "font-size: 11px; padding: 5px; color: #6b7280;"
+    _LABEL_STRONG_TEMPLATE = "font-size: 11px; padding: 5px; color: {color}; font-weight: bold;"
+
+    def __init__(self):
+        super().__init__()
+        self.temp_values = {
+            'Body Temp': 22.5,
+            'Plate Temp': 23.1,
+            'Temp 3': 21.8,
+            'Temp 4': 22.9,
+        }
+        self.temp_labels = {}
+        self._create_widgets()
+        self._setup_layout()
+
+    def _create_widgets(self):
+        self.temp_group = QGroupBox("Temperature Sensors (Mock)")
+        self.temp_group.setStyleSheet(ServiceTab._group_box_style("#f59e0b", "12px"))
+        for name in ['Body Temp', 'Plate Temp', 'Temp 3', 'Temp 4']:
+            label = QLabel(f"{name}: --°C")
+            label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+            self.temp_labels[name] = label
+
+    def _setup_layout(self):
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
+
+        temp_layout = QGridLayout()
+        temp_layout.addWidget(self.temp_labels['Body Temp'], 0, 0)
+        temp_layout.addWidget(self.temp_labels['Plate Temp'], 0, 1)
+        temp_layout.addWidget(self.temp_labels['Temp 3'], 1, 0)
+        temp_layout.addWidget(self.temp_labels['Temp 4'], 1, 1)
+        self.temp_group.setLayout(temp_layout)
+        main_layout.addWidget(self.temp_group)
+        main_layout.addStretch()
+        self.setLayout(main_layout)
+
+    def update_temperatures(self, temps: dict = None):
+        """Update temperature display (mock values)."""
+        import random
+        if temps is None:
+            for name in self.temp_values:
+                self.temp_values[name] += random.uniform(-0.5, 0.5)
+                self.temp_values[name] = max(15.0, min(30.0, self.temp_values[name]))
+        else:
+            self.temp_values.update(temps)
+
+        for name, value in self.temp_values.items():
+            self.temp_labels[name].setText(f"{name}: {value:.1f}°C")
+            if value < 20:
+                color = "#3b82f6"
+            elif value > 25:
+                color = "#ef4444"
+            else:
+                color = "#16a34a"
+            self.temp_labels[name].setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
     
     def _on_stepper_speed_changed(self, value: int):
         """Handle speed slider changes."""
@@ -1359,6 +1503,9 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.service_tab.on_stepper_microstepping_change_callback = self._on_service_stepper_microstepping_change
         self.service_tab.on_stepper_jog_start_callback = self._on_service_stepper_jog_start
         self.service_tab.on_stepper_jog_stop_callback = self._on_service_stepper_jog_stop
+
+        # Service 2 tab (temperature channels)
+        self.service2_tab = Service2Tab()
         
         # Simulation tab (always create it)
         sensor_names = [sensor['name'] for sensor in self.config['sensors']]
@@ -1369,6 +1516,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # Add tabs
         self.tab_widget.addTab(self.main_graph_widget, "Main")
         self.tab_widget.addTab(self.service_tab, "Service")
+        self.tab_widget.addTab(self.service2_tab, "Service 2")
         self.tab_widget.addTab(self.simulation_tab, "Simulation")
         self.tab_widget.addTab(self.cartridge_widget, "Widgets")
         self.tab_widget.currentChanged.connect(self._on_tab_changed)
@@ -1649,11 +1797,11 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         """Update sensor display"""
         self.cartridge_widget.set_sensor_states(sensor_states)
         self.service_tab.update_sensors(sensor_states)
-        self.service_tab.update_temperatures()  # Update mock temperatures
+        self.service2_tab.update_temperatures()  # Update mock temperatures
         
         # Feed Body Temp / Plate Temp into the graph for trend display
-        temp1 = self.service_tab.temp_values.get('Body Temp', 0.0)
-        temp2 = self.service_tab.temp_values.get('Plate Temp', 0.0)
+        temp1 = self.service2_tab.temp_values.get('Body Temp', 0.0)
+        temp2 = self.service2_tab.temp_values.get('Plate Temp', 0.0)
         self.main_graph_widget.add_temperature_sample(temp1, temp2)
         self.cartridge_widget.add_temperature_sample(temp1, temp2)
         
