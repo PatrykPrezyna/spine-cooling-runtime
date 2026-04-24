@@ -77,7 +77,8 @@ class CartridgeWidget(QWidget):
 
         if self.show_graph and not self.show_cartridge:
             margin = 10
-            bottom_safe = 26
+            # Keep clear space above the global bottom action buttons.
+            bottom_safe = 72
             graph_width = self.width() - (2 * margin)
             if self.show_temp_controls:
                 # Keep room for the right-side gauge and +/- controls.
@@ -167,9 +168,8 @@ class CartridgeWidget(QWidget):
         plot_width = plot_right - plot_left
         plot_height = plot_bottom - plot_top
         
-        # Legend (just below the title)
+        # Legend (just below the title) with live values
         self._draw_graph_legend(painter, graph_x, graph_y + 24, graph_width)
-        self._draw_graph_live_values(painter, graph_x, graph_y, graph_width)
         
         # Y-axis grid lines and labels
         y_ticks = [25, 30, 35, 40]
@@ -264,6 +264,7 @@ class CartridgeWidget(QWidget):
         entry_width = graph_width // len(entries)
         font = QFont("Arial", 10, QFont.Weight.Bold)
         painter.setFont(font)
+        latest = self._temp_history[-1] if self._temp_history else None
         
         for i, (series_index, label, color_hex) in enumerate(entries):
             ex = graph_x + i * entry_width + 8
@@ -277,25 +278,14 @@ class CartridgeWidget(QWidget):
             
             # Label
             painter.setPen(QColor("#334155"))
+            label_text = label
+            if latest is not None:
+                label_text = f"{label}: {latest[series_index]:.1f}°C"
             painter.drawText(
                 QRectF(ex + 22, y, entry_width - 30, 16),
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                label
+                label_text
             )
-
-    def _draw_graph_live_values(self, painter: QPainter, graph_x: int, graph_y: int, graph_width: int):
-        """Draw latest Set/Temp values in graph header."""
-        if not self._temp_history:
-            return
-        _ts, set_t, temp1, temp2 = self._temp_history[-1]
-        text = f"Set {set_t:.1f}°C   Temp 1 {temp1:.1f}°C   Temp 2 {temp2:.1f}°C"
-        painter.setPen(QColor("#334155"))
-        painter.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-        painter.drawText(
-            QRectF(graph_x + 10, graph_y + 4, graph_width - 20, 16),
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-            text,
-        )
     
     def _draw_single_chamber(self, painter: QPainter):
         """Draw single chamber with liquid level and threshold markers"""
@@ -698,10 +688,10 @@ class CartridgeWidget(QWidget):
         
         buttons_total_width = 2 * self._TEMP_BUTTON_SIZE + self._TEMP_BUTTON_GAP
         buttons_left = gauge_center_x - buttons_total_width // 2
-        buttons_top = gauge_y + gauge_height + 12
+        buttons_top = gauge_y + gauge_height + 8
         # Keep a larger bottom gap so controls don't collide visually with
         # the main window action buttons below the tab area.
-        max_top = self.height() - self._TEMP_BUTTON_SIZE - 24
+        max_top = self.height() - self._TEMP_BUTTON_SIZE - 52
         buttons_top = min(buttons_top, max_top)
         
         self.temp_minus_button.move(buttons_left, buttons_top)
@@ -1388,9 +1378,9 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         
         # Add tabs
         self.tab_widget.addTab(self.main_graph_widget, "Main")
-        self.tab_widget.addTab(self.cartridge_widget, "Widgets")
         self.tab_widget.addTab(self.service_tab, "Service")
         self.tab_widget.addTab(self.simulation_tab, "Simulation")
+        self.tab_widget.addTab(self.cartridge_widget, "Widgets")
         
         # State indicator label (top status line)
         self.state_label = QLabel("State: INIT")
