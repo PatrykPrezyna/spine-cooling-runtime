@@ -247,7 +247,10 @@ class SensorMonitorApp:
     
     def on_stepper_speed_changed(self, speed_rpm: int):
         """Handle stepper speed RPM change from service tab."""
-        self.stepper_speed_rpm = int(speed_rpm)
+        requested_speed = int(speed_rpm)
+        if self.stepper_driver:
+            requested_speed = min(requested_speed, int(self.stepper_driver.max_speed_rpm))
+        self.stepper_speed_rpm = max(1, requested_speed)
         self.last_stepper_command = f"set_speed:{self.stepper_speed_rpm}"
         self.last_requested_steps = 0
         self.last_moved_steps = 0
@@ -296,7 +299,8 @@ class SensorMonitorApp:
         )
         chunk = max(1, self.jog_step_chunk)
         interval_ms = int((1000.0 * chunk) / steps_per_second)
-        return max(20, min(250, interval_ms))
+        # Allow faster timer cadence so jog speed can follow RPM setting.
+        return max(1, min(250, interval_ms))
     
     def _update_jog_timer_interval(self):
         """Apply current jog interval to timer."""

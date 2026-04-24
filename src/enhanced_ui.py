@@ -721,6 +721,8 @@ class ServiceTab(QWidget):
         self.stepper_microstepping = 1
         self.stepper_driver_name = "STSPIN220"
         self.stepper_speed_rpm = int((stepper_config or {}).get("default_speed_rpm", 30))
+        self.stepper_max_speed_rpm = int((stepper_config or {}).get("max_speed_rpm", 60))
+        self.stepper_max_speed_rpm = max(5, self.stepper_max_speed_rpm)
         self.stepper_debug = {
             "Last Command": "init",
             "Jog Direction": "Stopped",
@@ -836,12 +838,12 @@ class ServiceTab(QWidget):
         self.stepper_speed_label.setStyleSheet("font-size: 11px; padding: 2px 5px; color: #1f2937;")
         
         self.stepper_speed_slider = QSlider(Qt.Orientation.Horizontal)
-        self.stepper_speed_slider.setRange(5, 120)
+        self.stepper_speed_slider.setRange(5, self.stepper_max_speed_rpm)
         self.stepper_speed_slider.setTickInterval(5)
         self.stepper_speed_slider.setSingleStep(1)
         self.stepper_speed_slider.setPageStep(5)
         self.stepper_speed_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.stepper_speed_slider.setValue(max(5, min(120, self.stepper_speed_rpm)))
+        self.stepper_speed_slider.setValue(max(5, min(self.stepper_max_speed_rpm, self.stepper_speed_rpm)))
         self.stepper_speed_slider.valueChanged.connect(self._on_stepper_speed_changed)
         
         # Jog controls (hold to move)
