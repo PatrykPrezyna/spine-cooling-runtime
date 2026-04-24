@@ -1375,7 +1375,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.simulation_tab.on_mode_change_callback = self._on_simulation_mode_changed
         
         # Add tabs
-        self.tab_widget.addTab(self.cartridge_widget, "Monitor")
+        self.tab_widget.addTab(self.cartridge_widget, "Read Only")
         self.tab_widget.addTab(self.service_tab, "Service")
         self.tab_widget.addTab(self.simulation_tab, "Simulation")
         

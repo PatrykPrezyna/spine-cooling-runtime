@@ -180,3 +180,12 @@ Edit `config.yaml` to modify:
 
 Medical device prototype - Internal use only
 
+#TODO:
+
+1) pump microsteps
+2) service 2, simulation 2
+3) ask cpude to improve the first page
+4) tehmocouples
+6) errors table
+5) Uart simulation
+6) validation plan 
