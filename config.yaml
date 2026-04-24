@@ -8,15 +8,15 @@
 
 sensors:
   - name: "Level Low"
-    gpio_pin: 14
+    gpio_pin: 12
     active_high: true
     pull_up: true
   - name: "Level Critical"
-    gpio_pin: 15
+    gpio_pin: 20
     active_high: true
     pull_up: true
   - name: "Cartridge In Place"
-    gpio_pin: 18
+    gpio_pin: 19
     active_high: true
     pull_up: true
 
@@ -52,10 +52,10 @@ stepper_motor:
 
   # BCM GPIO pin assignment for the STSPIN220 control lines (simplified)
   pins:
-    en_fault: 22              # EN/FAULT   (active-high enable, open-drain fault out)
-    stby_reset: 4             # STBY/RESET (active-low standby)
+    en_fault: 18              # EN/FAULT   (active-high enable, open-drain fault out)
+    stby_reset: 25             # STBY/RESET (active-low standby)
     step: 17                  # STCK       (step clock, rising edge)
-    dir: 27                   # DIR        (direction)
+    dir: 24                   # DIR        (direction)
     mode1: 5                  # MODE1 / M1 (microstep select)
     mode2: 6                  # MODE2 / M2 (microstep select)
 
