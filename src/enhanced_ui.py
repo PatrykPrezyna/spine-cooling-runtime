@@ -6,14 +6,13 @@ PyQt6-based user interface with graphical sensor display
 import sys
 import time
 from collections import deque
-from datetime import datetime
 from typing import Optional, Callable
 
 from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget, QTabWidget,
-    QLabel, QGridLayout, QGroupBox, QFrame, QCheckBox, QSlider, QComboBox
+    QLabel, QGridLayout, QGroupBox, QCheckBox, QSlider, QComboBox
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QColor, QLinearGradient,
@@ -747,6 +746,27 @@ class CartridgeWidget(QWidget):
 
 class ServiceTab(QWidget):
     """Service tab showing all sensors and outputs"""
+    _LABEL_NEUTRAL_STYLE = "font-size: 11px; padding: 5px; color: #6b7280;"
+    _LABEL_STRONG_TEMPLATE = "font-size: 11px; padding: 5px; color: {color}; font-weight: bold;"
+    _CONTROL_LABEL_STYLE = "font-size: 11px; padding: 2px 5px; color: #1f2937;"
+    _DEBUG_KEY_STYLE = "font-size: 10px; color: #475569; font-weight: bold;"
+    _DEBUG_VALUE_STYLE = "font-size: 10px; color: #0f172a;"
+    _JOG_BUTTON_STYLE = """
+            QPushButton {
+                background-color: #475569;
+                color: white;
+                font-size: 11px;
+                font-weight: bold;
+                border-radius: 5px;
+                padding: 6px 10px;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+            }
+            QPushButton:disabled {
+                background-color: #9ca3af;
+            }
+        """
     
     def __init__(self, stepper_config: Optional[dict] = None):
         super().__init__()
@@ -797,87 +817,39 @@ class ServiceTab(QWidget):
         """Create service tab widgets"""
         # Sensors group
         self.sensors_group = QGroupBox("Digital Sensors")
-        self.sensors_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 12px;
-                border: 2px solid #3b82f6;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-                background-color: white;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-                color: #1f2937;
-            }
-        """)
+        self.sensors_group.setStyleSheet(self._group_box_style("#3b82f6", "12px"))
         
         # Sensor labels
         self.sensor_labels = {}
         sensor_names = ['Level Low', 'Level Critical', 'Cartridge In Place']
         for name in sensor_names:
             label = QLabel(f"{name}: --")
-            label.setStyleSheet("font-size: 11px; padding: 5px; color: #6b7280;")
+            label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
             self.sensor_labels[name] = label
         
         # Temperature sensors group
         self.temp_group = QGroupBox("Temperature Sensors (Mock)")
-        self.temp_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 12px;
-                border: 2px solid #f59e0b;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-                background-color: white;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-                color: #1f2937;
-            }
-        """)
+        self.temp_group.setStyleSheet(self._group_box_style("#f59e0b", "12px"))
         
         # Temperature labels
         self.temp_labels = {}
         for name in ['Temp 1', 'Temp 2', 'Temp 3', 'Temp 4']:
             label = QLabel(f"{name}: --°C")
-            label.setStyleSheet("font-size: 11px; padding: 5px; color: #6b7280;")
+            label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
             self.temp_labels[name] = label
         
         # Outputs group
         self.outputs_group = QGroupBox("Outputs")
-        self.outputs_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 12px;
-                border: 2px solid #16a34a;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-                background-color: white;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-                color: #1f2937;
-            }
-        """)
+        self.outputs_group.setStyleSheet(self._group_box_style("#16a34a", "12px"))
         
         # Output labels
         self.compressor_label = QLabel("Compressor: OFF")
-        self.compressor_label.setStyleSheet("font-size: 11px; padding: 5px; color: #6b7280;")
+        self.compressor_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
         
         self.stepper_label = QLabel(
             f"Stepper ({self.stepper_driver_name}): DISABLED - Position 0 - 1/{self.stepper_microstepping} step"
         )
-        self.stepper_label.setStyleSheet("font-size: 11px; padding: 5px; color: #6b7280;")
+        self.stepper_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
         
         # Stepper controls
         self.stepper_toggle_button = QPushButton("TURN MOTOR ON")
@@ -886,7 +858,7 @@ class ServiceTab(QWidget):
         self._apply_stepper_button_style(False)
         
         self.stepper_speed_label = QLabel(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
-        self.stepper_speed_label.setStyleSheet("font-size: 11px; padding: 2px 5px; color: #1f2937;")
+        self.stepper_speed_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
         
         self.stepper_speed_slider = QSlider(Qt.Orientation.Horizontal)
         self.stepper_speed_slider.setRange(5, self.stepper_max_speed_rpm)
@@ -898,7 +870,7 @@ class ServiceTab(QWidget):
         self.stepper_speed_slider.valueChanged.connect(self._on_stepper_speed_changed)
 
         self.stepper_microstep_label = QLabel(f"Microstepping: 1/{self.stepper_microstepping} step")
-        self.stepper_microstep_label.setStyleSheet("font-size: 11px; padding: 2px 5px; color: #1f2937;")
+        self.stepper_microstep_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
         self.stepper_microstep_combo = QComboBox()
         for value in self.stepper_microstep_options:
             self.stepper_microstep_combo.addItem(f"1/{value}", value)
@@ -909,65 +881,19 @@ class ServiceTab(QWidget):
         # Jog controls (hold to move)
         self.jog_reverse_button = QPushButton("JOG REVERSE")
         self.jog_reverse_button.setMinimumHeight(34)
-        self.jog_reverse_button.setStyleSheet("""
-            QPushButton {
-                background-color: #475569;
-                color: white;
-                font-size: 11px;
-                font-weight: bold;
-                border-radius: 5px;
-                padding: 6px 10px;
-            }
-            QPushButton:hover {
-                background-color: #334155;
-            }
-            QPushButton:disabled {
-                background-color: #9ca3af;
-            }
-        """)
+        self.jog_reverse_button.setStyleSheet(self._JOG_BUTTON_STYLE)
         self.jog_reverse_button.pressed.connect(lambda: self._on_jog_pressed(-1))
         self.jog_reverse_button.released.connect(self._on_jog_released)
         
         self.jog_forward_button = QPushButton("JOG FORWARD")
         self.jog_forward_button.setMinimumHeight(34)
-        self.jog_forward_button.setStyleSheet("""
-            QPushButton {
-                background-color: #475569;
-                color: white;
-                font-size: 11px;
-                font-weight: bold;
-                border-radius: 5px;
-                padding: 6px 10px;
-            }
-            QPushButton:hover {
-                background-color: #334155;
-            }
-            QPushButton:disabled {
-                background-color: #9ca3af;
-            }
-        """)
+        self.jog_forward_button.setStyleSheet(self._JOG_BUTTON_STYLE)
         self.jog_forward_button.pressed.connect(lambda: self._on_jog_pressed(1))
         self.jog_forward_button.released.connect(self._on_jog_released)
         
         # Stepper debug table
         self.stepper_debug_group = QGroupBox("Stepper Debug")
-        self.stepper_debug_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 11px;
-                border: 2px solid #64748b;
-                border-radius: 5px;
-                margin-top: 8px;
-                padding-top: 10px;
-                background-color: #f8fafc;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-                color: #334155;
-            }
-        """)
+        self.stepper_debug_group.setStyleSheet(self._group_box_style("#64748b", "11px", "#f8fafc", margin_top=8))
         
         self.stepper_debug_labels = {}
         debug_layout = QGridLayout()
@@ -976,9 +902,9 @@ class ServiceTab(QWidget):
         row = 0
         for key in self.stepper_debug.keys():
             key_label = QLabel(f"{key}:")
-            key_label.setStyleSheet("font-size: 10px; color: #475569; font-weight: bold;")
+            key_label.setStyleSheet(self._DEBUG_KEY_STYLE)
             value_label = QLabel(self.stepper_debug[key])
-            value_label.setStyleSheet("font-size: 10px; color: #0f172a;")
+            value_label.setStyleSheet(self._DEBUG_VALUE_STYLE)
             self.stepper_debug_labels[key] = value_label
             debug_layout.addWidget(key_label, row, 0)
             debug_layout.addWidget(value_label, row, 1)
@@ -1037,9 +963,7 @@ class ServiceTab(QWidget):
                 status = "HIGH" if state else "LOW"
                 color = "#16a34a" if state else "#dc2626"
                 self.sensor_labels[name].setText(f"{name}: {status}")
-                self.sensor_labels[name].setStyleSheet(
-                    f"font-size: 11px; padding: 5px; color: {color}; font-weight: bold;"
-                )
+                self.sensor_labels[name].setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
     
     def update_temperatures(self, temps: dict = None):
         """Update temperature display (mock values)"""
@@ -1061,9 +985,7 @@ class ServiceTab(QWidget):
                 color = "#ef4444"  # Red - hot
             else:
                 color = "#16a34a"  # Green - normal
-            self.temp_labels[name].setStyleSheet(
-                f"font-size: 11px; padding: 5px; color: {color}; font-weight: bold;"
-            )
+            self.temp_labels[name].setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
     
     def update_outputs(self, compressor_on: bool = None, stepper_pos: int = None,
                        stepper_enabled: bool = None, stepper_fault: bool = None,
@@ -1098,9 +1020,7 @@ class ServiceTab(QWidget):
         comp_status = "ON" if self.compressor_on else "OFF"
         comp_color = "#16a34a" if self.compressor_on else "#6b7280"
         self.compressor_label.setText(f"Compressor: {comp_status}")
-        self.compressor_label.setStyleSheet(
-            f"font-size: 11px; padding: 5px; color: {comp_color}; font-weight: bold;"
-        )
+        self.compressor_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=comp_color))
         
         # Update stepper label with STSPIN220 driver state
         if self.stepper_fault:
@@ -1117,9 +1037,7 @@ class ServiceTab(QWidget):
             f"Stepper ({self.stepper_driver_name}): {state_text} - "
             f"Position {self.stepper_position} - 1/{self.stepper_microstepping} step"
         )
-        self.stepper_label.setStyleSheet(
-            f"font-size: 11px; padding: 5px; color: {stepper_color}; font-weight: bold;"
-        )
+        self.stepper_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=stepper_color))
         
         self.stepper_speed_label.setText(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
         self._apply_stepper_button_style(self.stepper_enabled)
@@ -1165,6 +1083,26 @@ class ServiceTab(QWidget):
         target_enabled = not self.stepper_enabled
         if self.on_stepper_toggle_callback:
             self.on_stepper_toggle_callback(target_enabled)
+
+    @staticmethod
+    def _group_box_style(border_color: str, font_size: str, bg_color: str = "white", margin_top: int = 10) -> str:
+        return f"""
+            QGroupBox {{
+                font-weight: bold;
+                font-size: {font_size};
+                border: 2px solid {border_color};
+                border-radius: 5px;
+                margin-top: {margin_top}px;
+                padding-top: 10px;
+                background-color: {bg_color};
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                color: #1f2937;
+            }}
+        """
     
     def _on_stepper_speed_changed(self, value: int):
         """Handle speed slider changes."""
