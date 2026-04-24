@@ -287,7 +287,13 @@ class SensorMonitorApp:
         Keeps update cadence in a practical UI-safe range.
         """
         steps_per_rev = int(self.config.get('stepper_motor', {}).get('steps_per_revolution', 200))
-        steps_per_second = max(1.0, (float(self.stepper_speed_rpm) / 60.0) * float(steps_per_rev))
+        microstepping = int(self.config.get('stepper_motor', {}).get('microstepping', 1))
+        if self.stepper_driver:
+            microstepping = max(1, int(self.stepper_driver.microstepping))
+        steps_per_second = max(
+            1.0,
+            (float(self.stepper_speed_rpm) / 60.0) * float(steps_per_rev) * float(microstepping),
+        )
         chunk = max(1, self.jog_step_chunk)
         interval_ms = int((1000.0 * chunk) / steps_per_second)
         return max(20, min(250, interval_ms))
