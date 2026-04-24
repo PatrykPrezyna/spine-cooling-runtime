@@ -81,7 +81,7 @@ class CartridgeWidget(QWidget):
             graph_width = self.width() - (2 * margin)
             if self.show_temp_controls:
                 # Keep room for the right-side gauge and +/- controls.
-                graph_width -= 170
+                graph_width -= 200
             self._draw_temperature_graph(
                 painter,
                 graph_x=margin,
@@ -118,9 +118,9 @@ class CartridgeWidget(QWidget):
     _GRAPH_TEMP_MAX = 40.0
     _GRAPH_SERIES = (
         # (history tuple index, label, color)
-        (1, "Set",    "#0ea5e9"),
-        (2, "Temp 1", "#16a34a"),
-        (3, "Temp 2", "#f59e0b"),
+        (1, "Set Tmp",    "#0ea5e9"),
+        (2, "Body Temp", "#16a34a"),
+        (3, "Plate Temp", "#f59e0b"),
     )
     
     def add_temperature_sample(self, temp1: float, temp2: float):
@@ -169,6 +169,7 @@ class CartridgeWidget(QWidget):
         
         # Legend (just below the title)
         self._draw_graph_legend(painter, graph_x, graph_y + 24, graph_width)
+        self._draw_graph_live_values(painter, graph_x, graph_y, graph_width)
         
         # Y-axis grid lines and labels
         y_ticks = [25, 30, 35, 40]
@@ -281,6 +282,20 @@ class CartridgeWidget(QWidget):
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                 label
             )
+
+    def _draw_graph_live_values(self, painter: QPainter, graph_x: int, graph_y: int, graph_width: int):
+        """Draw latest Set/Temp values in graph header."""
+        if not self._temp_history:
+            return
+        _ts, set_t, temp1, temp2 = self._temp_history[-1]
+        text = f"Set {set_t:.1f}°C   Temp 1 {temp1:.1f}°C   Temp 2 {temp2:.1f}°C"
+        painter.setPen(QColor("#334155"))
+        painter.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+        painter.drawText(
+            QRectF(graph_x + 10, graph_y + 4, graph_width - 20, 16),
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            text,
+        )
     
     def _draw_single_chamber(self, painter: QPainter):
         """Draw single chamber with liquid level and threshold markers"""
@@ -671,13 +686,21 @@ class CartridgeWidget(QWidget):
         """Position +/- buttons below the gauge"""
         if not hasattr(self, "temp_minus_button"):
             return
+        if not self.show_temp_controls:
+            self.temp_minus_button.hide()
+            self.temp_plus_button.hide()
+            return
+        self.temp_minus_button.show()
+        self.temp_plus_button.show()
         
         gauge_x, gauge_y, gauge_width, gauge_height = self._gauge_geometry()
         gauge_center_x = gauge_x + gauge_width // 2
         
         buttons_total_width = 2 * self._TEMP_BUTTON_SIZE + self._TEMP_BUTTON_GAP
         buttons_left = gauge_center_x - buttons_total_width // 2
-        buttons_top = gauge_y + gauge_height + 26
+        buttons_top = gauge_y + gauge_height + 18
+        max_top = self.height() - self._TEMP_BUTTON_SIZE - 8
+        buttons_top = min(buttons_top, max_top)
         
         self.temp_minus_button.move(buttons_left, buttons_top)
         self.temp_plus_button.move(
