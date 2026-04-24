@@ -29,6 +29,7 @@ class STSPIN220Driver:
         128: (1, 1, 1, 0),
         256: (0, 0, 0, 1),
     }
+    SUPPORTED_MICROSTEPPING = tuple(sorted(_MICROSTEP_TO_MODE_BITS.keys()))
 
     def __init__(self, config: dict, force_simulation: bool = False):
         """
@@ -57,7 +58,7 @@ class STSPIN220Driver:
         if requested_microstepping not in self._MICROSTEP_TO_MODE_BITS:
             raise ValueError(
                 "Unsupported microstepping value. "
-                f"Expected one of {sorted(self._MICROSTEP_TO_MODE_BITS.keys())}, "
+                f"Expected one of {list(self.SUPPORTED_MICROSTEPPING)}, "
                 f"got {requested_microstepping}."
             )
         self.microstepping: int = requested_microstepping
@@ -188,6 +189,40 @@ class STSPIN220Driver:
         if steps_per_second <= 0:
             return 0.001
         return 1.0 / (2.0 * steps_per_second)
+
+    def set_microstepping(self, microstepping: int) -> int:
+        """
+        Apply a new microstepping ratio and re-latch MODE bits.
+
+        Returns the applied microstepping value.
+        """
+        requested = int(microstepping)
+        if requested not in self._MICROSTEP_TO_MODE_BITS:
+            raise ValueError(
+                "Unsupported microstepping value. "
+                f"Expected one of {list(self.SUPPORTED_MICROSTEPPING)}, got {requested}."
+            )
+
+        with self._lock:
+            if requested == self.microstepping:
+                return self.microstepping
+
+            self.microstepping = requested
+            if self.simulation_mode or not self.is_initialized:
+                return self.microstepping
+
+            was_enabled = self.enabled
+            if was_enabled:
+                GPIO.output(self.pin_en_fault, GPIO.LOW)
+                self.enabled = False
+
+            self._latch_microstepping_mode()
+
+            if was_enabled:
+                GPIO.output(self.pin_en_fault, GPIO.HIGH)
+                self.enabled = True
+
+            return self.microstepping
 
     def step(self, num_steps: int, speed_rpm: Optional[float] = None) -> int:
         """

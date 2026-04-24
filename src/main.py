@@ -257,6 +257,19 @@ class SensorMonitorApp:
         self._update_jog_timer_interval()
         if self.ui:
             self._update_stepper_ui_status()
+
+    def on_stepper_microstepping_changed(self, microstepping: int):
+        """Handle microstepping changes from service tab."""
+        if not self.stepper_driver:
+            return
+        self.on_stepper_jog_stop()
+        applied = self.stepper_driver.set_microstepping(int(microstepping))
+        self.last_stepper_command = f"set_microstepping:1/{applied}"
+        self.last_requested_steps = 0
+        self.last_moved_steps = 0
+        self._update_jog_timer_interval()
+        if self.ui:
+            self._update_stepper_ui_status()
     
     def on_stepper_jog_start(self, direction: int):
         """Start jog movement while jog button is held."""
@@ -416,6 +429,7 @@ class SensorMonitorApp:
             self.ui.on_acknowledge_callback = self.on_acknowledge_error
             self.ui.on_stepper_enable_callback = self.on_stepper_enable_changed
             self.ui.on_stepper_speed_change_callback = self.on_stepper_speed_changed
+            self.ui.on_stepper_microstepping_change_callback = self.on_stepper_microstepping_changed
             self.ui.on_stepper_jog_start_callback = self.on_stepper_jog_start
             self.ui.on_stepper_jog_stop_callback = self.on_stepper_jog_stop
             

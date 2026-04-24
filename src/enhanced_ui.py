@@ -13,7 +13,7 @@ from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget, QTabWidget,
-    QLabel, QGridLayout, QGroupBox, QFrame, QCheckBox, QSlider
+    QLabel, QGridLayout, QGroupBox, QFrame, QCheckBox, QSlider, QComboBox
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QColor, QLinearGradient,
@@ -723,6 +723,7 @@ class ServiceTab(QWidget):
         self.stepper_speed_rpm = int((stepper_config or {}).get("default_speed_rpm", 30))
         self.stepper_max_speed_rpm = int((stepper_config or {}).get("max_speed_rpm", 60))
         self.stepper_max_speed_rpm = max(5, self.stepper_max_speed_rpm)
+        self.stepper_microstep_options = [1, 2, 4, 8, 16, 32, 64, 128, 256]
         self.stepper_debug = {
             "Last Command": "init",
             "Jog Direction": "Stopped",
@@ -736,6 +737,7 @@ class ServiceTab(QWidget):
         
         self.on_stepper_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
+        self.on_stepper_microstepping_change_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         
@@ -845,6 +847,15 @@ class ServiceTab(QWidget):
         self.stepper_speed_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.stepper_speed_slider.setValue(max(5, min(self.stepper_max_speed_rpm, self.stepper_speed_rpm)))
         self.stepper_speed_slider.valueChanged.connect(self._on_stepper_speed_changed)
+
+        self.stepper_microstep_label = QLabel(f"Microstepping: 1/{self.stepper_microstepping} step")
+        self.stepper_microstep_label.setStyleSheet("font-size: 11px; padding: 2px 5px; color: #1f2937;")
+        self.stepper_microstep_combo = QComboBox()
+        for value in self.stepper_microstep_options:
+            self.stepper_microstep_combo.addItem(f"1/{value}", value)
+        initial_index = self.stepper_microstep_options.index(self.stepper_microstepping) if self.stepper_microstepping in self.stepper_microstep_options else 0
+        self.stepper_microstep_combo.setCurrentIndex(initial_index)
+        self.stepper_microstep_combo.currentIndexChanged.connect(self._on_stepper_microstepping_changed)
         
         # Jog controls (hold to move)
         self.jog_reverse_button = QPushButton("JOG REVERSE")
@@ -954,6 +965,8 @@ class ServiceTab(QWidget):
         outputs_layout.addWidget(self.stepper_toggle_button)
         outputs_layout.addWidget(self.stepper_speed_label)
         outputs_layout.addWidget(self.stepper_speed_slider)
+        outputs_layout.addWidget(self.stepper_microstep_label)
+        outputs_layout.addWidget(self.stepper_microstep_combo)
         jog_layout = QHBoxLayout()
         jog_layout.addWidget(self.jog_reverse_button)
         jog_layout.addWidget(self.jog_forward_button)
@@ -1018,6 +1031,13 @@ class ServiceTab(QWidget):
             self.stepper_fault = stepper_fault
         if stepper_microstepping is not None:
             self.stepper_microstepping = stepper_microstepping
+            self.stepper_microstep_label.setText(f"Microstepping: 1/{self.stepper_microstepping} step")
+            if self.stepper_microstepping in self.stepper_microstep_options:
+                combo_index = self.stepper_microstep_options.index(self.stepper_microstepping)
+                if self.stepper_microstep_combo.currentIndex() != combo_index:
+                    self.stepper_microstep_combo.blockSignals(True)
+                    self.stepper_microstep_combo.setCurrentIndex(combo_index)
+                    self.stepper_microstep_combo.blockSignals(False)
         if stepper_speed_rpm is not None:
             self.stepper_speed_rpm = int(stepper_speed_rpm)
             if self.stepper_speed_slider.value() != self.stepper_speed_rpm:
@@ -1103,6 +1123,14 @@ class ServiceTab(QWidget):
         self.stepper_speed_label.setText(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
         if self.on_stepper_speed_change_callback:
             self.on_stepper_speed_change_callback(self.stepper_speed_rpm)
+
+    def _on_stepper_microstepping_changed(self, index: int):
+        """Handle microstepping combo changes."""
+        value = int(self.stepper_microstep_combo.itemData(index))
+        self.stepper_microstepping = value
+        self.stepper_microstep_label.setText(f"Microstepping: 1/{self.stepper_microstepping} step")
+        if self.on_stepper_microstepping_change_callback:
+            self.on_stepper_microstepping_change_callback(self.stepper_microstepping)
     
     def _on_jog_pressed(self, direction: int):
         """Start jog in the given direction (-1 reverse, +1 forward)."""
@@ -1313,6 +1341,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.on_acknowledge_callback: Optional[Callable] = None
         self.on_stepper_enable_callback: Optional[Callable[[bool], None]] = None
         self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
+        self.on_stepper_microstepping_change_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         
@@ -1367,6 +1396,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.service_tab = ServiceTab(self.config.get('stepper_motor', {}))
         self.service_tab.on_stepper_toggle_callback = self._on_service_stepper_toggle
         self.service_tab.on_stepper_speed_change_callback = self._on_service_stepper_speed_change
+        self.service_tab.on_stepper_microstepping_change_callback = self._on_service_stepper_microstepping_change
         self.service_tab.on_stepper_jog_start_callback = self._on_service_stepper_jog_start
         self.service_tab.on_stepper_jog_stop_callback = self._on_service_stepper_jog_stop
         
@@ -1515,6 +1545,11 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         """Forward service-tab speed slider updates to app callback."""
         if self.on_stepper_speed_change_callback:
             self.on_stepper_speed_change_callback(speed_rpm)
+
+    def _on_service_stepper_microstepping_change(self, microstepping: int):
+        """Forward service-tab microstepping updates to app callback."""
+        if self.on_stepper_microstepping_change_callback:
+            self.on_stepper_microstepping_change_callback(microstepping)
     
     def _on_service_stepper_jog_start(self, direction: int):
         """Forward service-tab jog start to app callback."""
