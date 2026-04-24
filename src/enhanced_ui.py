@@ -77,6 +77,7 @@ class CartridgeWidget(QWidget):
 
         if self.show_graph and not self.show_cartridge:
             margin = 10
+            bottom_safe = 26
             graph_width = self.width() - (2 * margin)
             if self.show_temp_controls:
                 # Keep room for the right-side gauge and +/- controls.
@@ -86,7 +87,7 @@ class CartridgeWidget(QWidget):
                 graph_x=margin,
                 graph_y=margin,
                 graph_width=max(220, graph_width),
-                graph_height=max(180, self.height() - (2 * margin)),
+                graph_height=max(180, self.height() - (2 * margin) - bottom_safe),
             )
             if self.show_temp_controls:
                 self._draw_temperature_gauge(painter)
@@ -697,8 +698,10 @@ class CartridgeWidget(QWidget):
         
         buttons_total_width = 2 * self._TEMP_BUTTON_SIZE + self._TEMP_BUTTON_GAP
         buttons_left = gauge_center_x - buttons_total_width // 2
-        buttons_top = gauge_y + gauge_height + 18
-        max_top = self.height() - self._TEMP_BUTTON_SIZE - 8
+        buttons_top = gauge_y + gauge_height + 12
+        # Keep a larger bottom gap so controls don't collide visually with
+        # the main window action buttons below the tab area.
+        max_top = self.height() - self._TEMP_BUTTON_SIZE - 24
         buttons_top = min(buttons_top, max_top)
         
         self.temp_minus_button.move(buttons_left, buttons_top)
