@@ -41,13 +41,14 @@ stepper_motor:
 
   # Motion limits
   default_speed_rpm: 30
-  max_speed_rpm: 60
+  max_speed_rpm: 600
   max_position_steps: 10000
   home_position_steps: 0
 
   # Safety / power
   enable_on_startup: false    # Leave motor de-energised at boot
   disable_on_idle: true       # Release EN/FAULT between moves
+  en_active_high: false       # Set false if ON/OFF behavior is inverted
 
   # BCM GPIO pin assignment for the STSPIN220 control lines (simplified)
   pins:
@@ -55,5 +56,7 @@ stepper_motor:
     stby_reset: 4             # STBY/RESET (active-low standby)
     step: 17                  # STCK       (step clock, rising edge)
     dir: 27                   # DIR        (direction)
+    mode1: 5                  # MODE1 / M1 (microstep select)
+    mode2: 6                  # MODE2 / M2 (microstep select)
 
 # Made with Bob

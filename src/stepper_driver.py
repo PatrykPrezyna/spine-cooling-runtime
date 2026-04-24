@@ -58,6 +58,7 @@ class STSPIN220Driver:
         # Keep MODE pins explicitly driven for deterministic full-step operation.
         self.pin_mode1: int = pins_cfg.get('mode1', 5)
         self.pin_mode2: int = pins_cfg.get('mode2', 6)
+        self.en_active_high: bool = bool(stepper_cfg.get('en_active_high', True))
         self.steps_per_revolution: int = stepper_cfg.get('steps_per_revolution', 200)
         requested_microstepping = int(stepper_cfg.get('microstepping', 1))
         if requested_microstepping not in self._MICROSTEP_TO_MODE_BITS:
@@ -107,7 +108,7 @@ class STSPIN220Driver:
             # EN/FAULT is open-drain on the STSPIN220 side. Configure it as an
             # input with pull-up so we can both drive it (as an output during
             # enable/disable) and read back the FAULT condition.
-            GPIO.setup(self.pin_en_fault, GPIO.OUT, initial=GPIO.LOW)
+            GPIO.setup(self.pin_en_fault, GPIO.OUT, initial=self._en_off_level())
 
             self._latch_microstepping_mode()
 
@@ -150,15 +151,20 @@ class STSPIN220Driver:
             self.enabled = True
             self.fault = False
             if not self.simulation_mode and self.is_initialized:
+                # Ensure driver is awake before enabling outputs.
+                GPIO.output(self.pin_stby_reset, GPIO.HIGH)
+                time.sleep(0.001)
                 GPIO.setup(self.pin_en_fault, GPIO.OUT)
-                GPIO.output(self.pin_en_fault, GPIO.HIGH)
+                GPIO.output(self.pin_en_fault, self._en_on_level())
 
     def disable(self) -> None:
         """Release EN/FAULT so the coils are de-energised."""
         with self._lock:
             self.enabled = False
             if not self.simulation_mode and self.is_initialized:
-                GPIO.output(self.pin_en_fault, GPIO.LOW)
+                # Drive EN low and enter standby for deterministic shutdown.
+                GPIO.output(self.pin_en_fault, self._en_off_level())
+                GPIO.output(self.pin_stby_reset, GPIO.LOW)
 
     def check_fault(self) -> bool:
         """
@@ -175,7 +181,7 @@ class STSPIN220Driver:
         self.fault = (self.enabled and pin_state == GPIO.LOW)
 
         GPIO.setup(self.pin_en_fault, GPIO.OUT)
-        GPIO.output(self.pin_en_fault, GPIO.HIGH if self.enabled else GPIO.LOW)
+        GPIO.output(self.pin_en_fault, self._en_on_level() if self.enabled else self._en_off_level())
 
         return self.fault
 
@@ -237,13 +243,14 @@ class STSPIN220Driver:
 
             was_enabled = self.enabled
             if was_enabled:
-                GPIO.output(self.pin_en_fault, GPIO.LOW)
+                GPIO.output(self.pin_en_fault, self._en_off_level())
+                GPIO.output(self.pin_stby_reset, GPIO.LOW)
                 self.enabled = False
 
             self._latch_microstepping_mode()
 
             if was_enabled:
-                GPIO.output(self.pin_en_fault, GPIO.HIGH)
+                GPIO.output(self.pin_en_fault, self._en_on_level())
                 self.enabled = True
 
             return self.microstepping
@@ -298,7 +305,7 @@ class STSPIN220Driver:
 
             if self.disable_on_idle:
                 # Release enable so the motor is not held energised between moves.
-                GPIO.output(self.pin_en_fault, GPIO.LOW)
+                GPIO.output(self.pin_en_fault, self._en_off_level())
                 self.enabled = False
 
             return direction * remaining
@@ -327,6 +334,7 @@ class STSPIN220Driver:
             'fault': self.fault,
             'position_steps': self.position_steps,
             'microstepping': self.microstepping,
+            'en_active_high': self.en_active_high,
         }
 
     def cleanup(self) -> None:
@@ -335,7 +343,7 @@ class STSPIN220Driver:
             self.is_initialized = False
             return
         try:
-            GPIO.output(self.pin_en_fault, GPIO.LOW)
+            GPIO.output(self.pin_en_fault, self._en_off_level())
             GPIO.output(self.pin_stby_reset, GPIO.LOW)
             for pin in (
                 self.pin_en_fault,
@@ -352,6 +360,12 @@ class STSPIN220Driver:
         finally:
             self.is_initialized = False
             self.enabled = False
+
+    def _en_on_level(self):
+        return GPIO.HIGH if self.en_active_high else GPIO.LOW
+
+    def _en_off_level(self):
+        return GPIO.LOW if self.en_active_high else GPIO.HIGH
 
     def __del__(self):
         if self.is_initialized:
