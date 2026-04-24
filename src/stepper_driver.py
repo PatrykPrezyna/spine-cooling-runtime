@@ -182,9 +182,28 @@ class STSPIN220Driver:
     def _pulse_step(self, delay_seconds: float) -> None:
         """Emit a single STCK pulse."""
         GPIO.output(self.pin_step, GPIO.HIGH)
-        time.sleep(delay_seconds)
+        self._sleep_precise(delay_seconds)
         GPIO.output(self.pin_step, GPIO.LOW)
-        time.sleep(delay_seconds)
+        self._sleep_precise(delay_seconds)
+
+    @staticmethod
+    def _sleep_precise(delay_seconds: float) -> None:
+        """
+        Sleep with better precision for short pulse timings.
+
+        `time.sleep()` is often too coarse for sub-millisecond delays used at
+        higher microstepping ratios, which makes the motor appear much slower
+        than requested. For short waits we busy-wait on perf_counter.
+        """
+        if delay_seconds <= 0:
+            return
+        if delay_seconds >= 0.002:
+            time.sleep(delay_seconds)
+            return
+
+        target = time.perf_counter() + delay_seconds
+        while time.perf_counter() < target:
+            pass
 
     def _compute_pulse_delay(self, speed_rpm: Optional[float]) -> float:
         """Convert an RPM target into a half-period step delay in seconds."""
