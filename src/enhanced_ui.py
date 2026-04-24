@@ -1150,6 +1150,42 @@ class ServiceTab(QWidget):
         if self.on_stepper_toggle_callback:
             self.on_stepper_toggle_callback(target_enabled)
 
+    def _on_stepper_speed_changed(self, value: int):
+        """Handle speed slider changes."""
+        self.stepper_speed_rpm = int(value)
+        self.stepper_speed_label.setText(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
+        if self.on_stepper_speed_change_callback:
+            self.on_stepper_speed_change_callback(self.stepper_speed_rpm)
+
+    # Backward-compatible alias: some call sites may still reference the old
+    # singular method name.
+    def _on_stepper_speed_change(self, value: int):
+        self._on_stepper_speed_changed(value)
+
+    def _on_stepper_microstepping_changed(self, index: int):
+        """Handle microstepping combo changes."""
+        value = int(self.stepper_microstep_combo.itemData(index))
+        self.stepper_microstepping = value
+        self.stepper_microstep_label.setText(f"Microstepping: 1/{self.stepper_microstepping} step")
+        if self.on_stepper_microstepping_change_callback:
+            self.on_stepper_microstepping_change_callback(self.stepper_microstepping)
+
+    def _on_jog_pressed(self, direction: int):
+        """Start jog in the given direction (-1 reverse, +1 forward)."""
+        if self.on_stepper_jog_start_callback:
+            self.on_stepper_jog_start_callback(direction)
+
+    def _on_jog_released(self):
+        """Stop jog movement when the jog button is released."""
+        if self.on_stepper_jog_stop_callback:
+            self.on_stepper_jog_stop_callback()
+
+    def _update_stepper_debug_labels(self):
+        """Render current stepper debug values."""
+        for key, value in self.stepper_debug.items():
+            if key in self.stepper_debug_labels:
+                self.stepper_debug_labels[key].setText(str(value))
+
     @staticmethod
     def _group_box_style(border_color: str, font_size: str, bg_color: str = "white", margin_top: int = 10) -> str:
         return f"""
@@ -1231,43 +1267,6 @@ class Service2Tab(QWidget):
                 color = "#16a34a"
             self.temp_labels[name].setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
     
-    def _on_stepper_speed_changed(self, value: int):
-        """Handle speed slider changes."""
-        self.stepper_speed_rpm = int(value)
-        self.stepper_speed_label.setText(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
-        if self.on_stepper_speed_change_callback:
-            self.on_stepper_speed_change_callback(self.stepper_speed_rpm)
-
-    # Backward-compatible alias: some call sites may still reference the old
-    # singular method name.
-    def _on_stepper_speed_change(self, value: int):
-        self._on_stepper_speed_changed(value)
-
-    def _on_stepper_microstepping_changed(self, index: int):
-        """Handle microstepping combo changes."""
-        value = int(self.stepper_microstep_combo.itemData(index))
-        self.stepper_microstepping = value
-        self.stepper_microstep_label.setText(f"Microstepping: 1/{self.stepper_microstepping} step")
-        if self.on_stepper_microstepping_change_callback:
-            self.on_stepper_microstepping_change_callback(self.stepper_microstepping)
-    
-    def _on_jog_pressed(self, direction: int):
-        """Start jog in the given direction (-1 reverse, +1 forward)."""
-        if self.on_stepper_jog_start_callback:
-            self.on_stepper_jog_start_callback(direction)
-    
-    def _on_jog_released(self):
-        """Stop jog movement when the jog button is released."""
-        if self.on_stepper_jog_stop_callback:
-            self.on_stepper_jog_stop_callback()
-    
-    def _update_stepper_debug_labels(self):
-        """Render current stepper debug values."""
-        for key, value in self.stepper_debug.items():
-            if key in self.stepper_debug_labels:
-                self.stepper_debug_labels[key].setText(str(value))
-
-
 class SimulationTab(QWidget):
     """Simulation tab for manual sensor control"""
     
