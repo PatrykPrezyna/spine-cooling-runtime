@@ -1238,6 +1238,11 @@ class Service2Tab(QWidget):
         if self.on_stepper_speed_change_callback:
             self.on_stepper_speed_change_callback(self.stepper_speed_rpm)
 
+    # Backward-compatible alias: some call sites may still reference the old
+    # singular method name.
+    def _on_stepper_speed_change(self, value: int):
+        self._on_stepper_speed_changed(value)
+
     def _on_stepper_microstepping_changed(self, index: int):
         """Handle microstepping combo changes."""
         value = int(self.stepper_microstep_combo.itemData(index))
