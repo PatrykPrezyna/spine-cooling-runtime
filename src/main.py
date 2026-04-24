@@ -285,6 +285,8 @@ class SensorMonitorApp:
             self._update_jog_timer_interval()
             if not self.jog_timer.isActive():
                 self.jog_timer.start()
+        # Execute one chunk immediately so hold-to-jog feels responsive.
+        self._on_jog_tick()
         self._update_stepper_ui_status()
     
     def on_stepper_jog_stop(self):
@@ -299,21 +301,13 @@ class SensorMonitorApp:
     
     def _compute_jog_interval_ms(self) -> int:
         """
-        Compute jog timer interval from current RPM and step chunk.
-        Keeps update cadence in a practical UI-safe range.
+        Compute jog timer interval.
+
+        Motor speed is already controlled inside the stepper driver via pulse
+        timing (RPM + microstepping). Keep the UI jog timer fast so it does not
+        add a second speed limit.
         """
-        steps_per_rev = int(self.config.get('stepper_motor', {}).get('steps_per_revolution', 200))
-        microstepping = int(self.config.get('stepper_motor', {}).get('microstepping', 1))
-        if self.stepper_driver:
-            microstepping = max(1, int(self.stepper_driver.microstepping))
-        steps_per_second = max(
-            1.0,
-            (float(self.stepper_speed_rpm) / 60.0) * float(steps_per_rev) * float(microstepping),
-        )
-        chunk = max(1, self.jog_step_chunk)
-        interval_ms = int((1000.0 * chunk) / steps_per_second)
-        # Allow faster timer cadence so jog speed can follow RPM setting.
-        return max(1, min(250, interval_ms))
+        return 1
     
     def _update_jog_timer_interval(self):
         """Apply current jog interval to timer."""

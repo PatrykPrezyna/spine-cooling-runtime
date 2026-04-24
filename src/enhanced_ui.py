@@ -1234,32 +1234,11 @@ class SimulationTab(QWidget):
         """)
         self.mode_button.clicked.connect(self._on_mode_toggle_clicked)
         
-        # Info label
-        self.info_label = QLabel(
-            "ℹ️ Simulation Mode\n\n"
-            "Use the checkboxes above to manually control sensor states.\n"
-            "Toggle between Simulation and Real Sensor modes using the button below.\n"
-            "Changes take effect immediately."
-        )
-        self.info_label.setStyleSheet("""
-            QLabel {
-                font-size: 10px;
-                color: #64748b;
-                padding: 10px;
-                background-color: #f1f5f9;
-                border-radius: 5px;
-            }
-        """)
-        self.info_label.setWordWrap(True)
-    
     def _setup_layout(self):
         """Setup simulation tab layout"""
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
-        
-        # Add title
-        main_layout.addWidget(self.info_label)
         
         # Sensors layout (horizontal)
         sensors_layout = QHBoxLayout()
