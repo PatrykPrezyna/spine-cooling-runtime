@@ -24,8 +24,11 @@ from PyQt6.QtGui import (
 class CartridgeWidget(QWidget):
     """Custom widget to draw the cartridge with levels and sensor"""
     
-    def __init__(self):
+    def __init__(self, show_cartridge: bool = True, show_graph: bool = True, show_temp_controls: bool = True):
         super().__init__()
+        self.show_cartridge = show_cartridge
+        self.show_graph = show_graph
+        self.show_temp_controls = show_temp_controls
         self.setMinimumSize(800, 420)
         
         # Sensor states
@@ -55,7 +58,8 @@ class CartridgeWidget(QWidget):
         self._temp_history: deque = deque()
         
         # Touch-friendly +/- buttons for fine adjustment
-        self._create_temp_buttons()
+        if self.show_temp_controls:
+            self._create_temp_buttons()
     
     def set_sensor_states(self, states: dict):
         """Update sensor states and trigger repaint"""
@@ -71,18 +75,35 @@ class CartridgeWidget(QWidget):
         
         # Draw background gradient
         self._draw_background(painter)
+
+        if self.show_graph and not self.show_cartridge:
+            margin = 10
+            graph_width = self.width() - (2 * margin)
+            if self.show_temp_controls:
+                # Keep room for the right-side gauge and +/- controls.
+                graph_width -= 170
+            self._draw_temperature_graph(
+                painter,
+                graph_x=margin,
+                graph_y=margin,
+                graph_width=max(220, graph_width),
+                graph_height=max(180, self.height() - (2 * margin)),
+            )
+            if self.show_temp_controls:
+                self._draw_temperature_gauge(painter)
+            return
         
-        # Draw temperature history graph on the left
-        self._draw_temperature_graph(painter)
-        
-        # Draw single chamber with liquid and threshold levels
-        self._draw_single_chamber(painter)
-        
-        # Draw present sensor indicator below the chamber
-        self._draw_present_sensor(painter)
-        
-        # Draw set temperature gauge on the right side
-        self._draw_temperature_gauge(painter)
+        if self.show_graph:
+            # Draw temperature history graph on the left
+            self._draw_temperature_graph(painter)
+        if self.show_cartridge:
+            # Draw single chamber with liquid and threshold levels
+            self._draw_single_chamber(painter)
+            # Draw present sensor indicator below the chamber
+            self._draw_present_sensor(painter)
+        if self.show_temp_controls:
+            # Draw set temperature gauge on the right side
+            self._draw_temperature_gauge(painter)
     
     def _draw_background(self, painter: QPainter):
         """Draw gradient background"""
@@ -114,22 +135,23 @@ class CartridgeWidget(QWidget):
         
         self.update()
     
-    def _draw_temperature_graph(self, painter: QPainter):
+    def _draw_temperature_graph(
+        self,
+        painter: QPainter,
+        graph_x: int = 15,
+        graph_y: int = 40,
+        graph_width: int = 270,
+        graph_height: int = 280,
+    ):
         """Draw the temperature history graph on the left side of the chamber"""
-        # Graph container
-        graph_x = 15
-        graph_y = 40
-        graph_width = 270
-        graph_height = 280
-        
         # Background
         painter.setBrush(QColor("#ffffff"))
-        painter.setPen(QPen(QColor("#cbd5e1"), 2))
+        painter.setPen(QPen(QColor("#cbd5e1"), 3))
         painter.drawRoundedRect(graph_x, graph_y, graph_width, graph_height, 10, 10)
         
         # Title
         painter.setPen(QColor("#1e293b"))
-        font = QFont("Arial", 10, QFont.Weight.Bold)
+        font = QFont("Arial", 14, QFont.Weight.Bold)
         painter.setFont(font)
         painter.drawText(
             QRectF(graph_x, graph_y + 6, graph_width, 16),
@@ -150,12 +172,12 @@ class CartridgeWidget(QWidget):
         
         # Y-axis grid lines and labels
         y_ticks = [25, 30, 35, 40]
-        font = QFont("Arial", 8)
+        font = QFont("Arial", 10, QFont.Weight.Bold)
         painter.setFont(font)
         for t in y_ticks:
             ratio = (t - self._GRAPH_TEMP_MIN) / (self._GRAPH_TEMP_MAX - self._GRAPH_TEMP_MIN)
             py = int(plot_bottom - ratio * plot_height)
-            painter.setPen(QPen(QColor("#e5e7eb"), 1))
+            painter.setPen(QPen(QColor("#cbd5e1"), 2))
             painter.drawLine(plot_left, py, plot_right, py)
             painter.setPen(QColor("#475569"))
             painter.drawText(
@@ -165,7 +187,9 @@ class CartridgeWidget(QWidget):
             )
         
         # X-axis labels (minutes ago)
-        painter.setPen(QColor("#475569"))
+        painter.setPen(QColor("#334155"))
+        font = QFont("Arial", 10, QFont.Weight.Bold)
+        painter.setFont(font)
         for mins_ago in [5, 4, 3, 2, 1, 0]:
             ratio = (5 - mins_ago) / 5.0
             px = int(plot_left + ratio * plot_width)
@@ -177,9 +201,9 @@ class CartridgeWidget(QWidget):
             )
         
         # Plot axes
-        painter.setPen(QPen(QColor("#94a3b8"), 1))
-        painter.drawLine(plot_left, plot_top, plot_left, plot_bottom)
-        painter.drawLine(plot_left, plot_bottom, plot_right, plot_bottom)
+        painter.setPen(QPen(QColor("#64748b"), 2))
+        painter.drawLine(int(plot_left), int(plot_top), int(plot_left), int(plot_bottom))
+        painter.drawLine(int(plot_left), int(plot_bottom), int(plot_right), int(plot_bottom))
         
         # Plot data series
         if len(self._temp_history) >= 1:
@@ -201,7 +225,7 @@ class CartridgeWidget(QWidget):
             painter.setClipRect(QRectF(plot_left, plot_top, plot_width, plot_height))
             
             for series_index, _label, color_hex in self._GRAPH_SERIES:
-                pen = QPen(QColor(color_hex), 2)
+                pen = QPen(QColor(color_hex), 4)
                 if series_index == 1:  # Set temperature: dashed line
                     pen.setDashPattern([6, 3])
                 painter.setPen(pen)
@@ -237,14 +261,14 @@ class CartridgeWidget(QWidget):
         # Calculate entry width based on count
         entries = self._GRAPH_SERIES
         entry_width = graph_width // len(entries)
-        font = QFont("Arial", 8, QFont.Weight.Bold)
+        font = QFont("Arial", 10, QFont.Weight.Bold)
         painter.setFont(font)
         
         for i, (series_index, label, color_hex) in enumerate(entries):
             ex = graph_x + i * entry_width + 8
             
             # Color line swatch
-            pen = QPen(QColor(color_hex), 3)
+            pen = QPen(QColor(color_hex), 4)
             if series_index == 1:
                 pen.setDashPattern([3, 2])
             painter.setPen(pen)
@@ -555,6 +579,8 @@ class CartridgeWidget(QWidget):
     
     def _is_near_temp_gauge(self, pos: QPointF) -> bool:
         """Check if a mouse position is within/near the gauge track"""
+        if not self.show_temp_controls:
+            return False
         # Extend hit area slightly beyond the track for easier interaction
         hit_rect = self._temp_gauge_rect.adjusted(-15, -10, 15, 10)
         return hit_rect.contains(pos)
@@ -1368,8 +1394,19 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             }
         """)
         
-        # Cartridge visualization widget
-        self.cartridge_widget = CartridgeWidget()
+        # Main tab: temperature graph + setpoint controls
+        self.main_graph_widget = CartridgeWidget(
+            show_cartridge=False,
+            show_graph=True,
+            show_temp_controls=True,
+        )
+
+        # Widgets tab: cartridge + 3 sensors only
+        self.cartridge_widget = CartridgeWidget(
+            show_cartridge=True,
+            show_graph=False,
+            show_temp_controls=False,
+        )
         
         # Service tab
         self.service_tab = ServiceTab(self.config.get('stepper_motor', {}))
@@ -1386,7 +1423,8 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.simulation_tab.on_mode_change_callback = self._on_simulation_mode_changed
         
         # Add tabs
-        self.tab_widget.addTab(self.cartridge_widget, "Read Only")
+        self.tab_widget.addTab(self.main_graph_widget, "Main")
+        self.tab_widget.addTab(self.cartridge_widget, "Widgets")
         self.tab_widget.addTab(self.service_tab, "Service")
         self.tab_widget.addTab(self.simulation_tab, "Simulation")
         
@@ -1664,6 +1702,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # Feed Temp 1/Temp 2 into the cartridge graph for trend display
         temp1 = self.service_tab.temp_values.get('Temp 1', 0.0)
         temp2 = self.service_tab.temp_values.get('Temp 2', 0.0)
+        self.main_graph_widget.add_temperature_sample(temp1, temp2)
         self.cartridge_widget.add_temperature_sample(temp1, temp2)
         
         # Update simulation tab if in simulation mode
