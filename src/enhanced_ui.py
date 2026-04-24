@@ -125,7 +125,7 @@ class CartridgeWidget(QWidget):
     )
     
     def add_temperature_sample(self, temp1: float, temp2: float):
-        """Record a new sample of (set temperature, Temp 1, Temp 2) at current time"""
+        """Record a new sample of (set temperature, Body Temp, Plate Temp) at current time"""
         now = time.monotonic()
         self._temp_history.append((now, self.set_temperature, float(temp1), float(temp2)))
         
@@ -150,26 +150,16 @@ class CartridgeWidget(QWidget):
         painter.setPen(QPen(QColor("#cbd5e1"), 3))
         painter.drawRoundedRect(graph_x, graph_y, graph_width, graph_height, 10, 10)
         
-        # Title
-        painter.setPen(QColor("#1e293b"))
-        font = QFont("Arial", 14, QFont.Weight.Bold)
-        painter.setFont(font)
-        painter.drawText(
-            QRectF(graph_x, graph_y + 6, graph_width, 16),
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-            "Temperature (last 5 min)"
-        )
-        
-        # Plot area (inside with padding for axes / legend)
+        # Plot area (inside with padding for legend / axes)
         plot_left = graph_x + 36
         plot_right = graph_x + graph_width - 10
-        plot_top = graph_y + 48
+        plot_top = graph_y + 34
         plot_bottom = graph_y + graph_height - 22
         plot_width = plot_right - plot_left
         plot_height = plot_bottom - plot_top
         
-        # Legend (just below the title) with live values
-        self._draw_graph_legend(painter, graph_x, graph_y + 24, graph_width)
+        # Legend with live values
+        self._draw_graph_legend(painter, graph_x, graph_y + 8, graph_width)
         
         # Y-axis grid lines and labels
         y_ticks = [25, 30, 35, 40]
@@ -766,8 +756,8 @@ class ServiceTab(QWidget):
         
         # Mock temperature values
         self.temp_values = {
-            'Temp 1': 22.5,
-            'Temp 2': 23.1,
+            'Body Temp': 22.5,
+            'Plate Temp': 23.1,
             'Temp 3': 21.8,
             'Temp 4': 22.9
         }
@@ -826,7 +816,7 @@ class ServiceTab(QWidget):
         
         # Temperature labels
         self.temp_labels = {}
-        for name in ['Temp 1', 'Temp 2', 'Temp 3', 'Temp 4']:
+        for name in ['Body Temp', 'Plate Temp', 'Temp 3', 'Temp 4']:
             label = QLabel(f"{name}: --°C")
             label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
             self.temp_labels[name] = label
@@ -919,8 +909,8 @@ class ServiceTab(QWidget):
         
         # Temperature sensors layout
         temp_layout = QGridLayout()
-        temp_layout.addWidget(self.temp_labels['Temp 1'], 0, 0)
-        temp_layout.addWidget(self.temp_labels['Temp 2'], 0, 1)
+        temp_layout.addWidget(self.temp_labels['Body Temp'], 0, 0)
+        temp_layout.addWidget(self.temp_labels['Plate Temp'], 0, 1)
         temp_layout.addWidget(self.temp_labels['Temp 3'], 1, 0)
         temp_layout.addWidget(self.temp_labels['Temp 4'], 1, 1)
         self.temp_group.setLayout(temp_layout)
@@ -1381,6 +1371,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.tab_widget.addTab(self.service_tab, "Service")
         self.tab_widget.addTab(self.simulation_tab, "Simulation")
         self.tab_widget.addTab(self.cartridge_widget, "Widgets")
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)
         
         # State indicator label (top status line)
         self.state_label = QLabel("State: INIT")
@@ -1462,14 +1453,17 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # Error message (only visible in ERROR state)
         main_layout.addWidget(self.error_label)
         
-        # State-specific buttons layout
+        # State-specific buttons row (visible only on Main tab)
+        self.state_buttons_row = QWidget()
         state_button_layout = QHBoxLayout()
         state_button_layout.setContentsMargins(10, 0, 10, 0)
         state_button_layout.addWidget(self.pumping_toggle_button)
         state_button_layout.addWidget(self.acknowledge_button)
-        main_layout.addLayout(state_button_layout)
+        self.state_buttons_row.setLayout(state_button_layout)
+        main_layout.addWidget(self.state_buttons_row)
         
         central_widget.setLayout(main_layout)
+        self._on_tab_changed(self.tab_widget.currentIndex())
     
     def _setup_timer(self):
         """Setup update timer"""
@@ -1580,6 +1574,10 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         """Handle acknowledge error button click"""
         if self.on_acknowledge_callback:
             self.on_acknowledge_callback()
+
+    def _on_tab_changed(self, index: int):
+        """Show bottom action row only for Main tab."""
+        self.state_buttons_row.setVisible(self.tab_widget.tabText(index) == "Main")
     
     def set_mode_button_enabled(self, enabled: bool):
         """Enable or disable mode toggle button in simulation tab"""
@@ -1653,9 +1651,9 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.service_tab.update_sensors(sensor_states)
         self.service_tab.update_temperatures()  # Update mock temperatures
         
-        # Feed Temp 1/Temp 2 into the cartridge graph for trend display
-        temp1 = self.service_tab.temp_values.get('Temp 1', 0.0)
-        temp2 = self.service_tab.temp_values.get('Temp 2', 0.0)
+        # Feed Body Temp / Plate Temp into the graph for trend display
+        temp1 = self.service_tab.temp_values.get('Body Temp', 0.0)
+        temp2 = self.service_tab.temp_values.get('Plate Temp', 0.0)
         self.main_graph_widget.add_temperature_sample(temp1, temp2)
         self.cartridge_widget.add_temperature_sample(temp1, temp2)
         
