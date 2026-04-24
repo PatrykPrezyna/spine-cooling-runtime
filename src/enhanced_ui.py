@@ -1379,16 +1379,16 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.tab_widget.addTab(self.service_tab, "Service")
         self.tab_widget.addTab(self.simulation_tab, "Simulation")
         
-        # State indicator label (at top, 20px height)
+        # State indicator label (top status line)
         self.state_label = QLabel("State: INIT")
-        self.state_label.setFixedHeight(20)
+        self.state_label.setMinimumHeight(34)
         self.state_label.setStyleSheet("""
             QLabel {
                 background-color: #f3f4f6;
                 color: #1f2937;
-                font-size: 11px;
+                font-size: 12px;
                 font-weight: bold;
-                padding: 2px;
+                padding: 4px 8px;
                 border-radius: 3px;
                 border: 1px solid #d1d5db;
             }
@@ -1450,7 +1450,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(5)
         
-        # State indicator at top (20px height)
+        # State indicator at top
         main_layout.addWidget(self.state_label)
         
         # Add tab widget
@@ -1612,9 +1612,9 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             QLabel {{
                 background-color: {bg_color};
                 color: {text_color};
-                font-size: 14px;
+                font-size: 12px;
                 font-weight: bold;
-                padding: 10px;
+                padding: 4px 8px;
                 border-radius: 5px;
                 border: 2px solid {border_color};
             }}
