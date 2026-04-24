@@ -18,16 +18,21 @@ class STSPIN220Driver:
     DRIVER_NAME = "STSPIN220"
     # MODE1..MODE4 latch patterns. MODE3/4 are sampled on STCK/DIR during STBY
     # release and become runtime STCK/DIR afterwards.
+    #
+    # Important: on this hardware, MODE4 behaves as the least-significant bit
+    # in the microstep selection code, while MODE1 is the most-significant bit.
+    # This ordering matches observed runtime behavior and avoids odd/even
+    # microstep speed inversions (e.g. 1/2 slow while 1/4 fast).
     _MICROSTEP_TO_MODE_BITS = {
         1: (0, 0, 0, 0),
-        2: (1, 0, 0, 0),
-        4: (0, 1, 0, 0),
-        8: (1, 1, 0, 0),
-        16: (0, 0, 1, 0),
-        32: (1, 0, 1, 0),
+        2: (0, 0, 0, 1),
+        4: (0, 0, 1, 0),
+        8: (0, 0, 1, 1),
+        16: (0, 1, 0, 0),
+        32: (0, 1, 0, 1),
         64: (0, 1, 1, 0),
-        128: (1, 1, 1, 0),
-        256: (0, 0, 0, 1),
+        128: (0, 1, 1, 1),
+        256: (1, 0, 0, 0),
     }
     SUPPORTED_MICROSTEPPING = tuple(sorted(_MICROSTEP_TO_MODE_BITS.keys()))
 
