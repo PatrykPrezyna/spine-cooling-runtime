@@ -12,7 +12,8 @@ from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget, QTabWidget,
-    QLabel, QGridLayout, QGroupBox, QCheckBox, QSlider, QComboBox
+    QLabel, QGridLayout, QGroupBox, QCheckBox, QSlider, QComboBox, QStackedWidget,
+    QSizePolicy
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QColor, QLinearGradient,
@@ -159,13 +160,10 @@ class CartridgeWidget(QWidget):
         # Plot area (inside with padding for legend / axes)
         plot_left = graph_x + 36
         plot_right = graph_x + graph_width - 10
-        plot_top = graph_y + 34
-        plot_bottom = graph_y + graph_height - 22
+        plot_top = graph_y + 12
+        plot_bottom = graph_y + graph_height - 42
         plot_width = plot_right - plot_left
         plot_height = plot_bottom - plot_top
-        
-        # Legend with live values
-        self._draw_graph_legend(painter, graph_x, graph_y + 8, graph_width)
         
         now = time.monotonic()
         window_sec = float(self._x_window_minutes) * 60.0
@@ -206,6 +204,9 @@ class CartridgeWidget(QWidget):
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
                 label
             )
+
+        # Legend with live values (moved to bottom footer).
+        self._draw_graph_legend(painter, graph_x, graph_y + graph_height - 20, graph_width)
         
         # Plot axes
         painter.setPen(QPen(QColor("#64748b"), 2))
@@ -285,22 +286,25 @@ class CartridgeWidget(QWidget):
     
     def _draw_graph_legend(self, painter: QPainter, graph_x: int, y: int, graph_width: int):
         """Draw legend entries for the graph series"""
-        # Calculate entry width based on count
         entries = self._GRAPH_SERIES
-        entry_width = graph_width // len(entries)
-        font = QFont("Arial", 10, QFont.Weight.Bold)
+        # Compact, right-aligned legend to avoid overlapping graph nav controls.
+        entry_width = 92
+        legend_total_width = entry_width * len(entries)
+        start_x = max(graph_x + 112, graph_x + graph_width - legend_total_width - 8)
+
+        font = QFont("Arial", 8, QFont.Weight.DemiBold)
         painter.setFont(font)
         latest = self._temp_history[-1] if self._temp_history else None
         
         for i, (series_index, label, color_hex) in enumerate(entries):
-            ex = graph_x + i * entry_width + 8
+            ex = start_x + i * entry_width
             
             # Color line swatch
-            pen = QPen(QColor(color_hex), 4)
+            pen = QPen(QColor(color_hex), 3)
             if series_index == 1:
                 pen.setDashPattern([3, 2])
             painter.setPen(pen)
-            painter.drawLine(ex, y + 8, ex + 18, y + 8)
+            painter.drawLine(ex, y + 8, ex + 14, y + 8)
             
             # Label
             painter.setPen(QColor("#334155"))
@@ -308,7 +312,7 @@ class CartridgeWidget(QWidget):
             if latest is not None:
                 label_text = f"{label}: {latest[series_index]:.1f}°C"
             painter.drawText(
-                QRectF(ex + 22, y, entry_width - 30, 16),
+                QRectF(ex + 18, y, entry_width - 20, 16),
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                 label_text
             )
@@ -477,32 +481,22 @@ class CartridgeWidget(QWidget):
         # Store gauge track rectangle for hit testing
         self._temp_gauge_rect = QRectF(gauge_x, gauge_y, gauge_width, gauge_height)
         
-        # Title label
-        painter.setPen(QColor("#1e293b"))
-        font = QFont("Arial", 10, QFont.Weight.Bold)
-        painter.setFont(font)
-        painter.drawText(
-            QRectF(gauge_x - 30, gauge_y - 36, gauge_width + 80, 18),
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-            "SET TEMP"
-        )
-        
         # Current value display
-        painter.setPen(QColor("#0284c7"))
-        font = QFont("Arial", 15, QFont.Weight.Bold)
+        painter.setPen(QColor("#1f4f57"))
+        font = QFont("Arial", 18, QFont.Weight.Bold)
         painter.setFont(font)
         painter.drawText(
-            QRectF(gauge_x - 30, gauge_y - 18, gauge_width + 80, 18),
+            QRectF(gauge_x - 18, gauge_y - 24, gauge_width + 36, 22),
             Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
             f"{self.set_temperature:.1f}\u00b0C"
         )
         
         # Draw gauge track
         track_gradient = QLinearGradient(gauge_x, gauge_y, gauge_x, gauge_y + gauge_height)
-        track_gradient.setColorAt(0, QColor("#fecaca"))  # Warm at top (high temp)
-        track_gradient.setColorAt(1, QColor("#bae6fd"))  # Cool at bottom (low temp)
+        track_gradient.setColorAt(0, QColor("#e9ecef"))  # neutral top
+        track_gradient.setColorAt(1, QColor("#d6e4e7"))  # cool bottom
         painter.setBrush(track_gradient)
-        painter.setPen(QPen(QColor("#334155"), 2))
+        painter.setPen(QPen(QColor("#a0afb8"), 2))
         painter.drawRoundedRect(gauge_x, gauge_y, gauge_width, gauge_height, 10, 10)
         
         # Draw tick marks every 0.2 degrees
@@ -518,10 +512,10 @@ class CartridgeWidget(QWidget):
             
             if is_major:
                 tick_length = 12
-                painter.setPen(QPen(QColor("#0f172a"), 2))
+                painter.setPen(QPen(QColor("#3b4652"), 2))
             else:
                 tick_length = 6
-                painter.setPen(QPen(QColor("#475569"), 1))
+                painter.setPen(QPen(QColor("#6b7885"), 1))
             
             # Tick marks on both sides of the track
             painter.drawLine(gauge_x - tick_length, tick_y, gauge_x, tick_y)
@@ -532,7 +526,7 @@ class CartridgeWidget(QWidget):
             
             # Major tick labels
             if is_major:
-                painter.setPen(QColor("#0f172a"))
+                painter.setPen(QColor("#3f4b57"))
                 font = QFont("Arial", 9, QFont.Weight.Bold)
                 painter.setFont(font)
                 painter.drawText(
@@ -561,10 +555,10 @@ class CartridgeWidget(QWidget):
             gauge_x, handle_y - handle_half_height,
             gauge_x, handle_y + handle_half_height
         )
-        handle_gradient.setColorAt(0, QColor("#0ea5e9"))
-        handle_gradient.setColorAt(1, QColor("#0369a1"))
+        handle_gradient.setColorAt(0, QColor("#2d6f79"))
+        handle_gradient.setColorAt(1, QColor("#1f5962"))
         painter.setBrush(handle_gradient)
-        painter.setPen(QPen(QColor("#0c4a6e"), 2))
+        painter.setPen(QPen(QColor("#184a52"), 2))
         painter.drawRoundedRect(
             QRectF(gauge_x - handle_overhang, handle_y - handle_half_height,
                    gauge_width + 2 * handle_overhang, 2 * handle_half_height),
@@ -578,16 +572,6 @@ class CartridgeWidget(QWidget):
             int(gauge_x + gauge_width + handle_overhang - 4), handle_y
         )
         
-        # Unit label below gauge
-        painter.setPen(QColor("#64748b"))
-        font = QFont("Arial", 9)
-        painter.setFont(font)
-        painter.drawText(
-            QRectF(gauge_x - 30, gauge_y + gauge_height + 6, gauge_width + 80, 14),
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-            f"{self.temp_min:.0f}-{self.temp_max:.0f}\u00b0C / 0.2\u00b0 step"
-        )
-    
     def _y_to_temperature(self, y: float) -> float:
         """Convert a y-coordinate to a temperature value, snapped to the step"""
         if self._temp_gauge_rect.height() <= 0:
@@ -665,20 +649,23 @@ class CartridgeWidget(QWidget):
         """Create touch-friendly +/- buttons for temperature adjustment"""
         button_style = """
             QPushButton {
-                background-color: #0ea5e9;
+                background-color: #0e6a76;
                 color: white;
                 font-size: 22px;
-                font-weight: bold;
-                border: 2px solid #0369a1;
-                border-radius: 8px;
+                font-weight: 600;
+                border: 1px solid #0b565f;
+                border-radius: 12px;
             }
             QPushButton:pressed {
-                background-color: #0369a1;
+                background-color: #0b565f;
+            }
+            QPushButton:hover {
+                background-color: #0d616c;
             }
             QPushButton:disabled {
-                background-color: #cbd5e1;
-                border-color: #94a3b8;
-                color: #64748b;
+                background-color: #d9e0e6;
+                border-color: #c8d1d8;
+                color: #8b98a5;
             }
         """
         
@@ -786,7 +773,9 @@ class CartridgeWidget(QWidget):
     def _position_graph_nav_controls(self):
         if not hasattr(self, "graph_window_combo"):
             return
-        top = 10
+        # Keep time-axis controls visible near the bottom-left of graph area.
+        # Leave extra clearance from the widget bottom so they never clip.
+        top = max(10, self.height() - 116)
         left = 12
         self.graph_nav_left_button.move(left, top)
         self.graph_window_combo.setFixedSize(86, 32)
@@ -862,25 +851,28 @@ class CartridgeWidget(QWidget):
 
 class ServiceTab(QWidget):
     """Service tab showing all sensors and outputs"""
-    _LABEL_NEUTRAL_STYLE = "font-size: 11px; padding: 5px; color: #6b7280;"
-    _LABEL_STRONG_TEMPLATE = "font-size: 11px; padding: 5px; color: {color}; font-weight: bold;"
-    _CONTROL_LABEL_STYLE = "font-size: 11px; padding: 2px 5px; color: #1f2937;"
-    _DEBUG_KEY_STYLE = "font-size: 10px; color: #475569; font-weight: bold;"
-    _DEBUG_VALUE_STYLE = "font-size: 10px; color: #0f172a;"
+    _LABEL_NEUTRAL_STYLE = "font-size: 12px; padding: 6px; color: #5c6b79;"
+    _LABEL_STRONG_TEMPLATE = "font-size: 12px; padding: 6px; color: {color}; font-weight: 600;"
+    _CONTROL_LABEL_STYLE = "font-size: 12px; padding: 3px 6px; color: #2f3b47;"
+    _DEBUG_KEY_STYLE = "font-size: 11px; color: #5a6977; font-weight: 600;"
+    _DEBUG_VALUE_STYLE = "font-size: 11px; color: #24313d;"
     _JOG_BUTTON_STYLE = """
             QPushButton {
-                background-color: #475569;
-                color: white;
-                font-size: 11px;
-                font-weight: bold;
-                border-radius: 5px;
-                padding: 6px 10px;
+                background-color: #e7edf2;
+                border: 1px solid #cfd8e0;
+                font-size: 12px;
+                color: #23303b;
+                font-weight: 600;
+                border-radius: 12px;
+                padding: 8px 12px;
             }
             QPushButton:hover {
-                background-color: #334155;
+                background-color: #dde6ed;
             }
             QPushButton:disabled {
-                background-color: #9ca3af;
+                background-color: #eef2f6;
+                border-color: #dbe3ea;
+                color: #93a0ac;
             }
         """
     
@@ -1209,8 +1201,8 @@ class ServiceTab(QWidget):
 
 class Service2Tab(QWidget):
     """Service 2 tab showing temperature channels."""
-    _LABEL_NEUTRAL_STYLE = "font-size: 11px; padding: 5px; color: #6b7280;"
-    _LABEL_STRONG_TEMPLATE = "font-size: 11px; padding: 5px; color: {color}; font-weight: bold;"
+    _LABEL_NEUTRAL_STYLE = "font-size: 12px; padding: 6px; color: #5c6b79;"
+    _LABEL_STRONG_TEMPLATE = "font-size: 12px; padding: 6px; color: {color}; font-weight: 600;"
 
     def __init__(self):
         super().__init__()
@@ -1451,6 +1443,93 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         """Setup main window properties"""
         self.setWindowTitle("Cartridge Level Monitor")
         self.setFixedSize(800, 480)
+        self.setStyleSheet("""
+            QMainWindow, QWidget {
+                background: #eef2f5;
+                color: #1b2430;
+                font-family: "Segoe UI";
+                font-size: 12px;
+            }
+            QTabWidget::pane {
+                border: 1px solid #d8e0e7;
+                border-radius: 14px;
+                background: #f8fafb;
+                top: -1px;
+            }
+            QTabBar::tab {
+                background: #e5ebf0;
+                color: #40505d;
+                padding: 9px 20px;
+                margin-right: 4px;
+                border-top-left-radius: 10px;
+                border-top-right-radius: 10px;
+                font-weight: 600;
+            }
+            QTabBar::tab:selected {
+                background: #0e6a76;
+                color: white;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #d8e1e8;
+            }
+            QGroupBox {
+                font-weight: 600;
+                font-size: 12px;
+                border: 1px solid #d7dfe6;
+                border-radius: 14px;
+                margin-top: 12px;
+                padding-top: 12px;
+                background: #f8fafb;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 6px;
+                color: #34424f;
+            }
+            QSlider::groove:horizontal {
+                height: 10px;
+                background: #d8e0e6;
+                border-radius: 5px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #0e6a76;
+                border-radius: 5px;
+            }
+            QSlider::handle:horizontal {
+                background: white;
+                border: 2px solid #0e6a76;
+                width: 18px;
+                margin: -5px 0;
+                border-radius: 9px;
+            }
+            QComboBox {
+                background: white;
+                border: 1px solid #cfd7df;
+                border-radius: 10px;
+                padding: 6px 10px;
+                color: #24313d;
+                font-weight: 600;
+            }
+            QCheckBox {
+                color: #2f3b47;
+                font-size: 12px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+            }
+            QCheckBox::indicator:unchecked {
+                background-color: #fbe7e3;
+                border: 2px solid #d97f66;
+                border-radius: 4px;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #dff0f2;
+                border: 2px solid #0e6a76;
+                border-radius: 4px;
+            }
+        """)
         
         # Center window on screen
         screen = QApplication.primaryScreen().geometry()
@@ -1460,33 +1539,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
     
     def _create_widgets(self):
         """Create UI widgets"""
-        # Create tab widget
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #cbd5e1;
-                border-radius: 5px;
-            }
-            QTabBar::tab {
-                background: #e2e8f0;
-                color: #334155;
-                padding: 8px 20px;
-                margin-right: 2px;
-                border-top-left-radius: 5px;
-                border-top-right-radius: 5px;
-                font-weight: bold;
-            }
-            QTabBar::tab:selected {
-                background: #3b82f6;
-                color: white;
-            }
-            QTabBar::tab:hover {
-                background: #60a5fa;
-                color: white;
-            }
-        """)
-        
-        # Main tab: temperature graph + setpoint controls
+        # Main screen widget: temperature graph + setpoint controls
         self.main_graph_widget = CartridgeWidget(
             show_cartridge=False,
             show_graph=True,
@@ -1516,27 +1569,77 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.simulation_tab = SimulationTab(sensor_names, self.simulation_mode)
         self.simulation_tab.on_sensor_change_callback = self._on_simulation_sensor_changed
         self.simulation_tab.on_mode_change_callback = self._on_simulation_mode_changed
+
+        # In-window advanced area (service + simulation tabs)
+        self.advanced_tab_widget = QTabWidget()
+        self.advanced_tab_widget.addTab(self.service_tab, "Service")
+        self.advanced_tab_widget.addTab(self.service2_tab, "Service 2")
+        self.advanced_tab_widget.addTab(self.simulation_tab, "Simulation")
+        self.advanced_tab_widget.addTab(self.cartridge_widget, "Widgets")
+
+        self.to_main_menu_button = QPushButton("To Main Menu")
+        self.to_main_menu_button.setMinimumHeight(40)
+        self.to_main_menu_button.clicked.connect(self._show_main_view)
+        self.to_main_menu_button.setStyleSheet("""
+            QPushButton {
+                background: #e8edf2;
+                color: #24313d;
+                border: 1px solid #d1d8df;
+                border-radius: 12px;
+                font-size: 12px;
+                font-weight: 600;
+                padding: 0 14px;
+            }
+            QPushButton:hover {
+                background: #dde6ed;
+            }
+        """)
+        self.advanced_tab_widget.setCornerWidget(self.to_main_menu_button, Qt.Corner.TopRightCorner)
+
+        self.advanced_page = QWidget()
+        advanced_layout = QVBoxLayout(self.advanced_page)
+        advanced_layout.setContentsMargins(0, 0, 0, 0)
+        advanced_layout.setSpacing(8)
+        advanced_layout.addWidget(self.advanced_tab_widget, 1)
+
+        self.content_stack = QStackedWidget()
+        self.content_stack.addWidget(self.main_graph_widget)
+        self.content_stack.addWidget(self.advanced_page)
         
-        # Add tabs
-        self.tab_widget.addTab(self.main_graph_widget, "Main")
-        self.tab_widget.addTab(self.service_tab, "Service")
-        self.tab_widget.addTab(self.service2_tab, "Service 2")
-        self.tab_widget.addTab(self.simulation_tab, "Simulation")
-        self.tab_widget.addTab(self.cartridge_widget, "Widgets")
-        self.tab_widget.currentChanged.connect(self._on_tab_changed)
+        # Compact advanced settings launcher
+        self.advanced_settings_button = QPushButton("⚙")
+        self.advanced_settings_button.setFixedSize(52, 52)
+        self.advanced_settings_button.setToolTip("Open advanced settings")
+        self.advanced_settings_button.clicked.connect(self._show_advanced_view)
+        self.advanced_settings_button.setStyleSheet("""
+            QPushButton {
+                background: #f8fafb;
+                color: #51606c;
+                border: 1px solid #d5dce3;
+                border-radius: 14px;
+                font-size: 20px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background: #eef3f7;
+            }
+            QPushButton:pressed {
+                background: #e5ebf0;
+            }
+        """)
         
         # State indicator label (top status line)
         self.state_label = QLabel("State: INIT")
-        self.state_label.setMinimumHeight(34)
+        self.state_label.setMinimumHeight(32)
         self.state_label.setStyleSheet("""
             QLabel {
-                background-color: #f3f4f6;
-                color: #1f2937;
+                background-color: #e9eef2;
+                color: #2f3b47;
                 font-size: 12px;
-                font-weight: bold;
+                font-weight: 600;
                 padding: 4px 8px;
-                border-radius: 3px;
-                border: 1px solid #d1d5db;
+                border-radius: 10px;
+                border: 1px solid #d6dde3;
             }
         """)
         self.state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1544,27 +1647,28 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # Pumping toggle button - acts as "START PUMPING" in Cooling state
         # and "STOP PUMPING" in Pumping state. Disabled in other states.
         self.pumping_toggle_button = QPushButton("START PUMPING")
-        self.pumping_toggle_button.setMinimumHeight(40)
+        self.pumping_toggle_button.setMinimumHeight(52)
         self.pumping_toggle_button.clicked.connect(self._on_pumping_toggle_clicked)
         self.pumping_toggle_button.setEnabled(False)
         self._apply_pumping_button_style(active=False)
         
         # Acknowledge Error button (initially disabled)
         self.acknowledge_button = QPushButton("ACKNOWLEDGE ERROR")
-        self.acknowledge_button.setMinimumHeight(40)
+        self.acknowledge_button.setMinimumHeight(52)
         self.acknowledge_button.setStyleSheet("""
             QPushButton {
-                background-color: #ef4444;
+                background-color: #d06a45;
                 color: white;
-                font-size: 12px;
-                font-weight: bold;
-                border-radius: 5px;
+                font-size: 13px;
+                font-weight: 600;
+                border-radius: 14px;
             }
             QPushButton:hover {
-                background-color: #dc2626;
+                background-color: #b95735;
             }
             QPushButton:disabled {
-                background-color: #9ca3af;
+                background-color: #d9e0e6;
+                color: #8b98a5;
             }
         """)
         self.acknowledge_button.clicked.connect(self._on_acknowledge_clicked)
@@ -1574,13 +1678,13 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.error_label = QLabel("")
         self.error_label.setStyleSheet("""
             QLabel {
-                background-color: #fee2e2;
-                color: #991b1b;
-                font-size: 12px;
-                font-weight: bold;
-                padding: 8px;
-                border-radius: 5px;
-                border: 2px solid #fca5a5;
+                background-color: #f8e5db;
+                color: #7e3f26;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 10px;
+                border-radius: 14px;
+                border: 1px solid #edcdbd;
             }
         """)
         self.error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1593,14 +1697,18 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        main_layout.setSpacing(5)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(8)
         
-        # State indicator at top
-        main_layout.addWidget(self.state_label)
-        
-        # Add tab widget
-        main_layout.addWidget(self.tab_widget)
+        # Header row: state indicator + advanced settings button
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.setSpacing(10)
+        header_row.addWidget(self.state_label, 1)
+        main_layout.addLayout(header_row)
+
+        # Main content area
+        main_layout.addWidget(self.content_stack, 1)
         
         # Error message (only visible in ERROR state)
         main_layout.addWidget(self.error_label)
@@ -1608,14 +1716,16 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # State-specific buttons row (visible only on Main tab)
         self.state_buttons_row = QWidget()
         state_button_layout = QHBoxLayout()
-        state_button_layout.setContentsMargins(10, 0, 10, 0)
+        state_button_layout.setContentsMargins(0, 0, 0, 0)
+        state_button_layout.setSpacing(10)
         state_button_layout.addWidget(self.pumping_toggle_button)
         state_button_layout.addWidget(self.acknowledge_button)
+        state_button_layout.addWidget(self.advanced_settings_button)
         self.state_buttons_row.setLayout(state_button_layout)
         main_layout.addWidget(self.state_buttons_row)
         
         central_widget.setLayout(main_layout)
-        self._on_tab_changed(self.tab_widget.currentIndex())
+        self._show_main_view()
     
     def _setup_timer(self):
         """Setup update timer"""
@@ -1700,25 +1810,27 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         active=True  -> "STOP PUMPING"  (orange)
         """
         if active:
-            bg = "#f59e0b"
-            hover = "#d97706"
+            bg = "#d89a2d"
+            hover = "#be8420"
         else:
-            bg = "#0ea5e9"
-            hover = "#0284c7"
+            bg = "#0e6a76"
+            hover = "#0b565f"
         
         self.pumping_toggle_button.setStyleSheet(f"""
             QPushButton {{
                 background-color: {bg};
                 color: white;
-                font-size: 12px;
-                font-weight: bold;
-                border-radius: 5px;
+                font-size: 13px;
+                font-weight: 600;
+                border-radius: 14px;
+                padding: 0 16px;
             }}
             QPushButton:hover {{
                 background-color: {hover};
             }}
             QPushButton:disabled {{
-                background-color: #9ca3af;
+                background-color: #d9e0e6;
+                color: #8b98a5;
             }}
         """)
     
@@ -1727,9 +1839,20 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         if self.on_acknowledge_callback:
             self.on_acknowledge_callback()
 
-    def _on_tab_changed(self, index: int):
-        """Show bottom action row only for Main tab."""
-        self.state_buttons_row.setVisible(self.tab_widget.tabText(index) == "Main")
+    def _show_advanced_view(self):
+        """Switch to in-window advanced settings page."""
+        self.content_stack.setCurrentWidget(self.advanced_page)
+        self.state_buttons_row.setVisible(False)
+        half_width = max(260, (self.width() - 20) // 2)
+        self.state_label.setFixedWidth(half_width)
+
+    def _show_main_view(self):
+        """Return to main screen from advanced settings page."""
+        self.content_stack.setCurrentWidget(self.main_graph_widget)
+        self.state_buttons_row.setVisible(True)
+        self.state_label.setMinimumWidth(0)
+        self.state_label.setMaximumWidth(16777215)
+        self.state_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     
     def set_mode_button_enabled(self, enabled: bool):
         """Enable or disable mode toggle button in simulation tab"""
@@ -1750,31 +1873,31 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # Update state label color based on state and simulation mode
         if state_name == "Error":
             # Error state is always red
-            bg_color = "#fee2e2"
-            border_color = "#ef4444"
-            text_color = "#991b1b"
+            bg_color = "#f8e5db"
+            border_color = "#d06a45"
+            text_color = "#7e3f26"
         else:
             # Non-error states: green if real mode, yellow if simulation mode
             if self.simulation_mode:
                 # Simulation mode: yellow
-                bg_color = "#fef3c7"
-                border_color = "#f59e0b"
-                text_color = "#92400e"
+                bg_color = "#f4ead2"
+                border_color = "#d2b06c"
+                text_color = "#6f5522"
             else:
                 # Real mode: green
-                bg_color = "#dcfce7"
-                border_color = "#16a34a"
-                text_color = "#15803d"
+                bg_color = "#dff0f2"
+                border_color = "#8fc8cf"
+                text_color = "#245962"
         
         self.state_label.setStyleSheet(f"""
             QLabel {{
                 background-color: {bg_color};
                 color: {text_color};
                 font-size: 12px;
-                font-weight: bold;
+                font-weight: 600;
                 padding: 4px 8px;
-                border-radius: 5px;
-                border: 2px solid {border_color};
+                border-radius: 10px;
+                border: 1px solid {border_color};
             }}
         """)
         
@@ -1827,6 +1950,13 @@ class EnhancedSensorMonitorWindow(QMainWindow):
     def set_status_message(self, message: str, is_error: bool = False):
         """Set status message (for compatibility)"""
         pass  # Status is shown visually in the cartridge widget
+
+    def resizeEvent(self, event):
+        """Keep advanced-mode status indicator at half-width on resize."""
+        super().resizeEvent(event)
+        if self.content_stack.currentWidget() is self.advanced_page:
+            half_width = max(260, (self.width() - 20) // 2)
+            self.state_label.setFixedWidth(half_width)
     
     def closeEvent(self, event):
         """Handle window close event"""
@@ -1884,4 +2014,4 @@ if __name__ == "__main__":
     # Run application
     sys.exit(app.exec())
 
-# Made with Bob
+

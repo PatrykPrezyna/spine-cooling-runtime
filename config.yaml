@@ -6,6 +6,9 @@
 # This enables manual sensor control via the Simulation tab in the UI
 # Without --sim flag, the application uses real GPIO sensors
 
+bussser:  16
+
+
 sensors:
   - name: "Level Low"
     gpio_pin: 12
@@ -59,4 +62,4 @@ stepper_motor:
     mode1: 5                  # MODE1 / M1 (microstep select)
     mode2: 6                  # MODE2 / M2 (microstep select)
 
-# Made with Bob
+
