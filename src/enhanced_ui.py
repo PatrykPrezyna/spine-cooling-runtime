@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget, QTabWidget,
     QLabel, QGridLayout, QGroupBox, QCheckBox, QSlider, QComboBox, QStackedWidget,
-    QSizePolicy
+    QSizePolicy, QTabBar
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QColor, QLinearGradient,
@@ -1571,14 +1571,22 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.simulation_tab.on_mode_change_callback = self._on_simulation_mode_changed
 
         # In-window advanced area (service + simulation tabs)
-        self.advanced_tab_widget = QTabWidget()
-        self.advanced_tab_widget.addTab(self.service_tab, "Service")
-        self.advanced_tab_widget.addTab(self.service2_tab, "Service 2")
-        self.advanced_tab_widget.addTab(self.simulation_tab, "Simulation")
-        self.advanced_tab_widget.addTab(self.cartridge_widget, "Widgets")
+        self.advanced_tab_selector = QTabBar()
+        self.advanced_tab_selector.addTab("Service")
+        self.advanced_tab_selector.addTab("Service 2")
+        self.advanced_tab_selector.addTab("Simulation")
+        self.advanced_tab_selector.addTab("Widgets")
+        self.advanced_tab_selector.setExpanding(False)
+
+        self.advanced_content_stack = QStackedWidget()
+        self.advanced_content_stack.addWidget(self.service_tab)
+        self.advanced_content_stack.addWidget(self.service2_tab)
+        self.advanced_content_stack.addWidget(self.simulation_tab)
+        self.advanced_content_stack.addWidget(self.cartridge_widget)
+        self.advanced_tab_selector.currentChanged.connect(self.advanced_content_stack.setCurrentIndex)
 
         self.to_main_menu_button = QPushButton("To Main Menu")
-        self.to_main_menu_button.setMinimumHeight(40)
+        self.to_main_menu_button.setFixedHeight(34)
         self.to_main_menu_button.clicked.connect(self._show_main_view)
         self.to_main_menu_button.setStyleSheet("""
             QPushButton {
@@ -1594,13 +1602,18 @@ class EnhancedSensorMonitorWindow(QMainWindow):
                 background: #dde6ed;
             }
         """)
-        self.advanced_tab_widget.setCornerWidget(self.to_main_menu_button, Qt.Corner.TopRightCorner)
+        self.to_main_menu_button.setVisible(False)
 
         self.advanced_page = QWidget()
         advanced_layout = QVBoxLayout(self.advanced_page)
         advanced_layout.setContentsMargins(0, 0, 0, 0)
         advanced_layout.setSpacing(8)
-        advanced_layout.addWidget(self.advanced_tab_widget, 1)
+        advanced_header_row = QHBoxLayout()
+        advanced_header_row.setContentsMargins(0, 0, 0, 0)
+        advanced_header_row.setSpacing(10)
+        advanced_header_row.addWidget(self.advanced_tab_selector)
+        advanced_layout.addLayout(advanced_header_row)
+        advanced_layout.addWidget(self.advanced_content_stack, 1)
 
         self.content_stack = QStackedWidget()
         self.content_stack.addWidget(self.main_graph_widget)
@@ -1705,6 +1718,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         header_row.setContentsMargins(0, 0, 0, 0)
         header_row.setSpacing(10)
         header_row.addWidget(self.state_label, 1)
+        header_row.addWidget(self.to_main_menu_button)
         main_layout.addLayout(header_row)
 
         # Main content area
@@ -1843,6 +1857,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         """Switch to in-window advanced settings page."""
         self.content_stack.setCurrentWidget(self.advanced_page)
         self.state_buttons_row.setVisible(False)
+        self.to_main_menu_button.setVisible(True)
         half_width = max(260, (self.width() - 20) // 2)
         self.state_label.setFixedWidth(half_width)
 
@@ -1850,6 +1865,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         """Return to main screen from advanced settings page."""
         self.content_stack.setCurrentWidget(self.main_graph_widget)
         self.state_buttons_row.setVisible(True)
+        self.to_main_menu_button.setVisible(False)
         self.state_label.setMinimumWidth(0)
         self.state_label.setMaximumWidth(16777215)
         self.state_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
