@@ -42,11 +42,9 @@ stepper_motor:
   steps_per_revolution: 200    # Full steps per revolution (1.8° motor)
   microstepping: 4           # set on the driver manually
 
-  # Motion limits
+  # Motion
   default_speed_rpm: 30
   max_speed_rpm: 600
-  max_position_steps: 10000
-  home_position_steps: 0
 
   # Safety / power
   enable_on_startup: false    # Leave motor de-energised at boot

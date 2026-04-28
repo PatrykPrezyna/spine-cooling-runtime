@@ -854,8 +854,6 @@ class ServiceTab(QWidget):
     _LABEL_NEUTRAL_STYLE = "font-size: 12px; padding: 6px; color: #5c6b79;"
     _LABEL_STRONG_TEMPLATE = "font-size: 12px; padding: 6px; color: {color}; font-weight: 600;"
     _CONTROL_LABEL_STYLE = "font-size: 12px; padding: 3px 6px; color: #2f3b47;"
-    _DEBUG_KEY_STYLE = "font-size: 11px; color: #5a6977; font-weight: 600;"
-    _DEBUG_VALUE_STYLE = "font-size: 11px; color: #24313d;"
     _JOG_BUTTON_STYLE = """
             QPushButton {
                 background-color: #e7edf2;
@@ -884,29 +882,11 @@ class ServiceTab(QWidget):
         
         # Output states
         self.compressor_on = False
-        self.stepper_position = 0
-        self.stepper_enabled = False
-        self.stepper_fault = False
-        self.stepper_microstepping = 1
-        self.stepper_driver_name = "STSPIN220"
         self.stepper_speed_rpm = int((stepper_config or {}).get("default_speed_rpm", 30))
         self.stepper_max_speed_rpm = int((stepper_config or {}).get("max_speed_rpm", 60))
         self.stepper_max_speed_rpm = max(5, self.stepper_max_speed_rpm)
-        self.stepper_microstep_options = [1, 2, 4, 8, 16, 32, 64, 128, 256]
-        self.stepper_debug = {
-            "Last Command": "init",
-            "Jog Direction": "Stopped",
-            "Requested Steps": "0",
-            "Moved Steps": "0",
-            "Speed RPM": str(self.stepper_speed_rpm),
-            "Enabled": "False",
-            "Fault": "False",
-            "Position": "0",
-        }
         
-        self.on_stepper_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
-        self.on_stepper_microstepping_change_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         
@@ -935,17 +915,6 @@ class ServiceTab(QWidget):
         self.compressor_label = QLabel("Compressor: OFF")
         self.compressor_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
         
-        self.stepper_label = QLabel(
-            f"Stepper ({self.stepper_driver_name}): DISABLED - Position 0 - 1/{self.stepper_microstepping} step"
-        )
-        self.stepper_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-        
-        # Stepper controls
-        self.stepper_toggle_button = QPushButton("TURN MOTOR ON")
-        self.stepper_toggle_button.setMinimumHeight(34)
-        self.stepper_toggle_button.clicked.connect(self._on_stepper_toggle_clicked)
-        self._apply_stepper_button_style(False)
-        
         self.stepper_speed_label = QLabel(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
         self.stepper_speed_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
         
@@ -958,15 +927,6 @@ class ServiceTab(QWidget):
         self.stepper_speed_slider.setValue(max(5, min(self.stepper_max_speed_rpm, self.stepper_speed_rpm)))
         self.stepper_speed_slider.valueChanged.connect(self._on_stepper_speed_changed)
 
-        self.stepper_microstep_label = QLabel(f"Microstepping: 1/{self.stepper_microstepping} step")
-        self.stepper_microstep_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
-        self.stepper_microstep_combo = QComboBox()
-        for value in self.stepper_microstep_options:
-            self.stepper_microstep_combo.addItem(f"1/{value}", value)
-        initial_index = self.stepper_microstep_options.index(self.stepper_microstepping) if self.stepper_microstepping in self.stepper_microstep_options else 0
-        self.stepper_microstep_combo.setCurrentIndex(initial_index)
-        self.stepper_microstep_combo.currentIndexChanged.connect(self._on_stepper_microstepping_changed)
-        
         # Jog controls (hold to move)
         self.jog_reverse_button = QPushButton("JOG REVERSE")
         self.jog_reverse_button.setMinimumHeight(34)
@@ -980,26 +940,6 @@ class ServiceTab(QWidget):
         self.jog_forward_button.pressed.connect(lambda: self._on_jog_pressed(1))
         self.jog_forward_button.released.connect(self._on_jog_released)
         
-        # Stepper debug table
-        self.stepper_debug_group = QGroupBox("Stepper Debug")
-        self.stepper_debug_group.setStyleSheet(self._group_box_style("#64748b", "11px", "#f8fafc", margin_top=8))
-        
-        self.stepper_debug_labels = {}
-        debug_layout = QGridLayout()
-        debug_layout.setHorizontalSpacing(12)
-        debug_layout.setVerticalSpacing(4)
-        row = 0
-        for key in self.stepper_debug.keys():
-            key_label = QLabel(f"{key}:")
-            key_label.setStyleSheet(self._DEBUG_KEY_STYLE)
-            value_label = QLabel(self.stepper_debug[key])
-            value_label.setStyleSheet(self._DEBUG_VALUE_STYLE)
-            self.stepper_debug_labels[key] = value_label
-            debug_layout.addWidget(key_label, row, 0)
-            debug_layout.addWidget(value_label, row, 1)
-            row += 1
-        self.stepper_debug_group.setLayout(debug_layout)
-    
     def _setup_layout(self):
         """Setup service tab layout"""
         main_layout = QVBoxLayout()
@@ -1016,17 +956,12 @@ class ServiceTab(QWidget):
         # Outputs layout
         outputs_layout = QVBoxLayout()
         outputs_layout.addWidget(self.compressor_label)
-        outputs_layout.addWidget(self.stepper_label)
-        outputs_layout.addWidget(self.stepper_toggle_button)
         outputs_layout.addWidget(self.stepper_speed_label)
         outputs_layout.addWidget(self.stepper_speed_slider)
-        outputs_layout.addWidget(self.stepper_microstep_label)
-        outputs_layout.addWidget(self.stepper_microstep_combo)
         jog_layout = QHBoxLayout()
         jog_layout.addWidget(self.jog_reverse_button)
         jog_layout.addWidget(self.jog_forward_button)
         outputs_layout.addLayout(jog_layout)
-        outputs_layout.addWidget(self.stepper_debug_group)
         self.outputs_group.setLayout(outputs_layout)
         main_layout.addWidget(self.outputs_group)
         
@@ -1045,34 +980,14 @@ class ServiceTab(QWidget):
                 self.sensor_labels[name].setText(f"{name}: {status}")
                 self.sensor_labels[name].setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
     
-    def update_outputs(self, compressor_on: bool = None, stepper_pos: int = None,
-                       stepper_enabled: bool = None, stepper_fault: bool = None,
-                       stepper_microstepping: int = None, stepper_speed_rpm: int = None,
-                       stepper_debug: dict = None):
+    def update_outputs(self, compressor_on: bool = None, stepper_speed_rpm: int = None):
         """Update output display"""
         if compressor_on is not None:
             self.compressor_on = compressor_on
-        if stepper_pos is not None:
-            self.stepper_position = stepper_pos
-        if stepper_enabled is not None:
-            self.stepper_enabled = stepper_enabled
-        if stepper_fault is not None:
-            self.stepper_fault = stepper_fault
-        if stepper_microstepping is not None:
-            self.stepper_microstepping = stepper_microstepping
-            self.stepper_microstep_label.setText(f"Microstepping: 1/{self.stepper_microstepping} step")
-            if self.stepper_microstepping in self.stepper_microstep_options:
-                combo_index = self.stepper_microstep_options.index(self.stepper_microstepping)
-                if self.stepper_microstep_combo.currentIndex() != combo_index:
-                    self.stepper_microstep_combo.blockSignals(True)
-                    self.stepper_microstep_combo.setCurrentIndex(combo_index)
-                    self.stepper_microstep_combo.blockSignals(False)
         if stepper_speed_rpm is not None:
             self.stepper_speed_rpm = int(stepper_speed_rpm)
             if self.stepper_speed_slider.value() != self.stepper_speed_rpm:
                 self.stepper_speed_slider.setValue(self.stepper_speed_rpm)
-        if stepper_debug:
-            self.stepper_debug.update({k: str(v) for k, v in stepper_debug.items()})
         
         # Update compressor label
         comp_status = "ON" if self.compressor_on else "OFF"
@@ -1080,67 +995,9 @@ class ServiceTab(QWidget):
         self.compressor_label.setText(f"Compressor: {comp_status}")
         self.compressor_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=comp_color))
         
-        # Update stepper label with STSPIN220 driver state
-        if self.stepper_fault:
-            state_text = "FAULT"
-            stepper_color = "#dc2626"  # Red - fault
-        elif self.stepper_enabled:
-            state_text = "ENABLED"
-            stepper_color = "#16a34a"  # Green - energised
-        else:
-            state_text = "DISABLED"
-            stepper_color = "#6b7280"  # Grey - standby
-        
-        self.stepper_label.setText(
-            f"Stepper ({self.stepper_driver_name}): {state_text} - "
-            f"Position {self.stepper_position} - 1/{self.stepper_microstepping} step"
-        )
-        self.stepper_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=stepper_color))
-        
         self.stepper_speed_label.setText(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
-        self._apply_stepper_button_style(self.stepper_enabled)
-        self.jog_reverse_button.setEnabled(self.stepper_enabled and not self.stepper_fault)
-        self.jog_forward_button.setEnabled(self.stepper_enabled and not self.stepper_fault)
-        self.stepper_debug["Speed RPM"] = str(self.stepper_speed_rpm)
-        self.stepper_debug["Enabled"] = str(self.stepper_enabled)
-        self.stepper_debug["Fault"] = str(self.stepper_fault)
-        self.stepper_debug["Position"] = str(self.stepper_position)
-        self._update_stepper_debug_labels()
-    
-    def _apply_stepper_button_style(self, motor_on: bool):
-        """Apply style/text for the stepper toggle button."""
-        if motor_on:
-            text = "TURN MOTOR OFF"
-            bg = "#f59e0b"
-            hover = "#d97706"
-        else:
-            text = "TURN MOTOR ON"
-            bg = "#0ea5e9"
-            hover = "#0284c7"
-        
-        self.stepper_toggle_button.setText(text)
-        self.stepper_toggle_button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {bg};
-                color: white;
-                font-size: 11px;
-                font-weight: bold;
-                border-radius: 5px;
-                padding: 6px 10px;
-            }}
-            QPushButton:hover {{
-                background-color: {hover};
-            }}
-            QPushButton:disabled {{
-                background-color: #9ca3af;
-            }}
-        """)
-    
-    def _on_stepper_toggle_clicked(self):
-        """Toggle stepper motor power state."""
-        target_enabled = not self.stepper_enabled
-        if self.on_stepper_toggle_callback:
-            self.on_stepper_toggle_callback(target_enabled)
+        self.jog_reverse_button.setEnabled(True)
+        self.jog_forward_button.setEnabled(True)
 
     def _on_stepper_speed_changed(self, value: int):
         """Handle speed slider changes."""
@@ -1154,14 +1011,6 @@ class ServiceTab(QWidget):
     def _on_stepper_speed_change(self, value: int):
         self._on_stepper_speed_changed(value)
 
-    def _on_stepper_microstepping_changed(self, index: int):
-        """Handle microstepping combo changes."""
-        value = int(self.stepper_microstep_combo.itemData(index))
-        self.stepper_microstepping = value
-        self.stepper_microstep_label.setText(f"Microstepping: 1/{self.stepper_microstepping} step")
-        if self.on_stepper_microstepping_change_callback:
-            self.on_stepper_microstepping_change_callback(self.stepper_microstepping)
-
     def _on_jog_pressed(self, direction: int):
         """Start jog in the given direction (-1 reverse, +1 forward)."""
         if self.on_stepper_jog_start_callback:
@@ -1171,12 +1020,6 @@ class ServiceTab(QWidget):
         """Stop jog movement when the jog button is released."""
         if self.on_stepper_jog_stop_callback:
             self.on_stepper_jog_stop_callback()
-
-    def _update_stepper_debug_labels(self):
-        """Render current stepper debug values."""
-        for key, value in self.stepper_debug.items():
-            if key in self.stepper_debug_labels:
-                self.stepper_debug_labels[key].setText(str(value))
 
     @staticmethod
     def _group_box_style(border_color: str, font_size: str, bg_color: str = "white", margin_top: int = 10) -> str:
@@ -1428,9 +1271,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.on_start_pumping_callback: Optional[Callable] = None
         self.on_stop_pumping_callback: Optional[Callable] = None
         self.on_acknowledge_callback: Optional[Callable] = None
-        self.on_stepper_enable_callback: Optional[Callable[[bool], None]] = None
         self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
-        self.on_stepper_microstepping_change_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         
@@ -1555,9 +1396,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         
         # Service tab
         self.service_tab = ServiceTab(self.config.get('stepper_motor', {}))
-        self.service_tab.on_stepper_toggle_callback = self._on_service_stepper_toggle
         self.service_tab.on_stepper_speed_change_callback = self._on_service_stepper_speed_change
-        self.service_tab.on_stepper_microstepping_change_callback = self._on_service_stepper_microstepping_change
         self.service_tab.on_stepper_jog_start_callback = self._on_service_stepper_jog_start
         self.service_tab.on_stepper_jog_stop_callback = self._on_service_stepper_jog_stop
 
@@ -1777,20 +1616,10 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         if self.on_mode_change_callback:
             self.on_mode_change_callback(self.simulation_mode)
     
-    def _on_service_stepper_toggle(self, enabled: bool):
-        """Forward service-tab stepper enable toggle to app callback."""
-        if self.on_stepper_enable_callback:
-            self.on_stepper_enable_callback(enabled)
-    
     def _on_service_stepper_speed_change(self, speed_rpm: int):
         """Forward service-tab speed slider updates to app callback."""
         if self.on_stepper_speed_change_callback:
             self.on_stepper_speed_change_callback(speed_rpm)
-
-    def _on_service_stepper_microstepping_change(self, microstepping: int):
-        """Forward service-tab microstepping updates to app callback."""
-        if self.on_stepper_microstepping_change_callback:
-            self.on_stepper_microstepping_change_callback(microstepping)
     
     def _on_service_stepper_jog_start(self, direction: int):
         """Forward service-tab jog start to app callback."""
@@ -1953,15 +1782,10 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             for sensor_name, state in sensor_states.items():
                 self.simulation_tab.set_sensor_state(sensor_name, state)
         
-        # Mock output updates (simulate compressor and STSPIN220 stepper driver)
+        # Mock output updates (simulate compressor)
         import random
         if random.random() < 0.1:  # 10% chance to toggle compressor
             self.service_tab.update_outputs(compressor_on=random.choice([True, False]))
-        if random.random() < 0.05:  # 5% chance to move stepper
-            new_pos = self.service_tab.stepper_position + random.randint(-10, 10)
-            self.service_tab.update_outputs(
-                stepper_pos=max(0, min(1000, new_pos)),
-            )
     
     def set_status_message(self, message: str, is_error: bool = False):
         """Set status message (for compatibility)"""

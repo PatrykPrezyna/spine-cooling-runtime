@@ -51,15 +51,13 @@ class TB6600Driver:
             )
         self.microstepping: int = requested_microstepping
         self.max_speed_rpm: float = stepper_cfg.get('max_speed_rpm', 60)
-        self.max_position_steps: int = stepper_cfg.get('max_position_steps', 10000)
-        self.home_position_steps: int = stepper_cfg.get('home_position_steps', 0)
         self.disable_on_idle: bool = stepper_cfg.get('disable_on_idle', True)
         self.enable_on_startup: bool = stepper_cfg.get('enable_on_startup', False)
 
         self.simulation_mode: bool = force_simulation or not GPIO_AVAILABLE
         self.is_initialized: bool = False
         self.enabled: bool = False
-        self.position_steps: int = self.home_position_steps
+        self.position_steps: int = 0
         self.fault: bool = False
         self._lock = Lock()
 
@@ -124,12 +122,23 @@ class TB6600Driver:
         """
         return self.fault
 
-    def _pulse_step(self, delay_seconds: float) -> None:
-        """Emit a single step pulse."""
+    def _pulse_step(self, period_seconds: float) -> None:
+        """
+        Emit a single step pulse paced by a target pulse period.
+
+        Using a full-period budget (instead of two symmetric sleeps) keeps the
+        achieved speed closer to the requested RPM because GPIO/loop overhead is
+        accounted for inside the period.
+        """
+        pulse_high_seconds = min(0.00001, period_seconds / 2.0)
+        start = time.perf_counter()
         GPIO.output(self.pin_step, GPIO.HIGH)
-        self._sleep_precise(delay_seconds)
+        self._sleep_precise(pulse_high_seconds)
         GPIO.output(self.pin_step, GPIO.LOW)
-        self._sleep_precise(delay_seconds)
+        elapsed = time.perf_counter() - start
+        remaining = period_seconds - elapsed
+        if remaining > 0:
+            self._sleep_precise(remaining)
 
     @staticmethod
     def _sleep_precise(delay_seconds: float) -> None:
@@ -150,14 +159,14 @@ class TB6600Driver:
         while time.perf_counter() < target:
             pass
 
-    def _compute_pulse_delay(self, speed_rpm: Optional[float]) -> float:
-        """Convert an RPM target into a half-period step delay in seconds."""
+    def _compute_step_period(self, speed_rpm: Optional[float]) -> float:
+        """Convert an RPM target into a per-step period in seconds."""
         rpm = speed_rpm if speed_rpm is not None else self.max_speed_rpm
         rpm = max(1.0, min(float(rpm), float(self.max_speed_rpm)))
         steps_per_second = (rpm / 60.0) * self.steps_per_revolution * self.microstepping
         if steps_per_second <= 0:
             return 0.001
-        return 1.0 / (2.0 * steps_per_second)
+        return 1.0 / steps_per_second
 
     def set_microstepping(self, microstepping: int) -> int:
         """
@@ -187,7 +196,6 @@ class TB6600Driver:
         Move the motor by ``num_steps`` microsteps.
 
         Positive values step "forward" (DIR=HIGH), negative values step "reverse".
-        Honors ``max_position_steps`` as a soft limit.
 
         Returns:
             int: Number of steps actually executed.
@@ -207,17 +215,7 @@ class TB6600Driver:
             direction = 1 if num_steps > 0 else -1
             remaining = abs(num_steps)
 
-            # Clamp against the configured soft limit.
-            target = self.position_steps + direction * remaining
-            if target > self.max_position_steps:
-                remaining = max(0, self.max_position_steps - self.position_steps)
-            elif target < 0:
-                remaining = max(0, self.position_steps)
-
-            if remaining == 0:
-                return 0
-
-            delay = self._compute_pulse_delay(speed_rpm)
+            step_period = self._compute_step_period(speed_rpm)
 
             if self.simulation_mode:
                 self.position_steps += direction * remaining
@@ -227,7 +225,7 @@ class TB6600Driver:
             time.sleep(0.000002)
 
             for _ in range(remaining):
-                self._pulse_step(delay)
+                self._pulse_step(step_period)
                 self.position_steps += direction
 
             if self.disable_on_idle:
@@ -242,8 +240,8 @@ class TB6600Driver:
         return self.step(delta, speed_rpm=speed_rpm)
 
     def home(self, speed_rpm: Optional[float] = None) -> int:
-        """Move to the configured home position."""
-        return self.move_to(self.home_position_steps, speed_rpm=speed_rpm)
+        """Move to position 0."""
+        return self.move_to(0, speed_rpm=speed_rpm)
 
     def set_position(self, position_steps: int) -> None:
         """Manually override the tracked position (e.g. after homing)."""
@@ -299,7 +297,7 @@ class TB6600Driver:
 
 
 # Backward compatibility for existing imports in the app.
-STSPIN220Driver = TB6600Driver #delete after testing
+STSPIN220Driver = TB6600Driver
 
 
 if __name__ == "__main__":
