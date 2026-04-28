@@ -30,12 +30,12 @@ GPIO.setup(ENA, GPIO.OUT)
 print('Initialization Completed')
 #
 # Could have usesd only one DURATION constant but chose two. This gives play options.
-durationFwd = 5000 # This is the duration of the motor spinning. used for forward direction
-durationBwd = 5000 # This is the duration of the motor spinning. used for reverse direction
+durationFwd = 8000 # This is the duration of the motor spinning. used for forward direction
+durationBwd = 8000 # This is the duration of the motor spinning. used for reverse direction
 print('Duration Fwd set to ' + str(durationFwd))
 print('Duration Bwd set to ' + str(durationBwd))
 #
-delay = 0.000001 # This is actualy a delay between PUL pulses - effectively sets the mtor rotation speed.
+delay = 0.0001 # This is actualy a delay between PUL pulses - effectively sets the mtor rotation speed.
 print('Speed set to ' + str(delay))
 #
 cycles = 1000 # This is the number of cycles to be run once program is started.
@@ -48,7 +48,7 @@ def forward():
     # GPIO.output(ENAI, GPIO.HIGH)
     print('ENA set to HIGH - Controller Enabled')
     #
-    sleep(.5) # pause due to a possible change direction
+    sleep(1) # pause due to a possible change direction
     GPIO.output(DIR, GPIO.LOW)
     # GPIO.output(DIRI, GPIO.LOW)
     print('DIR set to LOW - Moving Forward at ' + str(delay))
