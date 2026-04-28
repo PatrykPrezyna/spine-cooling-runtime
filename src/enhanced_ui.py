@@ -1045,8 +1045,7 @@ class ServiceTab(QWidget):
         self.compressor_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=comp_color))
         
         self.stepper_speed_label.setText(f"{self.stepper_speed_rpm} RPM")
-        self.jog_reverse_button.setEnabled(True)
-        self.jog_forward_button.setEnabled(True)
+        self._update_stepper_control_enabled_state()
         self.stepper_continuous_button.setEnabled(True)
 
     def _on_stepper_speed_changed(self, value: int):
@@ -1075,16 +1074,17 @@ class ServiceTab(QWidget):
         """Toggle continuous forward motion ON/OFF."""
         self.stepper_continuous_on = not self.stepper_continuous_on
         self._apply_continuous_button_style(self.stepper_continuous_on)
+        self._update_stepper_control_enabled_state()
         if self.on_stepper_continuous_toggle_callback:
             self.on_stepper_continuous_toggle_callback(self.stepper_continuous_on)
 
     def _apply_continuous_button_style(self, is_on: bool):
         if is_on:
-            text = "RUN ON"
+            text = "OFF"
             bg = "#16a34a"
             hover = "#15803d"
         else:
-            text = "RUN OFF"
+            text = "ON"
             bg = "#6b7280"
             hover = "#4b5563"
         self.stepper_continuous_button.setText(text)
@@ -1102,6 +1102,12 @@ class ServiceTab(QWidget):
                 background-color: {hover};
             }}
         """)
+
+    def _update_stepper_control_enabled_state(self):
+        """Disable jog buttons while continuous run is active."""
+        jog_enabled = not self.stepper_continuous_on
+        self.jog_reverse_button.setEnabled(jog_enabled)
+        self.jog_forward_button.setEnabled(jog_enabled)
 
     @staticmethod
     def _group_box_style(border_color: str, font_size: str, bg_color: str = "white", margin_top: int = 10) -> str:
