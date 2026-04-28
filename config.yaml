@@ -29,6 +29,7 @@ thermocouples:
   enabled: true
   stack: 0
   i2c_bus: 1
+  sensor_type: "T"
   channels: [1, 2, 3, 4]
   labels:
     1: "Body Temp"
