@@ -27,6 +27,7 @@ class CSVLogger:
         self.csv_writer: Optional[csv.writer] = None
         self.file_handle = None
         self.is_logging = False
+        self.temperature_columns = ["Body Temp", "Plate Temp", "Temp 3", "Temp 4"]
         
         # Create directory if it doesn't exist
         Path(self.csv_directory).mkdir(parents=True, exist_ok=True)
@@ -51,8 +52,17 @@ class CSVLogger:
             self.file_handle = open(self.csv_file, 'w', newline='')
             self.csv_writer = csv.writer(self.file_handle)
             
-            # Write header - now with multiple sensor columns
-            self.csv_writer.writerow(['timestamp', 'level_low', 'level_critical', 'cartridge_in_place'])
+            # Write header including thermocouple columns.
+            self.csv_writer.writerow([
+                'timestamp',
+                'level_low',
+                'level_critical',
+                'cartridge_in_place',
+                'body_temp_c',
+                'plate_temp_c',
+                'temp_3_c',
+                'temp_4_c',
+            ])
             self.file_handle.flush()
             
             self.is_logging = True
@@ -64,7 +74,7 @@ class CSVLogger:
             self.is_logging = False
             return False
     
-    def log(self, sensor_states: dict):
+    def log(self, sensor_states: dict, temperatures: Optional[dict] = None):
         """
         Log sensor readings
         
@@ -83,8 +93,14 @@ class CSVLogger:
             level_critical = 1 if sensor_states.get('Level Critical', False) else 0
             cartridge = 1 if sensor_states.get('Cartridge In Place', False) else 0
             
+            temperatures = temperatures or {}
+            row = [timestamp, level_low, level_critical, cartridge]
+            for column in self.temperature_columns:
+                value = temperatures.get(column)
+                row.append(f"{float(value):.3f}" if value is not None else "")
+
             # Write row
-            self.csv_writer.writerow([timestamp, level_low, level_critical, cartridge])
+            self.csv_writer.writerow(row)
             
             # Flush to ensure data is written
             self.file_handle.flush()
@@ -158,8 +174,18 @@ if __name__ == "__main__":
     print("\nLogging test data...")
     for i in range(10):
         state = i % 2 == 0  # Alternate between True/False
-        logger.log(state)
-        print(f"  Logged: {state}")
+        logger.log(
+            {
+                "Level Low": state,
+                "Level Critical": not state,
+                "Cartridge In Place": True,
+            },
+            {
+                "Body Temp": 22.0 + i * 0.1,
+                "Plate Temp": 23.0 + i * 0.1,
+            },
+        )
+        print(f"  Logged sample {i + 1}")
         time.sleep(0.5)
     
     # Check file size

@@ -25,6 +25,17 @@ sensors:
 
 sample_rate_hz: 1.0         # Read sensors once per second
 
+thermocouples:
+  enabled: true
+  stack: 0
+  i2c_bus: 1
+  channels: [1, 2, 3, 4]
+  labels:
+    1: "Body Temp"
+    2: "Plate Temp"
+    3: "Temp 3"
+    4: "Temp 4"
+
 logging:
   csv_directory: "data/csv"
   filename_format: "sensor_log_%Y%m%d_%H%M%S.csv"

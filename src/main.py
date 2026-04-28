@@ -17,6 +17,7 @@ from csv_logger import CSVLogger
 from enhanced_ui import EnhancedSensorMonitorWindow
 from state_machine import StateMachine, State
 from stepper_driver import STSPIN220Driver
+from thermocouple_reader import ThermocoupleReader
 
 
 class SensorMonitorApp:
@@ -40,6 +41,7 @@ class SensorMonitorApp:
         self.ui: Optional[EnhancedSensorMonitorWindow] = None
         self.state_machine: Optional[StateMachine] = None
         self.stepper_driver: Optional[STSPIN220Driver] = None
+        self.thermocouple_reader: Optional[ThermocoupleReader] = None
         self.stepper_speed_rpm: int = int(self.config.get('stepper_motor', {}).get('default_speed_rpm', 30))
         self.jog_direction: int = 0
         self.jog_step_chunk: int = int(self.config.get('stepper_motor', {}).get('jog_step_chunk', 24))
@@ -103,6 +105,16 @@ class SensorMonitorApp:
             
             # Initialize CSV logger
             self.csv_logger = CSVLogger(self.config)
+
+            # Initialize thermocouple reader (optional, non-fatal).
+            self.thermocouple_reader = ThermocoupleReader(
+                self.config,
+                simulation_mode=self.simulation_mode,
+            )
+            if self.thermocouple_reader.is_initialized:
+                print("Thermocouple reader initialized")
+            elif self.thermocouple_reader.last_error:
+                print(f"Thermocouple reader inactive: {self.thermocouple_reader.last_error}")
             
             # Initialize stepper motor driver
             # In simulation mode we keep the same API but avoid real GPIO access.
@@ -167,6 +179,9 @@ class SensorMonitorApp:
         try:
             # Read all sensors
             sensor_states = self.sensor_reader.read_all()
+            temperatures = {}
+            if self.thermocouple_reader:
+                temperatures = self.thermocouple_reader.read_temperatures()
             
             # Update state machine with sensor states
             if self.state_machine:
@@ -174,13 +189,13 @@ class SensorMonitorApp:
             
             # Update UI
             if self.ui:
-                self.ui.update_sensor_display(sensor_states)
+                self.ui.update_sensor_display(sensor_states, temperatures)
                 if self.stepper_driver:
                     self._update_stepper_ui_status()
             
             # Log to CSV (always active)
             if self.csv_logger:
-                self.csv_logger.log(sensor_states)
+                self.csv_logger.log(sensor_states, temperatures)
             
         except Exception as e:
             error_msg = f"Error during update: {e}"
@@ -314,6 +329,12 @@ class SensorMonitorApp:
             else:
                 self.sensor_reader = MultiSensorReader(self.config, force_simulation=False)
                 print("Real sensor mode activated - reading from GPIO")
+
+            # Recreate thermocouple reader for the new mode
+            self.thermocouple_reader = ThermocoupleReader(
+                self.config,
+                simulation_mode=self.simulation_mode,
+            )
             
             # Update UI to reflect actual mode
             if self.ui:
@@ -429,6 +450,7 @@ class SensorMonitorApp:
             self.jog_timer = None
         if self.stepper_driver:
             self.stepper_driver.cleanup()
+        self.thermocouple_reader = None
         
         print("Cleanup complete")
 

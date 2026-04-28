@@ -1138,17 +1138,17 @@ class Service2Tab(QWidget):
     def __init__(self):
         super().__init__()
         self.temp_values = {
-            'Body Temp': 22.5,
-            'Plate Temp': 23.1,
-            'Temp 3': 21.8,
-            'Temp 4': 22.9,
+            'Body Temp': float("nan"),
+            'Plate Temp': float("nan"),
+            'Temp 3': float("nan"),
+            'Temp 4': float("nan"),
         }
         self.temp_labels = {}
         self._create_widgets()
         self._setup_layout()
 
     def _create_widgets(self):
-        self.temp_group = QGroupBox("Temperature Sensors (Mock)")
+        self.temp_group = QGroupBox("Temperature Sensors")
         self.temp_group.setStyleSheet(ServiceTab._group_box_style("#f59e0b", "12px"))
         for name in ['Body Temp', 'Plate Temp', 'Temp 3', 'Temp 4']:
             label = QLabel(f"{name}: --°C")
@@ -1171,16 +1171,15 @@ class Service2Tab(QWidget):
         self.setLayout(main_layout)
 
     def update_temperatures(self, temps: dict = None):
-        """Update temperature display (mock values)."""
-        import random
-        if temps is None:
-            for name in self.temp_values:
-                self.temp_values[name] += random.uniform(-0.5, 0.5)
-                self.temp_values[name] = max(15.0, min(30.0, self.temp_values[name]))
-        else:
+        """Update temperature display with real thermocouple values."""
+        if temps:
             self.temp_values.update(temps)
 
         for name, value in self.temp_values.items():
+            if value != value:  # NaN check
+                self.temp_labels[name].setText(f"{name}: --.-°C")
+                self.temp_labels[name].setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+                continue
             self.temp_labels[name].setText(f"{name}: {value:.1f}°C")
             if value < 20:
                 color = "#3b82f6"
@@ -1859,27 +1858,26 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         else:
             self.error_label.setVisible(False)
     
-    def update_sensor_display(self, sensor_states: dict):
+    def update_sensor_display(self, sensor_states: dict, temperatures: Optional[dict] = None):
         """Update sensor display"""
         self.cartridge_widget.set_sensor_states(sensor_states)
         self.service_tab.update_sensors(sensor_states)
-        self.service2_tab.update_temperatures()  # Update mock temperatures
+        self.service2_tab.update_temperatures(temperatures)
         
         # Feed Body Temp / Plate Temp into the graph for trend display
         temp1 = self.service2_tab.temp_values.get('Body Temp', 0.0)
         temp2 = self.service2_tab.temp_values.get('Plate Temp', 0.0)
-        self.main_graph_widget.add_temperature_sample(temp1, temp2)
-        self.cartridge_widget.add_temperature_sample(temp1, temp2)
+        if temp1 == temp1 and temp2 == temp2:  # skip NaN values
+            self.main_graph_widget.add_temperature_sample(temp1, temp2)
+            self.cartridge_widget.add_temperature_sample(temp1, temp2)
         
         # Update simulation tab if in simulation mode
         if self.simulation_mode and self.simulation_tab:
             for sensor_name, state in sensor_states.items():
                 self.simulation_tab.set_sensor_state(sensor_name, state)
         
-        # Mock output updates (simulate compressor)
-        import random
-        if random.random() < 0.1:  # 10% chance to toggle compressor
-            self.service_tab.update_outputs(compressor_on=random.choice([True, False]))
+        # Keep compressor display stable unless updated by app logic.
+        self.service_tab.update_outputs()
     
     def set_status_message(self, message: str, is_error: bool = False):
         """Set status message (for compatibility)"""
