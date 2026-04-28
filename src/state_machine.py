@@ -14,6 +14,7 @@ class State(Enum):
     READY = "Ready"
     COOLING = "Cooling"
     PUMPING = "Pumping"
+    PUMPING_SLOWLY = "Pumping Slowly"
     ERROR = "Error"
 
 
@@ -93,7 +94,8 @@ class StateMachine:
             State.INIT: [State.READY, State.ERROR],
             State.READY: [State.COOLING, State.ERROR],
             State.COOLING: [State.PUMPING, State.READY, State.ERROR],
-            State.PUMPING: [State.COOLING, State.READY, State.ERROR],
+            State.PUMPING: [State.PUMPING_SLOWLY, State.COOLING, State.READY, State.ERROR],
+            State.PUMPING_SLOWLY: [State.PUMPING, State.COOLING, State.READY, State.ERROR],
             State.ERROR: [State.READY]
         }
         
@@ -155,7 +157,7 @@ class StateMachine:
         Returns:
             bool: True if state changed
         """
-        if self.current_state == State.PUMPING:
+        if self.current_state in [State.PUMPING, State.PUMPING_SLOWLY]:
             return self.transition_to(State.COOLING, "User stopped pumping")
         return False
     
@@ -166,7 +168,7 @@ class StateMachine:
         Returns:
             bool: True if state changed
         """
-        if self.current_state in [State.COOLING, State.PUMPING]:
+        if self.current_state in [State.COOLING, State.PUMPING, State.PUMPING_SLOWLY]:
             return self.transition_to(State.READY, "Cartridge removed")
         return False
     
@@ -196,7 +198,7 @@ class StateMachine:
             return self.transition_to(State.READY, "Error acknowledged")
         return False
     
-    def update(self, sensor_states: dict) -> None:
+    def update(self, sensor_states: dict, body_temp: Optional[float] = None, set_temp: Optional[float] = None) -> None:
         """
         Update state machine based on sensor states
         
@@ -207,14 +209,14 @@ class StateMachine:
         level_low = sensor_states.get('Level Low', False)
         level_critical = sensor_states.get('Level Critical', False)
         
-        # Check for cartridge removal in COOLING or PUMPING states
-        if self.current_state in [State.COOLING, State.PUMPING]:
+        # Check for cartridge removal in active cooling/pumping states
+        if self.current_state in [State.COOLING, State.PUMPING, State.PUMPING_SLOWLY]:
             if not cartridge_present:
                 self.handle_cartridge_removed()
                 return
         
         # Check for sensor errors (missing required sensors in active states)
-        if self.current_state in [State.COOLING, State.PUMPING]:
+        if self.current_state in [State.COOLING, State.PUMPING, State.PUMPING_SLOWLY]:
             if not level_low or not level_critical:
                 self.handle_sensor_error("Level sensor failure detected")
                 return
@@ -222,6 +224,19 @@ class StateMachine:
         # Check if conditions are met to enter COOLING from READY
         if self.current_state == State.READY:
             self.check_cooling_conditions(cartridge_present, level_low, level_critical)
+            return
+
+        # Temperature-driven pumping mode control with 2C hysteresis band.
+        if body_temp is None or set_temp is None:
+            return
+        hysteresis_c = 2.0
+        lower_threshold = set_temp - (hysteresis_c / 2.0)
+        upper_threshold = set_temp + (hysteresis_c / 2.0)
+        if self.current_state == State.PUMPING and body_temp <= lower_threshold:
+            self.transition_to(State.PUMPING_SLOWLY, "Body temperature below target")
+            return
+        if self.current_state == State.PUMPING_SLOWLY and body_temp >= upper_threshold:
+            self.transition_to(State.PUMPING, "Body temperature above target")
     
     def get_time_in_state(self) -> float:
         """

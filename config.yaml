@@ -53,6 +53,7 @@ ui:
   window_width: 500
   window_height: 450
   update_interval_ms: 100   # Update UI every 100ms
+  fullscreen: true
 
 # Stepper motor driver configuration (STMicroelectronics STSPIN220)
 stepper_motor:

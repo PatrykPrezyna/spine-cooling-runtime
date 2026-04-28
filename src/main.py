@@ -46,6 +46,8 @@ class SensorMonitorApp:
         self.compressor_driver: Optional[CompressorUartDriver] = None
         self.last_compressor_telemetry: Optional[CompressorTelemetry] = None
         self.stepper_speed_rpm: int = int(self.config.get('stepper_motor', {}).get('default_speed_rpm', 30))
+        self.pumping_stepper_speed_rpm: int = 60
+        self.pumping_slow_stepper_speed_rpm: int = 10
         self.compressor_speed_rpm: int = int(self.config.get('compressor', {}).get('default_speed_rpm', 3000))
         self.compressor_command_on: bool = bool(self.config.get('compressor', {}).get('start_on', False))
         self.jog_direction: int = 0
@@ -180,6 +182,24 @@ class SensorMonitorApp:
         if self.ui:
             error_msg = self.state_machine.get_error_message() if new_state == State.ERROR else None
             self.ui.update_state_display(new_state.value, error_msg)
+        self._apply_state_driven_stepper_control(new_state)
+
+    def _apply_state_driven_stepper_control(self, state: State):
+        """
+        Drive stepper motor from state machine:
+        - Pumping: run continuous forward at 60 RPM
+        - Any other state: stop automatic continuous run
+        """
+        if state == State.PUMPING:
+            self.stepper_speed_rpm = self.pumping_stepper_speed_rpm
+            self.on_stepper_continuous_toggle(True)
+            return
+        if state == State.PUMPING_SLOWLY:
+            self.stepper_speed_rpm = self.pumping_slow_stepper_speed_rpm
+            self.on_stepper_continuous_toggle(True)
+            return
+        if self.stepper_continuous_forward:
+            self.on_stepper_continuous_toggle(False)
     
     def _update_stepper_ui_status(self):
         """Push latest stepper speed into the service tab."""
@@ -203,6 +223,8 @@ class SensorMonitorApp:
             temperatures = {}
             if self.thermocouple_reader:
                 temperatures = self.thermocouple_reader.read_temperatures()
+            body_temp = temperatures.get("Body Temp")
+            set_temp = self.ui.main_graph_widget.set_temperature if self.ui else None
             compressor_should_run = self.compressor_command_on
             if self.compressor_driver:
                 self.last_compressor_telemetry = self.compressor_driver.exchange(
@@ -214,7 +236,11 @@ class SensorMonitorApp:
             
             # Update state machine with sensor states
             if self.state_machine:
-                self.state_machine.update(sensor_states)
+                self.state_machine.update(
+                    sensor_states,
+                    body_temp=body_temp,
+                    set_temp=set_temp,
+                )
             
             # Update UI
             if self.ui:

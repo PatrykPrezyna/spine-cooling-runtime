@@ -1455,7 +1455,13 @@ class EnhancedSensorMonitorWindow(QMainWindow):
     def _setup_window(self):
         """Setup main window properties"""
         self.setWindowTitle("Cartridge Level Monitor")
-        self.setFixedSize(800, 480)
+        ui_config = self.config.get("ui", {})
+        fullscreen = bool(ui_config.get("fullscreen", False))
+        if fullscreen:
+            self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+            self.showFullScreen()
+        else:
+            self.setFixedSize(800, 480)
         self.setStyleSheet("""
             QMainWindow, QWidget {
                 background: #eef2f5;
@@ -1544,11 +1550,12 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             }
         """)
         
-        # Center window on screen
-        screen = QApplication.primaryScreen().geometry()
-        x = (screen.width() - 800) // 2
-        y = (screen.height() - 480) // 2
-        self.move(x, y)
+        # Center window on screen when running windowed.
+        if not fullscreen:
+            screen = QApplication.primaryScreen().geometry()
+            x = (screen.width() - 800) // 2
+            y = (screen.height() - 480) // 2
+            self.move(x, y)
     
     def _create_widgets(self):
         """Create UI widgets"""
@@ -1832,7 +1839,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         - Pumping state  -> stop pumping
         """
         current_state = self.state_label.text().replace("State: ", "")
-        if current_state == "Pumping":
+        if current_state in ("Pumping", "Pumping Slowly"):
             if self.on_stop_pumping_callback:
                 self.on_stop_pumping_callback()
         elif current_state == "Cooling":
@@ -1940,7 +1947,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         """)
         
         # Update unified pumping toggle button (label + style + enabled state)
-        if state_name == "Pumping":
+        if state_name in ("Pumping", "Pumping Slowly"):
             self.pumping_toggle_button.setText("STOP PUMPING")
             self._apply_pumping_button_style(active=True)
             self.pumping_toggle_button.setEnabled(True)
