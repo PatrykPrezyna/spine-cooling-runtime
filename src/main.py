@@ -301,6 +301,8 @@ class SensorMonitorApp:
     def on_stepper_jog_start(self, direction: int):
         """Start jog movement while jog button is held."""
         self.stepper_continuous_forward = False
+        if self.stepper_driver:
+            self.stepper_driver.stop_continuous()
         if not self.stepper_driver:
             return
         if not self.stepper_driver.enabled:
@@ -330,14 +332,14 @@ class SensorMonitorApp:
                 return
             if not self.stepper_driver.enabled:
                 self.stepper_driver.enable()
-            self.jog_direction = 1
-            if self.jog_timer:
-                self._update_jog_timer_interval()
-                if not self.jog_timer.isActive():
-                    self.jog_timer.start()
-            self._on_jog_tick()
+            self.jog_direction = 0
+            if self.jog_timer and self.jog_timer.isActive():
+                self.jog_timer.stop()
+            self.stepper_driver.start_continuous(direction=1, speed_rpm=self.stepper_speed_rpm)
             self._update_stepper_ui_status()
             return
+        if self.stepper_driver:
+            self.stepper_driver.stop_continuous()
         self.on_stepper_jog_stop()
     
     def _compute_jog_interval_ms(self) -> int:
@@ -524,6 +526,7 @@ class SensorMonitorApp:
             self.jog_timer.stop()
             self.jog_timer = None
         if self.stepper_driver:
+            self.stepper_driver.stop_continuous()
             self.stepper_driver.cleanup()
         if self.compressor_driver:
             self.compressor_driver.cleanup()

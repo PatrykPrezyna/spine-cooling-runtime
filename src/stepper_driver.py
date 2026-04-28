@@ -1,6 +1,7 @@
 """Simple pulse/dir/enable stepper driver module (TB6600/TB600 style)."""
 
 import time
+from threading import Event, Thread
 from threading import Lock
 from typing import Optional
 
@@ -60,6 +61,8 @@ class TB6600Driver:
         self.position_steps: int = 0
         self.fault: bool = False
         self._lock = Lock()
+        self._continuous_stop_event = Event()
+        self._continuous_thread: Optional[Thread] = None
 
         if self.simulation_mode:
             print(f"{self.DRIVER_NAME}: simulation mode (no GPIO access)")
@@ -234,6 +237,53 @@ class TB6600Driver:
 
             return direction * remaining
 
+    def start_continuous(self, direction: int = 1, speed_rpm: Optional[float] = None) -> None:
+        """Start uninterrupted continuous stepping in a background loop."""
+        with self._lock:
+            if not self.is_initialized:
+                return
+            if not self.enabled:
+                if self.simulation_mode:
+                    self.enabled = True
+                else:
+                    self.enable()
+            if self._continuous_thread and self._continuous_thread.is_alive():
+                return
+            self._continuous_stop_event.clear()
+            run_direction = 1 if direction >= 0 else -1
+            run_speed = speed_rpm if speed_rpm is not None else self.max_speed_rpm
+            self._continuous_thread = Thread(
+                target=self._continuous_loop,
+                args=(run_direction, float(run_speed)),
+                name="stepper_continuous_loop",
+                daemon=True,
+            )
+            self._continuous_thread.start()
+
+    def stop_continuous(self) -> None:
+        """Stop continuous stepping loop."""
+        self._continuous_stop_event.set()
+        thread = self._continuous_thread
+        if thread and thread.is_alive():
+            thread.join(timeout=0.5)
+        self._continuous_thread = None
+
+    def _continuous_loop(self, direction: int, speed_rpm: float) -> None:
+        """Background step loop used for true continuous movement."""
+        step_period = self._compute_step_period(speed_rpm)
+        if self.simulation_mode:
+            while not self._continuous_stop_event.is_set():
+                self.position_steps += direction
+                # Keep sim load light while still indicating movement.
+                self._sleep_precise(min(0.002, step_period))
+            return
+
+        GPIO.output(self.pin_dir, GPIO.HIGH if direction > 0 else GPIO.LOW)
+        time.sleep(0.000002)
+        while not self._continuous_stop_event.is_set():
+            self._pulse_step(step_period)
+            self.position_steps += direction
+
     def move_to(self, target_steps: int, speed_rpm: Optional[float] = None) -> int:
         """Move to an absolute step position."""
         delta = target_steps - self.position_steps
@@ -263,6 +313,7 @@ class TB6600Driver:
 
     def cleanup(self) -> None:
         """Release GPIO resources and disable the driver."""
+        self.stop_continuous()
         if self.simulation_mode or not self.is_initialized:
             self.is_initialized = False
             return
