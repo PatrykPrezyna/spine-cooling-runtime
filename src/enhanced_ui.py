@@ -1451,15 +1451,17 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self._create_widgets()
         self._setup_layout()
         self._setup_timer()
+        if getattr(self, "_fullscreen_requested", False):
+            # Enter fullscreen only after widgets/layout exist.
+            self.showFullScreen()
     
     def _setup_window(self):
         """Setup main window properties"""
         self.setWindowTitle("Cartridge Level Monitor")
         ui_config = self.config.get("ui", {})
-        fullscreen = bool(ui_config.get("fullscreen", False))
-        if fullscreen:
+        self._fullscreen_requested = bool(ui_config.get("fullscreen", False))
+        if self._fullscreen_requested:
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-            self.showFullScreen()
         else:
             self.setFixedSize(800, 480)
         self.setStyleSheet("""
@@ -1551,7 +1553,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         """)
         
         # Center window on screen when running windowed.
-        if not fullscreen:
+        if not self._fullscreen_requested:
             screen = QApplication.primaryScreen().geometry()
             x = (screen.width() - 800) // 2
             y = (screen.height() - 480) // 2
@@ -1993,7 +1995,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
     def resizeEvent(self, event):
         """Keep advanced-mode status indicator at half-width on resize."""
         super().resizeEvent(event)
-        if self.content_stack.currentWidget() is self.advanced_page:
+        if hasattr(self, "content_stack") and self.content_stack.currentWidget() is self.advanced_page:
             half_width = max(260, (self.width() - 20) // 2)
             self.state_label.setFixedWidth(half_width)
     
