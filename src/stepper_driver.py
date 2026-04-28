@@ -63,6 +63,7 @@ class TB6600Driver:
         self._lock = Lock()
         self._continuous_stop_event = Event()
         self._continuous_thread: Optional[Thread] = None
+        self._continuous_pwm = None
 
         if self.simulation_mode:
             print(f"{self.DRIVER_NAME}: simulation mode (no GPIO access)")
@@ -207,6 +208,9 @@ class TB6600Driver:
         if num_steps == 0:
             return 0
 
+        # Ensure continuous mode is not active before finite-step moves.
+        self.stop_continuous()
+
         with self._lock:
             if not self.is_initialized:
                 return 0
@@ -248,11 +252,20 @@ class TB6600Driver:
                     self.enabled = True
                 else:
                     self.enable()
-            if self._continuous_thread and self._continuous_thread.is_alive():
-                return
+            # Stop existing continuous mode first so speed/direction can update.
+            self._stop_continuous_locked()
             self._continuous_stop_event.clear()
             run_direction = 1 if direction >= 0 else -1
             run_speed = speed_rpm if speed_rpm is not None else self.max_speed_rpm
+            if not self.simulation_mode:
+                # Use PWM for smoother continuous pulses and less Python scheduler jitter.
+                step_period = self._compute_step_period(run_speed)
+                frequency_hz = max(1.0, 1.0 / max(step_period, 1e-6))
+                GPIO.output(self.pin_dir, GPIO.HIGH if run_direction > 0 else GPIO.LOW)
+                time.sleep(0.000002)
+                self._continuous_pwm = GPIO.PWM(self.pin_step, frequency_hz)
+                self._continuous_pwm.start(50.0)
+                return
             self._continuous_thread = Thread(
                 target=self._continuous_loop,
                 args=(run_direction, float(run_speed)),
@@ -263,7 +276,20 @@ class TB6600Driver:
 
     def stop_continuous(self) -> None:
         """Stop continuous stepping loop."""
+        with self._lock:
+            self._stop_continuous_locked()
+
+    def _stop_continuous_locked(self) -> None:
+        """Internal stop helper; caller must hold _lock."""
         self._continuous_stop_event.set()
+        if self._continuous_pwm is not None:
+            try:
+                self._continuous_pwm.stop()
+            except Exception:
+                pass
+            self._continuous_pwm = None
+            if not self.simulation_mode and self.is_initialized:
+                GPIO.output(self.pin_step, GPIO.LOW)
         thread = self._continuous_thread
         if thread and thread.is_alive():
             thread.join(timeout=0.5)
