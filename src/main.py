@@ -283,6 +283,10 @@ class SensorMonitorApp:
             requested_speed = min(requested_speed, int(self.stepper_driver.max_speed_rpm))
         self.stepper_speed_rpm = max(1, requested_speed)
         self._update_jog_timer_interval()
+        if self.stepper_continuous_forward and self.stepper_driver:
+            # Re-apply continuous speed immediately.
+            self.stepper_driver.stop_continuous()
+            self.stepper_driver.start_continuous(direction=1, speed_rpm=self.stepper_speed_rpm)
         if self.ui:
             self._update_stepper_ui_status()
 
@@ -336,6 +340,8 @@ class SensorMonitorApp:
             self.jog_direction = 0
             if self.jog_timer and self.jog_timer.isActive():
                 self.jog_timer.stop()
+            # Always restart to apply latest speed/state target.
+            self.stepper_driver.stop_continuous()
             self.stepper_driver.start_continuous(direction=1, speed_rpm=self.stepper_speed_rpm)
             self._update_stepper_ui_status()
             return
