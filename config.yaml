@@ -37,6 +37,14 @@ thermocouples:
     3: "Temp 3"
     4: "Temp 4"
 
+compressor:
+  enabled: true
+  port: "/dev/ttyS0"
+  baudrate: 600
+  timeout_s: 0.08
+  default_speed_rpm: 3000
+  max_speed_rpm: 6000
+
 logging:
   csv_directory: "data/csv"
   filename_format: "sensor_log_%Y%m%d_%H%M%S.csv"

@@ -18,6 +18,7 @@ from enhanced_ui import EnhancedSensorMonitorWindow
 from state_machine import StateMachine, State
 from stepper_driver import STSPIN220Driver
 from thermocouple_reader import ThermocoupleReader
+from compressor_uart_driver import CompressorUartDriver, CompressorTelemetry
 
 
 class SensorMonitorApp:
@@ -42,7 +43,11 @@ class SensorMonitorApp:
         self.state_machine: Optional[StateMachine] = None
         self.stepper_driver: Optional[STSPIN220Driver] = None
         self.thermocouple_reader: Optional[ThermocoupleReader] = None
+        self.compressor_driver: Optional[CompressorUartDriver] = None
+        self.last_compressor_telemetry: Optional[CompressorTelemetry] = None
         self.stepper_speed_rpm: int = int(self.config.get('stepper_motor', {}).get('default_speed_rpm', 30))
+        self.compressor_speed_rpm: int = int(self.config.get('compressor', {}).get('default_speed_rpm', 3000))
+        self.compressor_command_on: bool = bool(self.config.get('compressor', {}).get('start_on', False))
         self.jog_direction: int = 0
         self.jog_step_chunk: int = int(self.config.get('stepper_motor', {}).get('jog_step_chunk', 24))
         self.stepper_continuous_forward: bool = False
@@ -115,6 +120,16 @@ class SensorMonitorApp:
                 print("Thermocouple reader initialized")
             elif self.thermocouple_reader.last_error:
                 print(f"Thermocouple reader inactive: {self.thermocouple_reader.last_error}")
+
+            # Initialize compressor UART driver (optional, non-fatal).
+            self.compressor_driver = CompressorUartDriver(
+                self.config,
+                simulation_mode=self.simulation_mode,
+            )
+            if self.compressor_driver.is_initialized:
+                print("Compressor UART driver initialized")
+            elif self.compressor_driver.last_error:
+                print(f"Compressor UART inactive: {self.compressor_driver.last_error}")
             
             # Initialize stepper motor driver
             # In simulation mode we keep the same API but avoid real GPIO access.
@@ -170,7 +185,13 @@ class SensorMonitorApp:
         """Push latest stepper speed into the service tab."""
         if not self.ui or not self.stepper_driver:
             return
+        compressor_on = bool(
+            self.last_compressor_telemetry and self.last_compressor_telemetry.actual_rpm > 0
+        )
         self.ui.service_tab.update_outputs(
+            compressor_on=compressor_on,
+            compressor_speed_rpm=self.compressor_speed_rpm,
+            compressor_command_on=self.compressor_command_on,
             stepper_speed_rpm=self.stepper_speed_rpm,
         )
     
@@ -182,6 +203,14 @@ class SensorMonitorApp:
             temperatures = {}
             if self.thermocouple_reader:
                 temperatures = self.thermocouple_reader.read_temperatures()
+            compressor_should_run = self.compressor_command_on
+            if self.compressor_driver:
+                self.last_compressor_telemetry = self.compressor_driver.exchange(
+                    on=compressor_should_run,
+                    set_speed_rpm=self.compressor_speed_rpm,
+                )
+                if self.compressor_driver.last_error:
+                    print(self.compressor_driver.last_error)
             
             # Update state machine with sensor states
             if self.state_machine:
@@ -227,6 +256,19 @@ class SensorMonitorApp:
             requested_speed = min(requested_speed, int(self.stepper_driver.max_speed_rpm))
         self.stepper_speed_rpm = max(1, requested_speed)
         self._update_jog_timer_interval()
+        if self.ui:
+            self._update_stepper_ui_status()
+
+    def on_compressor_toggle(self, enabled: bool):
+        """Handle compressor ON/OFF toggle from service tab."""
+        self.compressor_command_on = bool(enabled)
+        if self.ui:
+            self._update_stepper_ui_status()
+
+    def on_compressor_speed_changed(self, speed_rpm: int):
+        """Handle compressor speed setpoint from service tab."""
+        max_speed = int(self.config.get('compressor', {}).get('max_speed_rpm', 6000))
+        self.compressor_speed_rpm = max(0, min(int(speed_rpm), max_speed))
         if self.ui:
             self._update_stepper_ui_status()
     
@@ -335,6 +377,11 @@ class SensorMonitorApp:
                 self.config,
                 simulation_mode=self.simulation_mode,
             )
+            self.compressor_driver = CompressorUartDriver(
+                self.config,
+                simulation_mode=self.simulation_mode,
+            )
+            self.last_compressor_telemetry = None
             
             # Update UI to reflect actual mode
             if self.ui:
@@ -400,6 +447,8 @@ class SensorMonitorApp:
             self.ui.on_stepper_jog_start_callback = self.on_stepper_jog_start
             self.ui.on_stepper_jog_stop_callback = self.on_stepper_jog_stop
             self.ui.on_stepper_continuous_toggle_callback = self.on_stepper_continuous_toggle
+            self.ui.on_compressor_toggle_callback = self.on_compressor_toggle
+            self.ui.on_compressor_speed_change_callback = self.on_compressor_speed_changed
             
             # Set the timer update callback
             self.ui.set_update_callback(self.update_display)
@@ -450,6 +499,9 @@ class SensorMonitorApp:
             self.jog_timer = None
         if self.stepper_driver:
             self.stepper_driver.cleanup()
+        if self.compressor_driver:
+            self.compressor_driver.cleanup()
+            self.compressor_driver = None
         self.thermocouple_reader = None
         
         print("Cleanup complete")
