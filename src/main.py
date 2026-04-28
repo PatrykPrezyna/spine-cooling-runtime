@@ -42,7 +42,8 @@ class SensorMonitorApp:
         self.stepper_driver: Optional[STSPIN220Driver] = None
         self.stepper_speed_rpm: int = int(self.config.get('stepper_motor', {}).get('default_speed_rpm', 30))
         self.jog_direction: int = 0
-        self.jog_step_chunk: int = 4
+        self.jog_step_chunk: int = int(self.config.get('stepper_motor', {}).get('jog_step_chunk', 24))
+        self.stepper_continuous_forward: bool = False
         self.jog_timer: Optional[QTimer] = None
         
         self.is_running = False
@@ -216,6 +217,7 @@ class SensorMonitorApp:
     
     def on_stepper_jog_start(self, direction: int):
         """Start jog movement while jog button is held."""
+        self.stepper_continuous_forward = False
         if not self.stepper_driver:
             return
         if not self.stepper_driver.enabled:
@@ -231,10 +233,29 @@ class SensorMonitorApp:
     
     def on_stepper_jog_stop(self):
         """Stop jog movement."""
+        self.stepper_continuous_forward = False
         self.jog_direction = 0
         if self.jog_timer and self.jog_timer.isActive():
             self.jog_timer.stop()
         self._update_stepper_ui_status()
+
+    def on_stepper_continuous_toggle(self, enabled: bool):
+        """Toggle continuous forward movement ON/OFF."""
+        self.stepper_continuous_forward = bool(enabled)
+        if self.stepper_continuous_forward:
+            if not self.stepper_driver:
+                return
+            if not self.stepper_driver.enabled:
+                self.stepper_driver.enable()
+            self.jog_direction = 1
+            if self.jog_timer:
+                self._update_jog_timer_interval()
+                if not self.jog_timer.isActive():
+                    self.jog_timer.start()
+            self._on_jog_tick()
+            self._update_stepper_ui_status()
+            return
+        self.on_stepper_jog_stop()
     
     def _compute_jog_interval_ms(self) -> int:
         """
@@ -357,6 +378,7 @@ class SensorMonitorApp:
             self.ui.on_stepper_speed_change_callback = self.on_stepper_speed_changed
             self.ui.on_stepper_jog_start_callback = self.on_stepper_jog_start
             self.ui.on_stepper_jog_stop_callback = self.on_stepper_jog_stop
+            self.ui.on_stepper_continuous_toggle_callback = self.on_stepper_continuous_toggle
             
             # Set the timer update callback
             self.ui.set_update_callback(self.update_display)

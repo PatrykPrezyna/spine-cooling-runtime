@@ -889,6 +889,9 @@ class ServiceTab(QWidget):
         self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
+        self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
+        self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
+        self.stepper_continuous_on: bool = False
         
         self._create_widgets()
         self._setup_layout()
@@ -964,6 +967,11 @@ class ServiceTab(QWidget):
         self.jog_forward_button.setStyleSheet(self._JOG_BUTTON_STYLE)
         self.jog_forward_button.pressed.connect(lambda: self._on_jog_pressed(1))
         self.jog_forward_button.released.connect(self._on_jog_released)
+
+        self.stepper_continuous_button = QPushButton("RUN OFF")
+        self.stepper_continuous_button.setMinimumHeight(48)
+        self.stepper_continuous_button.clicked.connect(self._on_stepper_continuous_toggle_clicked)
+        self._apply_continuous_button_style(False)
         
     def _setup_layout(self):
         """Setup service tab layout"""
@@ -1001,6 +1009,7 @@ class ServiceTab(QWidget):
         jog_layout.setSpacing(1)
         jog_layout.addWidget(self.jog_reverse_button)
         jog_layout.addWidget(self.jog_forward_button)
+        jog_layout.addWidget(self.stepper_continuous_button)
         outputs_layout.addLayout(jog_layout)
         self.outputs_group.setLayout(outputs_layout)
         main_layout.addWidget(self.outputs_group)
@@ -1038,6 +1047,7 @@ class ServiceTab(QWidget):
         self.stepper_speed_label.setText(f"{self.stepper_speed_rpm} RPM")
         self.jog_reverse_button.setEnabled(True)
         self.jog_forward_button.setEnabled(True)
+        self.stepper_continuous_button.setEnabled(True)
 
     def _on_stepper_speed_changed(self, value: int):
         """Handle speed slider changes."""
@@ -1060,6 +1070,38 @@ class ServiceTab(QWidget):
         """Stop jog movement when the jog button is released."""
         if self.on_stepper_jog_stop_callback:
             self.on_stepper_jog_stop_callback()
+
+    def _on_stepper_continuous_toggle_clicked(self):
+        """Toggle continuous forward motion ON/OFF."""
+        self.stepper_continuous_on = not self.stepper_continuous_on
+        self._apply_continuous_button_style(self.stepper_continuous_on)
+        if self.on_stepper_continuous_toggle_callback:
+            self.on_stepper_continuous_toggle_callback(self.stepper_continuous_on)
+
+    def _apply_continuous_button_style(self, is_on: bool):
+        if is_on:
+            text = "RUN ON"
+            bg = "#16a34a"
+            hover = "#15803d"
+        else:
+            text = "RUN OFF"
+            bg = "#6b7280"
+            hover = "#4b5563"
+        self.stepper_continuous_button.setText(text)
+        self.stepper_continuous_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: white;
+                font-size: 15px;
+                font-weight: 700;
+                border-radius: 16px;
+                padding: 12px 16px;
+                border: 1px solid #cfd8e0;
+            }}
+            QPushButton:hover {{
+                background-color: {hover};
+            }}
+        """)
 
     @staticmethod
     def _group_box_style(border_color: str, font_size: str, bg_color: str = "white", margin_top: int = 10) -> str:
@@ -1439,6 +1481,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.service_tab.on_stepper_speed_change_callback = self._on_service_stepper_speed_change
         self.service_tab.on_stepper_jog_start_callback = self._on_service_stepper_jog_start
         self.service_tab.on_stepper_jog_stop_callback = self._on_service_stepper_jog_stop
+        self.service_tab.on_stepper_continuous_toggle_callback = self._on_service_stepper_continuous_toggle
 
         # Service 2 tab (temperature channels)
         self.service2_tab = Service2Tab()
@@ -1670,6 +1713,11 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         """Forward service-tab jog stop to app callback."""
         if self.on_stepper_jog_stop_callback:
             self.on_stepper_jog_stop_callback()
+
+    def _on_service_stepper_continuous_toggle(self, enabled: bool):
+        """Forward service-tab continuous run toggle to app callback."""
+        if self.on_stepper_continuous_toggle_callback:
+            self.on_stepper_continuous_toggle_callback(enabled)
     
     def _on_pumping_toggle_clicked(self):
         """Handle the unified pumping toggle click.
