@@ -1998,6 +1998,38 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         if hasattr(self, "content_stack") and self.content_stack.currentWidget() is self.advanced_page:
             half_width = max(260, (self.width() - 20) // 2)
             self.state_label.setFixedWidth(half_width)
+
+    def keyPressEvent(self, event):
+        """Allow exiting/toggling fullscreen with keyboard shortcuts."""
+        if event.key() == Qt.Key.Key_Escape and self.isFullScreen():
+            self._leave_fullscreen_mode()
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_F11:
+            if self.isFullScreen():
+                self._leave_fullscreen_mode()
+            else:
+                self._enter_fullscreen_mode()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _enter_fullscreen_mode(self):
+        """Switch to frameless fullscreen mode."""
+        self._fullscreen_requested = True
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        self.showFullScreen()
+
+    def _leave_fullscreen_mode(self):
+        """Return to normal windowed mode with title bar."""
+        self._fullscreen_requested = False
+        self.setWindowFlags(Qt.WindowType.Window)
+        self.showNormal()
+        self.setFixedSize(800, 480)
+        screen = QApplication.primaryScreen().geometry()
+        x = (screen.width() - 800) // 2
+        y = (screen.height() - 480) // 2
+        self.move(x, y)
     
     def closeEvent(self, event):
         """Handle window close event"""
