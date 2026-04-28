@@ -51,6 +51,13 @@ class TB6600Driver:
             )
         self.microstepping: int = requested_microstepping
         self.max_speed_rpm: float = stepper_cfg.get('max_speed_rpm', 60)
+        self.start_speed_rpm: float = float(stepper_cfg.get('start_speed_rpm', 12))
+        self.ramp_steps: int = int(stepper_cfg.get('ramp_steps', 40))
+        self.pulse_high_time_s: float = float(stepper_cfg.get('pulse_high_time_s', 0.00002))
+        self.dir_setup_time_s: float = float(stepper_cfg.get('dir_setup_time_s', 0.00001))
+        self.dir_hold_time_s: float = float(stepper_cfg.get('dir_hold_time_s', 0.00001))
+        # Treat closely spaced step() calls in same direction as one continuous move.
+        self.continuous_motion_timeout_s: float = float(stepper_cfg.get('continuous_motion_timeout_s', 0.08))
         self.disable_on_idle: bool = stepper_cfg.get('disable_on_idle', True)
         self.enable_on_startup: bool = stepper_cfg.get('enable_on_startup', False)
 
@@ -59,6 +66,8 @@ class TB6600Driver:
         self.enabled: bool = False
         self.position_steps: int = 0
         self.fault: bool = False
+        self._last_direction: int = 0
+        self._last_motion_time_s: float = 0.0
         self._lock = Lock()
 
         if self.simulation_mode:
@@ -130,7 +139,7 @@ class TB6600Driver:
         achieved speed closer to the requested RPM because GPIO/loop overhead is
         accounted for inside the period.
         """
-        pulse_high_seconds = min(0.00001, period_seconds / 2.0)
+        pulse_high_seconds = min(self.pulse_high_time_s, period_seconds / 2.0)
         start = time.perf_counter()
         GPIO.output(self.pin_step, GPIO.HIGH)
         self._sleep_precise(pulse_high_seconds)
@@ -167,6 +176,31 @@ class TB6600Driver:
         if steps_per_second <= 0:
             return 0.001
         return 1.0 / steps_per_second
+
+    def _compute_ramped_period(self, step_idx: int, total_steps: int, target_period: float, continuous: bool) -> float:
+        """Return a per-step period with accel/decel when starting from rest."""
+        if continuous or total_steps <= 1 or self.ramp_steps <= 0:
+            return target_period
+
+        start_period = self._compute_step_period(self.start_speed_rpm)
+        if start_period <= target_period:
+            return target_period
+
+        ramp = min(self.ramp_steps, total_steps // 2)
+        if ramp <= 0:
+            return target_period
+
+        # Acceleration phase.
+        if step_idx < ramp:
+            frac = (step_idx + 1) / ramp
+            return start_period - (start_period - target_period) * frac
+        # Deceleration phase.
+        tail_start = total_steps - ramp
+        if step_idx >= tail_start:
+            frac = (step_idx - tail_start + 1) / ramp
+            return target_period + (start_period - target_period) * frac
+        # Cruise.
+        return target_period
 
     def set_microstepping(self, microstepping: int) -> int:
         """
@@ -214,19 +248,30 @@ class TB6600Driver:
 
             direction = 1 if num_steps > 0 else -1
             remaining = abs(num_steps)
-
-            step_period = self._compute_step_period(speed_rpm)
+            target_step_period = self._compute_step_period(speed_rpm)
 
             if self.simulation_mode:
                 self.position_steps += direction * remaining
                 return direction * remaining
 
-            GPIO.output(self.pin_dir, GPIO.HIGH if direction > 0 else GPIO.LOW)
-            time.sleep(0.000002)
+            now = time.perf_counter()
+            continuous = (
+                self._last_direction == direction
+                and (now - self._last_motion_time_s) <= self.continuous_motion_timeout_s
+            )
 
-            for _ in range(remaining):
+            if not continuous:
+                GPIO.output(self.pin_dir, GPIO.HIGH if direction > 0 else GPIO.LOW)
+                self._sleep_precise(self.dir_setup_time_s)
+
+            for i in range(remaining):
+                step_period = self._compute_ramped_period(i, remaining, target_step_period, continuous)
                 self._pulse_step(step_period)
                 self.position_steps += direction
+
+            self._sleep_precise(self.dir_hold_time_s)
+            self._last_direction = direction
+            self._last_motion_time_s = time.perf_counter()
 
             if self.disable_on_idle:
                 GPIO.output(self.pin_enable, self._en_off_level())
