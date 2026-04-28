@@ -189,3 +189,6 @@ Medical device prototype - Internal use only
 6) errors table
 5) Uart simulation
 6) validation plan 
+
+Stepper Motor:
+sources: https://www.instructables.com/Raspberry-Pi-Python-and-a-TB6600-Stepper-Motor-Dri/
