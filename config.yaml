@@ -65,6 +65,8 @@ stepper_motor:
 
   # Motion
   default_speed_rpm: 30
+  pumping_speed_rpm: 60
+  pumping_slow_speed_rpm: 3
   max_speed_rpm: 600
 
   # Safety / power

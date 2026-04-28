@@ -45,9 +45,10 @@ class SensorMonitorApp:
         self.thermocouple_reader: Optional[ThermocoupleReader] = None
         self.compressor_driver: Optional[CompressorUartDriver] = None
         self.last_compressor_telemetry: Optional[CompressorTelemetry] = None
-        self.stepper_speed_rpm: int = int(self.config.get('stepper_motor', {}).get('default_speed_rpm', 30))
-        self.pumping_stepper_speed_rpm: int = 60
-        self.pumping_slow_stepper_speed_rpm: int = 10
+        stepper_cfg = self.config.get('stepper_motor', {})
+        self.stepper_speed_rpm: int = int(stepper_cfg.get('default_speed_rpm', 30))
+        self.pumping_stepper_speed_rpm: int = int(stepper_cfg.get('pumping_speed_rpm', 60))
+        self.pumping_slow_stepper_speed_rpm: int = int(stepper_cfg.get('pumping_slow_speed_rpm', 20))
         self.compressor_speed_rpm: int = int(self.config.get('compressor', {}).get('default_speed_rpm', 3000))
         self.compressor_command_on: bool = bool(self.config.get('compressor', {}).get('start_on', False))
         self.jog_direction: int = 0

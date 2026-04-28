@@ -154,13 +154,14 @@ class TB6600Driver:
         """
         if delay_seconds <= 0:
             return
-        if delay_seconds >= 0.002:
+        if delay_seconds >= 0.0005:
             time.sleep(delay_seconds)
             return
 
         target = time.perf_counter() + delay_seconds
         while time.perf_counter() < target:
-            pass
+            # Cooperative yield helps avoid periodic long stalls under load.
+            time.sleep(0)
 
     def _compute_step_period(self, speed_rpm: Optional[float]) -> float:
         """Convert an RPM target into a per-step period in seconds."""
