@@ -11,9 +11,9 @@
 from time import sleep
 import RPi.GPIO as GPIO
 #
-PUL = 17  # Stepper Drive Pulses
-DIR = 27  # Controller Direction Bit (High for Controller default / LOW to Force a Direction Change).
-ENA = 22  # Controller Enable Bit (High to Enable / LOW to Disable).
+PUL = 5  # Stepper Drive Pulses
+DIR = 25  # Controller Direction Bit (High for Controller default / LOW to Force a Direction Change).
+ENA = 24  # Controller Enable Bit (High to Enable / LOW to Disable).
 # DIRI = 14  # Status Indicator LED - Direction
 # ENAI = 15  # Status indicator LED - Controller Enable
 #
@@ -25,14 +25,6 @@ GPIO.setmode(GPIO.BCM)
 GPIO.setup(PUL, GPIO.OUT)
 GPIO.setup(DIR, GPIO.OUT)
 GPIO.setup(ENA, GPIO.OUT)
-# GPIO.setup(DIRI, GPIO.OUT)
-# GPIO.setup(ENAI, GPIO.OUT)
-#
-print('PUL = GPIO 17 - RPi 3B-Pin #11')
-print('DIR = GPIO 27 - RPi 3B-Pin #13')
-print('ENA = GPIO 22 - RPi 3B-Pin #15')
-# print('ENAI = GPIO 14 - RPi 3B-Pin #8')
-# print('DIRI = GPIO 15 - RPi 3B-Pin #10')
 
 #
 print('Initialization Completed')
@@ -52,7 +44,7 @@ print('number of Cycles to Run set to ' + str(cycles))
 #
 #
 def forward():
-    GPIO.output(ENA, GPIO.HIGH)
+    GPIO.output(ENA, GPIO.LOW)
     # GPIO.output(ENAI, GPIO.HIGH)
     print('ENA set to HIGH - Controller Enabled')
     #
@@ -66,7 +58,7 @@ def forward():
         sleep(delay)
         GPIO.output(PUL, GPIO.LOW)
         sleep(delay)
-    GPIO.output(ENA, GPIO.LOW)
+    GPIO.output(ENA, GPIO.HIGH)
     # GPIO.output(ENAI, GPIO.LOW)
     print('ENA set to LOW - Controller Disabled')
     sleep(.5) # pause for possible change direction
@@ -74,7 +66,7 @@ def forward():
 #
 #
 def reverse():
-    GPIO.output(ENA, GPIO.HIGH)
+    GPIO.output(ENA, GPIO.LOW)
     # GPIO.output(ENAI, GPIO.HIGH)
     print('ENA set to HIGH - Controller Enabled')
     #
@@ -89,7 +81,7 @@ def reverse():
         sleep(delay)
         GPIO.output(PUL, GPIO.LOW)
         sleep(delay)
-    GPIO.output(ENA, GPIO.LOW)
+    GPIO.output(ENA, GPIO.HIGH)
     # GPIO.output(ENAI, GPIO.LOW)
     print('ENA set to LOW - Controller Disabled')
     sleep(.5) # pause for possible change direction
