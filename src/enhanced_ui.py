@@ -926,9 +926,9 @@ class ServiceTab(QWidget):
         
         self.stepper_speed_slider = QSlider(Qt.Orientation.Horizontal)
         self.stepper_speed_slider.setRange(5, self.stepper_max_speed_rpm)
-        self.stepper_speed_slider.setTickInterval(5)
+        self.stepper_speed_slider.setTickInterval(10)
         self.stepper_speed_slider.setSingleStep(1)
-        self.stepper_speed_slider.setPageStep(5)
+        self.stepper_speed_slider.setPageStep(10)
         self.stepper_speed_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.stepper_speed_slider.setValue(max(5, min(self.stepper_max_speed_rpm, self.stepper_speed_rpm)))
         self.stepper_speed_slider.setMinimumHeight(52)
