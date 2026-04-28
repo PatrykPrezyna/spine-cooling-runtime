@@ -44,14 +44,7 @@ stepper_motor:
 
   # Motion
   default_speed_rpm: 30
-  max_speed_rpm: 600
-  jog_step_chunk: 24           # Larger chunks reduce cruise jitter in jog mode
-  start_speed_rpm: 12          # Ramp start speed to reduce missed steps
-  ramp_steps: 40               # Accel and decel length (microsteps)
-  pulse_high_time_s: 0.00002   # STEP HIGH pulse width (20 us)
-  dir_setup_time_s: 0.00001    # DIR setup time before first pulse
-  dir_hold_time_s: 0.00001     # DIR hold time after last pulse
-  continuous_motion_timeout_s: 0.08  # Merge close jog chunks into continuous motion
+  max_speed_rpm: 60
 
   # Safety / power
   enable_on_startup: false    # Leave motor de-energised at boot

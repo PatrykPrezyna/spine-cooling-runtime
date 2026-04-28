@@ -42,7 +42,7 @@ class SensorMonitorApp:
         self.stepper_driver: Optional[STSPIN220Driver] = None
         self.stepper_speed_rpm: int = int(self.config.get('stepper_motor', {}).get('default_speed_rpm', 30))
         self.jog_direction: int = 0
-        self.jog_step_chunk: int = int(self.config.get('stepper_motor', {}).get('jog_step_chunk', 24))
+        self.jog_step_chunk: int = 4
         self.jog_timer: Optional[QTimer] = None
         
         self.is_running = False
