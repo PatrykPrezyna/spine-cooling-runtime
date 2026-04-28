@@ -858,11 +858,11 @@ class ServiceTab(QWidget):
             QPushButton {
                 background-color: #e7edf2;
                 border: 1px solid #cfd8e0;
-                font-size: 12px;
+                font-size: 15px;
                 color: #23303b;
                 font-weight: 600;
-                border-radius: 12px;
-                padding: 8px 12px;
+                border-radius: 16px;
+                padding: 12px 16px;
             }
             QPushButton:hover {
                 background-color: #dde6ed;
@@ -907,16 +907,22 @@ class ServiceTab(QWidget):
             label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
             self.sensor_labels[name] = label
         
-        # Outputs group
-        self.outputs_group = QGroupBox("Outputs")
-        self.outputs_group.setStyleSheet(self._group_box_style("#16a34a", "12px"))
+        # Compressor group
+        self.compressor_group = QGroupBox("Compressor")
+        self.compressor_group.setStyleSheet(self._group_box_style("#16a34a", "12px"))
+        
+        # Stepper group
+        self.outputs_group = QGroupBox("Stepper")
+        self.outputs_group.setStyleSheet(self._group_box_style("#0e6a76", "12px"))
         
         # Output labels
         self.compressor_label = QLabel("Compressor: OFF")
         self.compressor_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
         
-        self.stepper_speed_label = QLabel(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
+        self.stepper_speed_label = QLabel(f"{self.stepper_speed_rpm} RPM")
         self.stepper_speed_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
+        self.stepper_speed_label.setFixedHeight(52)
+        self.stepper_speed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.stepper_speed_slider = QSlider(Qt.Orientation.Horizontal)
         self.stepper_speed_slider.setRange(5, self.stepper_max_speed_rpm)
@@ -925,17 +931,36 @@ class ServiceTab(QWidget):
         self.stepper_speed_slider.setPageStep(5)
         self.stepper_speed_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.stepper_speed_slider.setValue(max(5, min(self.stepper_max_speed_rpm, self.stepper_speed_rpm)))
+        self.stepper_speed_slider.setMinimumHeight(52)
+        self.stepper_speed_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                height: 16px;
+                background: #d8e0e6;
+                border-radius: 8px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #0e6a76;
+                border-radius: 8px;
+            }
+            QSlider::handle:horizontal {
+                background: white;
+                border: 2px solid #0e6a76;
+                width: 30px;
+                margin: -9px 0;
+                border-radius: 15px;
+            }
+        """)
         self.stepper_speed_slider.valueChanged.connect(self._on_stepper_speed_changed)
 
         # Jog controls (hold to move)
         self.jog_reverse_button = QPushButton("JOG REVERSE")
-        self.jog_reverse_button.setMinimumHeight(34)
+        self.jog_reverse_button.setMinimumHeight(48)
         self.jog_reverse_button.setStyleSheet(self._JOG_BUTTON_STYLE)
         self.jog_reverse_button.pressed.connect(lambda: self._on_jog_pressed(-1))
         self.jog_reverse_button.released.connect(self._on_jog_released)
         
         self.jog_forward_button = QPushButton("JOG FORWARD")
-        self.jog_forward_button.setMinimumHeight(34)
+        self.jog_forward_button.setMinimumHeight(48)
         self.jog_forward_button.setStyleSheet(self._JOG_BUTTON_STYLE)
         self.jog_forward_button.pressed.connect(lambda: self._on_jog_pressed(1))
         self.jog_forward_button.released.connect(self._on_jog_released)
@@ -943,8 +968,8 @@ class ServiceTab(QWidget):
     def _setup_layout(self):
         """Setup service tab layout"""
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(1, 1, 1, 1)
+        main_layout.setSpacing(1)
         
         # Sensors layout - horizontal arrangement
         sensors_layout = QHBoxLayout()
@@ -953,12 +978,27 @@ class ServiceTab(QWidget):
         self.sensors_group.setLayout(sensors_layout)
         main_layout.addWidget(self.sensors_group)
         
-        # Outputs layout
+        # Compressor layout
+        compressor_layout = QVBoxLayout()
+        compressor_layout.setContentsMargins(2, 1, 2, 1)
+        compressor_layout.setSpacing(1)
+        compressor_layout.addWidget(self.compressor_label)
+        self.compressor_group.setLayout(compressor_layout)
+        main_layout.addWidget(self.compressor_group)
+
+        # Stepper layout
         outputs_layout = QVBoxLayout()
-        outputs_layout.addWidget(self.compressor_label)
-        outputs_layout.addWidget(self.stepper_speed_label)
-        outputs_layout.addWidget(self.stepper_speed_slider)
+        outputs_layout.setContentsMargins(2, 1, 2, 1)
+        outputs_layout.setSpacing(1)
+        speed_row_layout = QHBoxLayout()
+        speed_row_layout.setContentsMargins(0, 0, 0, 0)
+        speed_row_layout.setSpacing(6)
+        speed_row_layout.addWidget(self.stepper_speed_slider, 1)
+        speed_row_layout.addWidget(self.stepper_speed_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        outputs_layout.addLayout(speed_row_layout)
         jog_layout = QHBoxLayout()
+        jog_layout.setContentsMargins(0, 0, 0, 0)
+        jog_layout.setSpacing(1)
         jog_layout.addWidget(self.jog_reverse_button)
         jog_layout.addWidget(self.jog_forward_button)
         outputs_layout.addLayout(jog_layout)
@@ -995,14 +1035,14 @@ class ServiceTab(QWidget):
         self.compressor_label.setText(f"Compressor: {comp_status}")
         self.compressor_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=comp_color))
         
-        self.stepper_speed_label.setText(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
+        self.stepper_speed_label.setText(f"{self.stepper_speed_rpm} RPM")
         self.jog_reverse_button.setEnabled(True)
         self.jog_forward_button.setEnabled(True)
 
     def _on_stepper_speed_changed(self, value: int):
         """Handle speed slider changes."""
         self.stepper_speed_rpm = int(value)
-        self.stepper_speed_label.setText(f"Stepper Speed: {self.stepper_speed_rpm} RPM")
+        self.stepper_speed_label.setText(f"{self.stepper_speed_rpm} RPM")
         if self.on_stepper_speed_change_callback:
             self.on_stepper_speed_change_callback(self.stepper_speed_rpm)
 
