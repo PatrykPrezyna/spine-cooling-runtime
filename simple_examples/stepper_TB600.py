@@ -35,7 +35,7 @@ durationBwd = 5000 # This is the duration of the motor spinning. used for revers
 print('Duration Fwd set to ' + str(durationFwd))
 print('Duration Bwd set to ' + str(durationBwd))
 #
-delay = 0.0000001 # This is actualy a delay between PUL pulses - effectively sets the mtor rotation speed.
+delay = 0.000001 # This is actualy a delay between PUL pulses - effectively sets the mtor rotation speed.
 print('Speed set to ' + str(delay))
 #
 cycles = 1000 # This is the number of cycles to be run once program is started.
