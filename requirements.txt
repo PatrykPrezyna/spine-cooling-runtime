@@ -21,6 +21,7 @@ RPi.GPIO>=0.7.1
 # Phase 2+ : Thermocouple Support (MAX31855 via SPI)
 adafruit-circuitpython-max31855>=3.2.0
 spidev>=3.5
+SMtc
 
 # Phase 3+ : Compressor Control (UART)
 pyserial>=3.5

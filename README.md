@@ -25,6 +25,50 @@ See [ENHANCED_UI_README.md](ENHANCED_UI_README.md) for detailed UI documentation
 1. enable spi echo "dtparam=spi=on" | sudo tee -a /boot/config.txt
 2. sudo reboot
 
+## Thermocouples (Sequent SMtc HAT)
+
+This project includes a thermocouple example script at `simple_examples/thermocouples.py` that reads all 8 channels using the Sequent `sm_tc` library.
+
+### Enable I2C on Raspberry Pi
+
+1. Open Raspberry Pi configuration:
+   ```bash
+   sudo raspi-config
+   ```
+2. Go to `Interface Options` > `I2C` > `Enable`.
+3. Reboot:
+   ```bash
+   sudo reboot
+   ```
+4. Optional check:
+   ```bash
+   ls /dev/i2c-1
+   ```
+
+### Install Thermocouple Dependency
+
+The project dependency list now includes `SMtc`, so install with:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+### Run Thermocouple Example
+
+From the repository root:
+
+```bash
+python simple_examples/thermocouples.py
+```
+
+To save readings to CSV:
+
+```bash
+python simple_examples/thermocouples.py temps.csv
+```
+
+Press `ENTER` to stop the loop.
+
 
 ## Installation
 
