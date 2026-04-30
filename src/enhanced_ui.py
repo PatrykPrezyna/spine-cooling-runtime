@@ -1244,15 +1244,28 @@ class ServiceTab(QWidget):
 
 
 class Service2Tab(QWidget):
-    """Service 2 tab showing temperature channels."""
+    """Animal Study tab showing temperature and pressure channels."""
     _LABEL_NEUTRAL_STYLE = "font-size: 12px; padding: 6px; color: #5c6b79;"
     _LABEL_STRONG_TEMPLATE = "font-size: 12px; padding: 6px; color: {color}; font-weight: 600;"
 
-    def __init__(self, sensor_names: list[str]):
+    _DEFAULT_PRESSURE_SENSOR_NAMES = ("Pressure 1", "Pressure 2")
+
+    def __init__(
+        self,
+        sensor_names: list[str],
+        pressure_sensor_names: Optional[list[str]] = None,
+    ):
         super().__init__()
         self.sensor_names = list(sensor_names)
+        self.pressure_sensor_names = list(
+            pressure_sensor_names
+            if pressure_sensor_names is not None
+            else self._DEFAULT_PRESSURE_SENSOR_NAMES
+        )
         self.temp_values = {name: float("nan") for name in self.sensor_names}
+        self.pressure_values = {name: float("nan") for name in self.pressure_sensor_names}
         self.temp_labels = {}
+        self.pressure_labels = {}
         self._create_widgets()
         self._setup_layout()
 
@@ -1263,6 +1276,13 @@ class Service2Tab(QWidget):
             label = QLabel(f"{name}: --°C")
             label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
             self.temp_labels[name] = label
+
+        self.pressure_group = QGroupBox("Pressure Sensors")
+        self.pressure_group.setStyleSheet(ServiceTab._group_box_style("#8b5cf6", "12px"))
+        for name in self.pressure_sensor_names:
+            label = QLabel(f"{name}: -- mmHg")
+            label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+            self.pressure_labels[name] = label
 
     def _setup_layout(self):
         main_layout = QVBoxLayout()
@@ -1276,6 +1296,15 @@ class Service2Tab(QWidget):
             temp_layout.addWidget(self.temp_labels[name], row, col)
         self.temp_group.setLayout(temp_layout)
         main_layout.addWidget(self.temp_group)
+
+        pressure_layout = QGridLayout()
+        for index, name in enumerate(self.pressure_sensor_names):
+            row = index // 2
+            col = index % 2
+            pressure_layout.addWidget(self.pressure_labels[name], row, col)
+        self.pressure_group.setLayout(pressure_layout)
+        main_layout.addWidget(self.pressure_group)
+
         main_layout.addStretch()
         self.setLayout(main_layout)
 
@@ -1300,6 +1329,22 @@ class Service2Tab(QWidget):
                 color = "#16a34a"
             label.setText(f"{name}: {value:.1f}°C")
             label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
+
+    def update_pressures(self, pressures: Optional[dict] = None):
+        """Update pressure display. Placeholder until real sensors are wired in."""
+        if pressures:
+            self.pressure_values.update(pressures)
+
+        for name, value in self.pressure_values.items():
+            label = self.pressure_labels.get(name)
+            if label is None:
+                continue
+            if math.isnan(value):
+                label.setText(f"{name}: --.- mmHg")
+                label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+                continue
+            label.setText(f"{name}: {value:.1f} mmHg")
+            label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color="#8b5cf6"))
 
 
 class MultiTemperatureGraphWidget(QWidget):
