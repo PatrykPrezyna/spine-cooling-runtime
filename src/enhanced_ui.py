@@ -1763,6 +1763,8 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         state_button_layout.addWidget(self.advanced_settings_button)
         self.state_buttons_row.setLayout(state_button_layout)
         self.state_buttons_row.setMinimumHeight(56)
+        self.state_buttons_row.setMaximumHeight(56)
+        self.state_buttons_row.setFixedHeight(56)
         self.state_buttons_row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         main_layout.addWidget(self.state_buttons_row)
         
@@ -1898,6 +1900,10 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         """Return to main screen from advanced settings page."""
         self.content_stack.setCurrentWidget(self.main_graph_widget)
         self._ensure_state_buttons_row_attached()
+        self.state_buttons_row.show()
+        self.pumping_toggle_button.show()
+        self.acknowledge_button.show()
+        self.advanced_settings_button.show()
         self._set_main_action_buttons_visible(True)
         self.to_main_menu_button.setVisible(False)
         self.state_label.setMinimumWidth(0)
@@ -1909,18 +1915,22 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self._refresh_main_action_buttons_row()
         QTimer.singleShot(0, self._refresh_main_action_buttons_row)
         QTimer.singleShot(60, self._refresh_main_action_buttons_row)
+        QTimer.singleShot(140, self._refresh_main_action_buttons_row)
 
     def _set_main_action_buttons_visible(self, visible: bool):
         """Show/hide controls; fullscreen uses disable-only workaround."""
+        fullscreen_mode = bool(getattr(self, "_fullscreen_requested", False) or self.isFullScreen())
         # Raspberry Pi fullscreen + frameless mode can fail to restore widgets
         # after hide/show cycles. In fullscreen, keep the row shown and only
         # toggle enabled state.
-        if self.isFullScreen():
+        if fullscreen_mode:
             self.state_buttons_row.show()
             self.pumping_toggle_button.show()
             self.acknowledge_button.show()
             self.advanced_settings_button.show()
             self.state_buttons_row.setEnabled(visible)
+            if visible:
+                self._refresh_main_action_buttons_row()
             return
 
         self.state_buttons_row.setVisible(visible)
