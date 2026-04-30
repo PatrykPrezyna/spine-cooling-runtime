@@ -9,21 +9,24 @@ ENA = 24
 
 # Motor config
 FULL_STEPS_PER_REV = 200
-MICROSTEPS = 8
+DEFAULT_MICROSTEPS = 4
 ROTATIONS = 10
 
 
-def move_fixed_rotations(speed_rpm: float):
+def _pulse_delay_from_rpm(rpm: float, microsteps_per_rev: int) -> float:
+    """Convert RPM to half-period delay for HIGH/LOW pulse toggling."""
+    pulses_per_second = (rpm / 60.0) * microsteps_per_rev
+    return 1.0 / (2.0 * pulses_per_second)
+
+
+def move_fixed_rotations(speed_rpm: float, ramp_rotations: float, start_rpm: float, microsteps: int):
     """
     Move the motor 10 rotations in one direction at the given speed.
     """
-    microsteps_per_rev = FULL_STEPS_PER_REV * MICROSTEPS
+    microsteps_per_rev = FULL_STEPS_PER_REV * microsteps
     total_pulses = ROTATIONS * microsteps_per_rev
 
-    # Pulse frequency from RPM:
-    # pulses/sec = (RPM / 60) * microsteps_per_rev
-    pulses_per_second = (speed_rpm / 60.0) * microsteps_per_rev
-    pulse_delay = 1.0 / (2.0 * pulses_per_second)  # HIGH + LOW make one pulse
+    ramp_pulses = int(max(0, min(total_pulses, ramp_rotations * microsteps_per_rev)))
 
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(PUL, GPIO.OUT)
@@ -36,10 +39,20 @@ def move_fixed_rotations(speed_rpm: float):
         GPIO.output(DIR, GPIO.LOW)  # One fixed direction
 
         print(f"Speed: {speed_rpm:.1f} RPM")
+        print(f"Ramp: {ramp_rotations:.2f} rotations")
+        print(f"Ramp start speed: {start_rpm:.1f} RPM")
         print(f"Microsteps/rev: {microsteps_per_rev}")
         print(f"Total pulses: {total_pulses}")
 
-        for _ in range(total_pulses):
+        for pulse_index in range(total_pulses):
+            # Linear speed ramp-up to reduce skipped steps at startup.
+            if ramp_pulses > 0 and pulse_index < ramp_pulses:
+                alpha = pulse_index / float(ramp_pulses)
+                current_rpm = start_rpm + (speed_rpm - start_rpm) * alpha
+            else:
+                current_rpm = speed_rpm
+            pulse_delay = _pulse_delay_from_rpm(current_rpm, microsteps_per_rev)
+
             GPIO.output(PUL, GPIO.HIGH)
             sleep(pulse_delay)
             GPIO.output(PUL, GPIO.LOW)
@@ -65,12 +78,43 @@ def main():
         default=60.0,
         help="Motor speed in RPM (default: 60).",
     )
+    parser.add_argument(
+        "--ramp-rotations",
+        type=float,
+        default=1.0,
+        help="How many initial rotations to use for speed ramp-up (default: 1.0).",
+    )
+    parser.add_argument(
+        "--start-rpm",
+        type=float,
+        default=10.0,
+        help="Starting RPM for ramp-up phase (default: 10).",
+    )
+    parser.add_argument(
+        "--microsteps",
+        type=int,
+        default=DEFAULT_MICROSTEPS,
+        help="Microsteps per full step (default: 4).",
+    )
     args = parser.parse_args()
 
     if args.speed_rpm <= 0:
         raise ValueError("speed-rpm must be > 0")
+    if args.start_rpm <= 0:
+        raise ValueError("start-rpm must be > 0")
+    if args.start_rpm > args.speed_rpm:
+        raise ValueError("start-rpm must be <= speed-rpm")
+    if args.ramp_rotations < 0:
+        raise ValueError("ramp-rotations must be >= 0")
+    if args.microsteps <= 0:
+        raise ValueError("microsteps must be > 0")
 
-    move_fixed_rotations(args.speed_rpm)
+    move_fixed_rotations(
+        args.speed_rpm,
+        args.ramp_rotations,
+        args.start_rpm,
+        args.microsteps,
+    )
 
 
 if __name__ == "__main__":
