@@ -43,6 +43,8 @@ class TB6600Driver:
         self.pin_dir: int = pins_cfg.get('dir', 25)
         self.en_active_high: bool = bool(stepper_cfg.get('en_active_high', True))
         self.steps_per_revolution: int = stepper_cfg.get('steps_per_revolution', 200)
+        if int(self.steps_per_revolution) <= 0:
+            raise ValueError("steps_per_revolution must be > 0")
         requested_microstepping = int(stepper_cfg.get('microstepping', 4))
         if requested_microstepping not in self.SUPPORTED_MICROSTEPPING:
             raise ValueError(
@@ -52,8 +54,14 @@ class TB6600Driver:
             )
         self.microstepping: int = requested_microstepping
         self.max_speed_rpm: float = stepper_cfg.get('max_speed_rpm', 60)
+        self.ramp_seconds: float = float(stepper_cfg.get('ramp_seconds', 1.0))
+        self.ramp_start_rpm: float = float(stepper_cfg.get('ramp_start_rpm', 5.0))
         self.disable_on_idle: bool = stepper_cfg.get('disable_on_idle', True)
         self.enable_on_startup: bool = stepper_cfg.get('enable_on_startup', False)
+        if self.ramp_seconds < 0:
+            raise ValueError("ramp_seconds must be >= 0")
+        if self.ramp_start_rpm <= 0:
+            raise ValueError("ramp_start_rpm must be > 0")
 
         self.simulation_mode: bool = force_simulation or not GPIO_AVAILABLE
         self.is_initialized: bool = False
@@ -63,7 +71,6 @@ class TB6600Driver:
         self._lock = Lock()
         self._continuous_stop_event = Event()
         self._continuous_thread: Optional[Thread] = None
-        self._continuous_pwm = None
 
         if self.simulation_mode:
             print(f"{self.DRIVER_NAME}: simulation mode (no GPIO access)")
@@ -166,12 +173,24 @@ class TB6600Driver:
 
     def _compute_step_period(self, speed_rpm: Optional[float]) -> float:
         """Convert an RPM target into a per-step period in seconds."""
-        rpm = speed_rpm if speed_rpm is not None else self.max_speed_rpm
-        rpm = max(1.0, min(float(rpm), float(self.max_speed_rpm)))
-        steps_per_second = (rpm / 60.0) * self.steps_per_revolution * self.microstepping
-        if steps_per_second <= 0:
+        frequency_hz = self._frequency_from_rpm(self._resolve_speed_rpm(speed_rpm))
+        if frequency_hz <= 0:
             return 0.001
-        return 1.0 / steps_per_second
+        return 1.0 / frequency_hz
+
+    def _pulses_per_revolution(self) -> int:
+        """Return pulse count for one motor revolution at current microstepping."""
+        return int(self.steps_per_revolution) * int(self.microstepping)
+
+    def _resolve_speed_rpm(self, speed_rpm: Optional[float]) -> float:
+        """Clamp requested speed to a safe positive RPM range."""
+        rpm = float(self.max_speed_rpm if speed_rpm is None else speed_rpm)
+        max_rpm = max(0.1, float(self.max_speed_rpm))
+        return max(0.1, min(rpm, max_rpm))
+
+    def _frequency_from_rpm(self, rpm: float) -> float:
+        """Convert RPM to pulse frequency (Hz) using current microstepping."""
+        return (float(rpm) / 60.0) * float(self._pulses_per_revolution())
 
     def set_microstepping(self, microstepping: int) -> int:
         """
@@ -196,7 +215,13 @@ class TB6600Driver:
             self.microstepping = requested
             return self.microstepping
 
-    def step(self, num_steps: int, speed_rpm: Optional[float] = None) -> int:
+    def step(
+        self,
+        num_steps: int,
+        speed_rpm: Optional[float] = None,
+        ramp_seconds: Optional[float] = None,
+        start_rpm: Optional[float] = None,
+    ) -> int:
         """
         Move the motor by ``num_steps`` microsteps.
 
@@ -223,7 +248,10 @@ class TB6600Driver:
             direction = 1 if num_steps > 0 else -1
             remaining = abs(num_steps)
 
-            step_period = self._compute_step_period(speed_rpm)
+            target_rpm = self._resolve_speed_rpm(speed_rpm)
+            applied_ramp_seconds = self.ramp_seconds if ramp_seconds is None else max(0.0, float(ramp_seconds))
+            applied_start_rpm = self.ramp_start_rpm if start_rpm is None else float(start_rpm)
+            applied_start_rpm = max(0.1, min(applied_start_rpm, target_rpm))
 
             if self.simulation_mode:
                 self.position_steps += direction * remaining
@@ -232,7 +260,19 @@ class TB6600Driver:
             GPIO.output(self.pin_dir, GPIO.HIGH if direction > 0 else GPIO.LOW)
             time.sleep(0.000002)
 
-            for _ in range(remaining):
+            if applied_ramp_seconds > 0:
+                target_hz = self._frequency_from_rpm(target_rpm)
+                ramp_steps = max(1, int(round(applied_ramp_seconds * target_hz)))
+            else:
+                ramp_steps = 0
+
+            for i in range(remaining):
+                if ramp_steps > 0 and i < ramp_steps:
+                    alpha = (i + 1) / float(ramp_steps)
+                    current_rpm = applied_start_rpm + (target_rpm - applied_start_rpm) * alpha
+                    step_period = self._compute_step_period(current_rpm)
+                else:
+                    step_period = self._compute_step_period(target_rpm)
                 self._pulse_step(step_period)
                 self.position_steps += direction
 
@@ -242,7 +282,13 @@ class TB6600Driver:
 
             return direction * remaining
 
-    def start_continuous(self, direction: int = 1, speed_rpm: Optional[float] = None) -> None:
+    def start_continuous(
+        self,
+        direction: int = 1,
+        speed_rpm: Optional[float] = None,
+        ramp_seconds: Optional[float] = None,
+        start_rpm: Optional[float] = None,
+    ) -> None:
         """Start uninterrupted continuous stepping in a background loop."""
         with self._lock:
             if not self.is_initialized:
@@ -256,19 +302,12 @@ class TB6600Driver:
             self._stop_continuous_locked()
             self._continuous_stop_event.clear()
             run_direction = 1 if direction >= 0 else -1
-            run_speed = speed_rpm if speed_rpm is not None else self.max_speed_rpm
-            if not self.simulation_mode:
-                # Use PWM for smoother continuous pulses and less Python scheduler jitter.
-                step_period = self._compute_step_period(run_speed)
-                frequency_hz = max(1.0, 1.0 / max(step_period, 1e-6))
-                GPIO.output(self.pin_dir, GPIO.HIGH if run_direction > 0 else GPIO.LOW)
-                time.sleep(0.000002)
-                self._continuous_pwm = GPIO.PWM(self.pin_step, frequency_hz)
-                self._continuous_pwm.start(50.0)
-                return
+            run_speed = self._resolve_speed_rpm(speed_rpm)
+            run_ramp_seconds = self.ramp_seconds if ramp_seconds is None else max(0.0, float(ramp_seconds))
+            run_start_rpm = self.ramp_start_rpm if start_rpm is None else float(start_rpm)
             self._continuous_thread = Thread(
                 target=self._continuous_loop,
-                args=(run_direction, float(run_speed)),
+                args=(run_direction, float(run_speed), run_ramp_seconds, run_start_rpm),
                 name="stepper_continuous_loop",
                 daemon=True,
             )
@@ -282,32 +321,45 @@ class TB6600Driver:
     def _stop_continuous_locked(self) -> None:
         """Internal stop helper; caller must hold _lock."""
         self._continuous_stop_event.set()
-        if self._continuous_pwm is not None:
-            try:
-                self._continuous_pwm.stop()
-            except Exception:
-                pass
-            self._continuous_pwm = None
-            if not self.simulation_mode and self.is_initialized:
-                GPIO.output(self.pin_step, GPIO.LOW)
         thread = self._continuous_thread
         if thread and thread.is_alive():
             thread.join(timeout=0.5)
         self._continuous_thread = None
 
-    def _continuous_loop(self, direction: int, speed_rpm: float) -> None:
+    def _continuous_loop(
+        self,
+        direction: int,
+        speed_rpm: float,
+        ramp_seconds: float,
+        start_rpm: float,
+    ) -> None:
         """Background step loop used for true continuous movement."""
-        step_period = self._compute_step_period(speed_rpm)
+        target_rpm = self._resolve_speed_rpm(speed_rpm)
+        clamped_start_rpm = max(0.1, min(float(start_rpm), target_rpm))
+        ramp_duration = max(0.0, float(ramp_seconds))
+        start_time = time.perf_counter()
+
+        def current_rpm() -> float:
+            if ramp_duration <= 0:
+                return target_rpm
+            elapsed = time.perf_counter() - start_time
+            if elapsed >= ramp_duration:
+                return target_rpm
+            alpha = elapsed / ramp_duration
+            return clamped_start_rpm + (target_rpm - clamped_start_rpm) * alpha
+
         if self.simulation_mode:
             while not self._continuous_stop_event.is_set():
                 self.position_steps += direction
                 # Keep sim load light while still indicating movement.
-                self._sleep_precise(min(0.002, step_period))
+                sim_step_period = self._compute_step_period(current_rpm())
+                self._sleep_precise(min(0.002, sim_step_period))
             return
 
         GPIO.output(self.pin_dir, GPIO.HIGH if direction > 0 else GPIO.LOW)
         time.sleep(0.000002)
         while not self._continuous_stop_event.is_set():
+            step_period = self._compute_step_period(current_rpm())
             self._pulse_step(step_period)
             self.position_steps += direction
 

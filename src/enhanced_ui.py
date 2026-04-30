@@ -128,7 +128,6 @@ class CartridgeWidget(QWidget):
         # (history tuple index, label, color)
         (1, "Set Tmp",    "#0ea5e9"),
         (2, "CSF Temp", "#16a34a"),
-        (3, "Heat Exchanger Temp", "#f59e0b"),
     )
     
     def add_temperature_sample(self, temp1: float, temp2: float):
@@ -1900,11 +1899,11 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.state_label.setMinimumWidth(0)
         self.state_label.setMaximumWidth(16777215)
         self.state_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        # Ensure the bottom action row repaints/restacks correctly after
-        # returning from the advanced page.
-        self.state_buttons_row.raise_()
-        self.state_buttons_row.updateGeometry()
-        self.state_buttons_row.repaint()
+        # Force a full relayout + repaint pass. Some Raspberry Pi Qt builds can
+        # leave this row visually hidden after page switches unless we re-show
+        # and refresh on the next event loop tick.
+        self._refresh_main_action_buttons_row()
+        QTimer.singleShot(0, self._refresh_main_action_buttons_row)
 
     def _set_main_action_buttons_visible(self, visible: bool):
         """Show or hide the main-page action controls reliably."""
@@ -1912,6 +1911,21 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.pumping_toggle_button.setVisible(visible)
         self.acknowledge_button.setVisible(visible)
         self.advanced_settings_button.setVisible(visible)
+
+    def _refresh_main_action_buttons_row(self):
+        """Force the bottom action row to be shown and repainted."""
+        self.state_buttons_row.show()
+        self.pumping_toggle_button.show()
+        self.acknowledge_button.show()
+        self.advanced_settings_button.show()
+        layout = self.centralWidget().layout() if self.centralWidget() else None
+        if layout:
+            layout.invalidate()
+            layout.activate()
+        self.state_buttons_row.raise_()
+        self.state_buttons_row.updateGeometry()
+        self.state_buttons_row.update()
+        self.state_buttons_row.repaint()
     
     def set_mode_button_enabled(self, enabled: bool):
         """Enable or disable mode toggle button in simulation tab"""

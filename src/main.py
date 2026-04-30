@@ -313,20 +313,18 @@ class SensorMonitorApp:
         if not self.stepper_driver.enabled:
             self.stepper_driver.enable()
         self.jog_direction = 1 if direction >= 0 else -1
-        if self.jog_timer:
-            self._update_jog_timer_interval()
-            if not self.jog_timer.isActive():
-                self.jog_timer.start()
-        # Execute one chunk immediately so hold-to-jog feels responsive.
-        self._on_jog_tick()
+        self.stepper_driver.start_continuous(
+            direction=self.jog_direction,
+            speed_rpm=self.stepper_speed_rpm,
+        )
         self._update_stepper_ui_status()
     
     def on_stepper_jog_stop(self):
         """Stop jog movement."""
         self.stepper_continuous_forward = False
         self.jog_direction = 0
-        if self.jog_timer and self.jog_timer.isActive():
-            self.jog_timer.stop()
+        if self.stepper_driver:
+            self.stepper_driver.stop_continuous()
         self._update_stepper_ui_status()
 
     def on_stepper_continuous_toggle(self, enabled: bool):
