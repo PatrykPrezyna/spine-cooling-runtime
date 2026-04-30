@@ -1887,7 +1887,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
     def _show_advanced_view(self):
         """Switch to in-window advanced settings page."""
         self.content_stack.setCurrentWidget(self.advanced_page)
-        self.state_buttons_row.setVisible(False)
+        self._set_main_action_buttons_visible(False)
         self.to_main_menu_button.setVisible(True)
         half_width = max(260, (self.width() - 20) // 2)
         self.state_label.setFixedWidth(half_width)
@@ -1895,11 +1895,23 @@ class EnhancedSensorMonitorWindow(QMainWindow):
     def _show_main_view(self):
         """Return to main screen from advanced settings page."""
         self.content_stack.setCurrentWidget(self.main_graph_widget)
-        self.state_buttons_row.setVisible(True)
+        self._set_main_action_buttons_visible(True)
         self.to_main_menu_button.setVisible(False)
         self.state_label.setMinimumWidth(0)
         self.state_label.setMaximumWidth(16777215)
         self.state_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        # Ensure the bottom action row repaints/restacks correctly after
+        # returning from the advanced page.
+        self.state_buttons_row.raise_()
+        self.state_buttons_row.updateGeometry()
+        self.state_buttons_row.repaint()
+
+    def _set_main_action_buttons_visible(self, visible: bool):
+        """Show or hide the main-page action controls reliably."""
+        self.state_buttons_row.setVisible(visible)
+        self.pumping_toggle_button.setVisible(visible)
+        self.acknowledge_button.setVisible(visible)
+        self.advanced_settings_button.setVisible(visible)
     
     def set_mode_button_enabled(self, enabled: bool):
         """Enable or disable mode toggle button in simulation tab"""
