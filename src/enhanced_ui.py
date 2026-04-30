@@ -1,8 +1,12 @@
 """
-Enhanced UI Module with Visual Cartridge Representation
-PyQt6-based user interface with graphical sensor display
+PyQt6 user interface for the Spine Cooling runtime.
+
+Contains the main application window (`MainScreen`) and its primary
+visualization/control widget (`MainScreenWidget`), plus auxiliary tab
+widgets (`ServiceTab`, `Service2Tab`, `SimulationTab`).
 """
 
+import math
 import sys
 import time
 from collections import deque
@@ -11,61 +15,130 @@ from typing import Optional, Callable
 from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
-    QVBoxLayout, QHBoxLayout, QWidget, QTabWidget,
+    QVBoxLayout, QHBoxLayout, QWidget,
     QLabel, QGridLayout, QGroupBox, QCheckBox, QSlider, QComboBox, QStackedWidget,
-    QSizePolicy, QTabBar
+    QSizePolicy, QTabBar,
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QColor, QLinearGradient,
-    QFont, QPainterPath
+    QFont, QPainterPath,
 )
 
 
-class CartridgeWidget(QWidget):
-    """Custom widget to draw the cartridge with levels and sensor"""
-    
+# ---------------------------------------------------------------------------
+# Shared style sheets (kept at module level so they can be tweaked once).
+# ---------------------------------------------------------------------------
+_TEMP_BUTTON_STYLE = """
+    QPushButton {
+        background-color: #0e6a76;
+        color: white;
+        font-size: 22px;
+        font-weight: 600;
+        border: 1px solid #0b565f;
+        border-radius: 12px;
+    }
+    QPushButton:pressed { background-color: #0b565f; }
+    QPushButton:hover   { background-color: #0d616c; }
+    QPushButton:disabled {
+        background-color: #d9e0e6;
+        border-color: #c8d1d8;
+        color: #8b98a5;
+    }
+"""
+
+_GRAPH_NAV_BUTTON_STYLE = """
+    QPushButton {
+        background-color: #475569;
+        color: white;
+        font-size: 14px;
+        font-weight: bold;
+        border: 2px solid #334155;
+        border-radius: 6px;
+    }
+    QPushButton:pressed { background-color: #334155; }
+    QPushButton:disabled {
+        background-color: #cbd5e1;
+        border-color: #94a3b8;
+        color: #64748b;
+    }
+"""
+
+_GRAPH_WINDOW_COMBO_STYLE = """
+    QComboBox {
+        font-size: 11px;
+        font-weight: bold;
+        color: #1f2937;
+        background-color: white;
+        border: 2px solid #94a3b8;
+        border-radius: 6px;
+        padding: 4px 8px;
+    }
+"""
+
+
+class MainScreenWidget(QWidget):
+    """Composite main-screen widget.
+
+    Renders one or more of:
+      - temperature history graph (with legend + x-axis controls),
+      - vertical setpoint gauge with touch +/- buttons,
+      - cartridge level visualization with threshold indicators.
+    """
+
     def __init__(self, show_cartridge: bool = True, show_graph: bool = True, show_temp_controls: bool = True):
         super().__init__()
         self.show_cartridge = show_cartridge
         self.show_graph = show_graph
         self.show_temp_controls = show_temp_controls
-        # Keep this widget compact enough for Pi screens, but still allow it
-        # to grow and use all remaining space in the main layout.
+        # Compact enough for Pi screens, still grows with the main layout.
         self.setMinimumSize(640, 280)
-        
-        # Sensor states
+
+        # Cartridge sensor state
         self.level_low = False
         self.level_critical = False
         self.cartridge_present = False
-        
-        # Liquid level (0.0 to 1.0, where 1.0 is full)
-        self.liquid_level = 0.7  # 70% full
-        
-        # Threshold positions (as fraction of container height)
-        self.low_threshold = 0.4      # Low warning at 40%
-        self.critical_threshold = 0.2  # Critical warning at 20%
-        
-        # Set temperature gauge configuration
+        self.liquid_level = 0.7
+        self.low_threshold = 0.4
+        self.critical_threshold = 0.2
+
+        # Setpoint configuration
         self.temp_min = 30.0
         self.temp_max = 35.0
         self.temp_step = 0.2
         self.set_temperature = 32.0
         self._temp_gauge_rect = QRectF()  # Updated during paint, used for hit testing
         self._dragging_temp = False
-        
-        # Callback for temperature changes
         self.on_temperature_change_callback: Optional[Callable[[float], None]] = None
-        
-        # Temperature history for the graph (timestamp, set_temp, temp1, temp2)
+
+        # Graph history: (timestamp, set_temp, temp1, temp2)
         self._temp_history: deque = deque()
         self._x_window_minutes_options = [5, 15, 60]
         self._x_window_minutes = 5
         self._x_pan_windows = 0
-        
-        # Touch-friendly +/- buttons for fine adjustment
+
         if self.show_temp_controls:
             self._create_temp_buttons()
             self._create_graph_nav_controls()
+
+    # ------------------------------------------------------------------
+    # Setpoint helpers
+    # ------------------------------------------------------------------
+    def _snap_to_step(self, value: float) -> float:
+        """Clamp `value` to [temp_min, temp_max] and snap to `temp_step`."""
+        clamped = max(self.temp_min, min(self.temp_max, value))
+        num_steps = round((clamped - self.temp_min) / self.temp_step)
+        return round(self.temp_min + num_steps * self.temp_step, 1)
+
+    def _commit_setpoint(self, new_temp: float) -> None:
+        """Apply a new setpoint, repaint, and notify the callback if changed."""
+        new_temp = self._snap_to_step(new_temp)
+        if abs(new_temp - self.set_temperature) <= 1e-6:
+            return
+        self.set_temperature = new_temp
+        self._update_temp_button_enabled_state()
+        self.update()
+        if self.on_temperature_change_callback:
+            self.on_temperature_change_callback(self.set_temperature)
     
     def set_sensor_states(self, states: dict):
         """Update sensor states and trigger repaint"""
@@ -96,7 +169,7 @@ class CartridgeWidget(QWidget):
                 graph_x=margin,
                 graph_y=margin,
                 graph_width=max(220, graph_width),
-                graph_height=max(220, self.height() - (2 * margin) - bottom_safe),
+                graph_height=max(330, self.height() - (2 * margin) - bottom_safe),
             )
             if self.show_temp_controls:
                 self._draw_temperature_gauge(painter)
@@ -575,24 +648,15 @@ class CartridgeWidget(QWidget):
         )
         
     def _y_to_temperature(self, y: float) -> float:
-        """Convert a y-coordinate to a temperature value, snapped to the step"""
+        """Convert a y-coordinate to a temperature value, snapped to the step."""
         if self._temp_gauge_rect.height() <= 0:
             return self.set_temperature
-        
         gauge_top = self._temp_gauge_rect.top()
         gauge_height = self._temp_gauge_rect.height()
-        
-        # Clamp y to the gauge range
         y_clamped = max(gauge_top, min(gauge_top + gauge_height, y))
-        
-        # Top = max temp, bottom = min temp
+        # Top = max temp, bottom = min temp.
         ratio = 1.0 - (y_clamped - gauge_top) / gauge_height
-        temp_value = self.temp_min + ratio * (self.temp_max - self.temp_min)
-        
-        # Snap to nearest step
-        num_steps = round((temp_value - self.temp_min) / self.temp_step)
-        snapped = self.temp_min + num_steps * self.temp_step
-        return max(self.temp_min, min(self.temp_max, round(snapped, 1)))
+        return self._snap_to_step(self.temp_min + ratio * (self.temp_max - self.temp_min))
     
     def _is_near_temp_gauge(self, pos: QPointF) -> bool:
         """Check if a mouse position is within/near the gauge track"""
@@ -604,13 +668,7 @@ class CartridgeWidget(QWidget):
     
     def _update_temperature_from_mouse(self, y: float):
         """Update set temperature from mouse y-position and notify callback"""
-        new_temp = self._y_to_temperature(y)
-        if abs(new_temp - self.set_temperature) > 1e-6:
-            self.set_temperature = new_temp
-            self._update_temp_button_enabled_state()
-            self.update()
-            if self.on_temperature_change_callback:
-                self.on_temperature_change_callback(self.set_temperature)
+        self._commit_setpoint(self._y_to_temperature(y))
     
     def mousePressEvent(self, event):
         """Handle mouse press for temperature gauge interaction"""
@@ -640,99 +698,47 @@ class CartridgeWidget(QWidget):
         super().mouseReleaseEvent(event)
     
     def set_temperature_value(self, temperature: float):
-        """Programmatically set the temperature value (snapped to step)"""
-        clamped = max(self.temp_min, min(self.temp_max, temperature))
-        num_steps = round((clamped - self.temp_min) / self.temp_step)
-        self.set_temperature = round(self.temp_min + num_steps * self.temp_step, 1)
+        """Programmatically set the temperature value (snapped, no callback)."""
+        self.set_temperature = self._snap_to_step(temperature)
         self._update_temp_button_enabled_state()
         self.update()
     
     def _create_temp_buttons(self):
-        """Create touch-friendly +/- buttons for temperature adjustment"""
-        button_style = """
-            QPushButton {
-                background-color: #0e6a76;
-                color: white;
-                font-size: 22px;
-                font-weight: 600;
-                border: 1px solid #0b565f;
-                border-radius: 12px;
-            }
-            QPushButton:pressed {
-                background-color: #0b565f;
-            }
-            QPushButton:hover {
-                background-color: #0d616c;
-            }
-            QPushButton:disabled {
-                background-color: #d9e0e6;
-                border-color: #c8d1d8;
-                color: #8b98a5;
-            }
-        """
-        
-        self.temp_minus_button = QPushButton("-", self)
-        self.temp_minus_button.setFixedSize(self._TEMP_BUTTON_SIZE, self._TEMP_BUTTON_SIZE)
-        self.temp_minus_button.setStyleSheet(button_style)
-        self.temp_minus_button.clicked.connect(self._on_temp_decrement)
-        
-        self.temp_plus_button = QPushButton("+", self)
-        self.temp_plus_button.setFixedSize(self._TEMP_BUTTON_SIZE, self._TEMP_BUTTON_SIZE)
-        self.temp_plus_button.setStyleSheet(button_style)
-        self.temp_plus_button.clicked.connect(self._on_temp_increment)
-        
-        # Enable auto-repeat so holding the button steps continuously
-        for btn in (self.temp_minus_button, self.temp_plus_button):
+        """Create touch-friendly +/- buttons for temperature adjustment."""
+        def make(text: str, on_click) -> QPushButton:
+            btn = QPushButton(text, self)
+            btn.setFixedSize(self._TEMP_BUTTON_SIZE, self._TEMP_BUTTON_SIZE)
+            btn.setStyleSheet(_TEMP_BUTTON_STYLE)
+            btn.clicked.connect(on_click)
+            # Auto-repeat: holding the button steps continuously.
             btn.setAutoRepeat(True)
             btn.setAutoRepeatDelay(400)
             btn.setAutoRepeatInterval(120)
+            return btn
+
+        self.temp_minus_button = make("-", self._on_temp_decrement)
+        self.temp_plus_button = make("+", self._on_temp_increment)
 
     def _create_graph_nav_controls(self):
         """Create graph X-axis controls (window size and panning)."""
-        nav_button_style = """
-            QPushButton {
-                background-color: #475569;
-                color: white;
-                font-size: 14px;
-                font-weight: bold;
-                border: 2px solid #334155;
-                border-radius: 6px;
-            }
-            QPushButton:pressed {
-                background-color: #334155;
-            }
-            QPushButton:disabled {
-                background-color: #cbd5e1;
-                border-color: #94a3b8;
-                color: #64748b;
-            }
-        """
-        self.graph_nav_left_button = QPushButton("<", self)
-        self.graph_nav_left_button.setFixedSize(40, 32)
-        self.graph_nav_left_button.setStyleSheet(nav_button_style)
-        self.graph_nav_left_button.clicked.connect(self._on_graph_nav_left)
+        def make_nav(text: str, on_click) -> QPushButton:
+            btn = QPushButton(text, self)
+            btn.setFixedSize(40, 32)
+            btn.setStyleSheet(_GRAPH_NAV_BUTTON_STYLE)
+            btn.clicked.connect(on_click)
+            return btn
 
-        self.graph_nav_right_button = QPushButton(">", self)
-        self.graph_nav_right_button.setFixedSize(40, 32)
-        self.graph_nav_right_button.setStyleSheet(nav_button_style)
-        self.graph_nav_right_button.clicked.connect(self._on_graph_nav_right)
+        self.graph_nav_left_button = make_nav("<", self._on_graph_nav_left)
+        self.graph_nav_right_button = make_nav(">", self._on_graph_nav_right)
 
         self.graph_window_combo = QComboBox(self)
         for minutes in self._x_window_minutes_options:
             self.graph_window_combo.addItem(f"{minutes} min", minutes)
-        self.graph_window_combo.setCurrentIndex(self._x_window_minutes_options.index(self._x_window_minutes))
+        self.graph_window_combo.setCurrentIndex(
+            self._x_window_minutes_options.index(self._x_window_minutes)
+        )
         self.graph_window_combo.currentIndexChanged.connect(self._on_graph_window_changed)
-        self.graph_window_combo.setStyleSheet("""
-            QComboBox {
-                font-size: 11px;
-                font-weight: bold;
-                color: #1f2937;
-                background-color: white;
-                border: 2px solid #94a3b8;
-                border-radius: 6px;
-                padding: 4px 8px;
-            }
-        """)
+        self.graph_window_combo.setStyleSheet(_GRAPH_WINDOW_COMBO_STYLE)
     
     def _position_temp_buttons(self):
         """Position +/- buttons below the gauge"""
@@ -758,10 +764,10 @@ class CartridgeWidget(QWidget):
         
         buttons_total_width = 2 * self._TEMP_BUTTON_SIZE + self._TEMP_BUTTON_GAP
         buttons_left = gauge_center_x - buttons_total_width // 2
-        buttons_top = gauge_y + gauge_height + 8
+        buttons_top = gauge_y + gauge_height + 48
         # Keep a larger bottom gap so controls don't collide visually with
         # the main window action buttons below the tab area.
-        max_top = self.height() - self._TEMP_BUTTON_SIZE - 52
+        max_top = self.height() - self._TEMP_BUTTON_SIZE - 36
         buttons_top = min(buttons_top, max_top)
         
         self.temp_minus_button.move(buttons_left, buttons_top)
@@ -814,22 +820,13 @@ class CartridgeWidget(QWidget):
         self.graph_nav_left_button.setEnabled(self._x_pan_windows < max_pan)
     
     def _step_temperature(self, direction: int):
-        """Step the set temperature by `direction` steps (snapped and clamped)"""
-        new_temp = round(self.set_temperature + direction * self.temp_step, 1)
-        new_temp = max(self.temp_min, min(self.temp_max, new_temp))
-        if abs(new_temp - self.set_temperature) > 1e-6:
-            self.set_temperature = new_temp
-            self._update_temp_button_enabled_state()
-            self.update()
-            if self.on_temperature_change_callback:
-                self.on_temperature_change_callback(self.set_temperature)
-    
+        """Step the set temperature by `direction` steps (snapped and clamped)."""
+        self._commit_setpoint(self.set_temperature + direction * self.temp_step)
+
     def _on_temp_increment(self):
-        """Handle + button click"""
         self._step_temperature(1)
-    
+
     def _on_temp_decrement(self):
-        """Handle - button click"""
         self._step_temperature(-1)
     
     def _update_temp_button_enabled_state(self):
@@ -878,31 +875,28 @@ class ServiceTab(QWidget):
     
     def __init__(self, stepper_config: Optional[dict] = None, compressor_config: Optional[dict] = None):
         super().__init__()
-        
-        # Sensor states
-        self.sensor_states = {}
-        
-        # Output states
+
+        stepper_cfg = stepper_config or {}
+        compressor_cfg = compressor_config or {}
+
+        # Sensor + output state
+        self.sensor_states: dict = {}
         self.compressor_on = False
         self.compressor_command_on = False
-        self.compressor_speed_rpm = int((compressor_config or {}).get("default_speed_rpm", 3000))
-        self.compressor_max_speed_rpm = int((compressor_config or {}).get("max_speed_rpm", 6000))
-        self.compressor_max_speed_rpm = max(100, self.compressor_max_speed_rpm)
-        self.stepper_speed_rpm = int((stepper_config or {}).get("default_speed_rpm", 30))
-        self.stepper_max_speed_rpm = int((stepper_config or {}).get("max_speed_rpm", 60))
-        self.stepper_max_speed_rpm = max(5, self.stepper_max_speed_rpm)
-        
+        self.compressor_speed_rpm = int(compressor_cfg.get("default_speed_rpm", 3000))
+        self.compressor_max_speed_rpm = max(100, int(compressor_cfg.get("max_speed_rpm", 6000)))
+        self.stepper_speed_rpm = int(stepper_cfg.get("default_speed_rpm", 30))
+        self.stepper_max_speed_rpm = max(5, int(stepper_cfg.get("max_speed_rpm", 60)))
+        self.stepper_continuous_on: bool = False
+
+        # Callbacks (set by the host window).
         self.on_compressor_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_speed_change_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
-        self.on_compressor_toggle_callback: Optional[Callable[[bool], None]] = None
-        self.on_compressor_speed_change_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
-        self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
-        self.stepper_continuous_on: bool = False
-        
+
         self._create_widgets()
         self._setup_layout()
     
@@ -1142,11 +1136,6 @@ class ServiceTab(QWidget):
             }}
         """)
 
-    # Backward-compatible alias: some call sites may still reference the old
-    # singular method name.
-    def _on_stepper_speed_change(self, value: int):
-        self._on_stepper_speed_changed(value)
-
     def _on_jog_pressed(self, direction: int):
         """Start jog in the given direction (-1 reverse, +1 forward)."""
         if self.on_stepper_jog_start_callback:
@@ -1257,24 +1246,27 @@ class Service2Tab(QWidget):
         main_layout.addStretch()
         self.setLayout(main_layout)
 
-    def update_temperatures(self, temps: dict = None):
+    def update_temperatures(self, temps: Optional[dict] = None):
         """Update temperature display with real thermocouple values."""
         if temps:
             self.temp_values.update(temps)
 
         for name, value in self.temp_values.items():
-            if value != value:  # NaN check
-                self.temp_labels[name].setText(f"{name}: --.-°C")
-                self.temp_labels[name].setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+            label = self.temp_labels.get(name)
+            if label is None:
                 continue
-            self.temp_labels[name].setText(f"{name}: {value:.1f}°C")
+            if math.isnan(value):
+                label.setText(f"{name}: --.-°C")
+                label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+                continue
             if value < 20:
                 color = "#3b82f6"
             elif value > 25:
                 color = "#ef4444"
             else:
                 color = "#16a34a"
-            self.temp_labels[name].setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
+            label.setText(f"{name}: {value:.1f}°C")
+            label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
     
 class SimulationTab(QWidget):
     """Simulation tab for manual sensor control"""
@@ -1427,19 +1419,15 @@ class SimulationTab(QWidget):
 
 
 class MainScreen(QMainWindow):
-    """Main window with enhanced cartridge visualization"""
-    
+    """Top-level window: hosts the main view and the advanced settings page."""
+
     def __init__(self, config: dict, simulation_mode: bool = False):
-        """Initialize main window"""
         super().__init__()
-        
+
         self.config = config
-        self.is_monitoring = False
         self.simulation_mode = simulation_mode
-        
-        # Callbacks
-        self.on_start_callback: Optional[Callable] = None
-        self.on_stop_callback: Optional[Callable] = None
+
+        # Callbacks (set by the host application).
         self.on_sensor_change_callback: Optional[Callable[[str, bool], None]] = None
         self.on_mode_change_callback: Optional[Callable[[bool], None]] = None
         self.on_start_pumping_callback: Optional[Callable] = None
@@ -1448,7 +1436,10 @@ class MainScreen(QMainWindow):
         self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
-        
+        self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
+        self.on_compressor_toggle_callback: Optional[Callable[[bool], None]] = None
+        self.on_compressor_speed_change_callback: Optional[Callable[[int], None]] = None
+
         self._setup_window()
         self._create_widgets()
         self._setup_layout()
@@ -1564,7 +1555,7 @@ class MainScreen(QMainWindow):
     def _create_widgets(self):
         """Create UI widgets"""
         # Main screen widget: temperature graph + setpoint controls
-        self.main_graph_widget = CartridgeWidget(
+        self.main_graph_widget = MainScreenWidget(
             show_cartridge=False,
             show_graph=True,
             show_temp_controls=True,
@@ -1573,7 +1564,7 @@ class MainScreen(QMainWindow):
         self.main_graph_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         # Widgets tab: cartridge + 3 sensors only
-        self.cartridge_widget = CartridgeWidget(
+        self.cartridge_widget = MainScreenWidget(
             show_cartridge=True,
             show_graph=False,
             show_temp_controls=False,
@@ -1766,9 +1757,7 @@ class MainScreen(QMainWindow):
         state_button_layout.addWidget(self.acknowledge_button)
         state_button_layout.addWidget(self.advanced_settings_button)
         self.state_buttons_row.setLayout(state_button_layout)
-        # Slightly taller footer row prevents action buttons from clipping on Pi.
-        self.state_buttons_row.setMinimumHeight(64)
-        self.state_buttons_row.setMaximumHeight(64)
+        # Fixed-height footer keeps action buttons from clipping on Pi.
         self.state_buttons_row.setFixedHeight(64)
         self.state_buttons_row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         main_layout.addWidget(self.state_buttons_row)
@@ -1782,33 +1771,23 @@ class MainScreen(QMainWindow):
         # Timer connection will be set by main app
     
     def set_update_callback(self, callback):
-        """Set the callback function for timer updates"""
+        """Set the callback function for timer updates."""
         try:
             self.update_timer.timeout.disconnect()
-        except:
+        except (TypeError, RuntimeError):
             pass
         self.update_timer.timeout.connect(callback)
-    
+
     def _on_simulation_sensor_changed(self, sensor_name: str, state: bool):
-        """Handle simulation sensor change"""
         if self.on_sensor_change_callback:
             self.on_sensor_change_callback(sensor_name, state)
-    
+
     def _on_simulation_mode_changed(self, simulation_mode: bool):
-        """Handle mode change from simulation tab"""
-        if self.is_monitoring:
-            # Cannot change mode while monitoring - revert the change
-            self.simulation_tab.update_mode_display(self.simulation_mode)
-            return
-        
-        # Update internal state
+        """Handle mode change from simulation tab."""
         self.simulation_mode = simulation_mode
-        
-        # Refresh state display with new colors based on simulation mode
+        # Refresh state display so the colors reflect the new mode.
         state_text = self.state_label.text().replace("State: ", "")
         self.update_state_display(state_text)
-        
-        # Notify main app of mode change
         if self.on_mode_change_callback:
             self.on_mode_change_callback(self.simulation_mode)
     
@@ -1911,11 +1890,8 @@ class MainScreen(QMainWindow):
         self.state_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def _set_main_action_buttons_visible(self, visible: bool):
-        """Show or hide the main-page action controls reliably."""
+        """Show or hide the bottom action row (children follow the parent)."""
         self.state_buttons_row.setVisible(visible)
-        self.pumping_toggle_button.setVisible(visible)
-        self.acknowledge_button.setVisible(visible)
-        self.advanced_settings_button.setVisible(visible)
     
     def set_mode_button_enabled(self, enabled: bool):
         """Enable or disable mode toggle button in simulation tab"""
@@ -2005,8 +1981,7 @@ class MainScreen(QMainWindow):
         self.service_tab.update_outputs()
     
     def set_status_message(self, message: str, is_error: bool = False):
-        """Set status message (for compatibility)"""
-        pass  # Status is shown visually in the cartridge widget
+        """No-op kept for API compatibility (status shown visually elsewhere)."""
 
     def resizeEvent(self, event):
         """Keep advanced-mode status indicator at half-width on resize."""
@@ -2048,59 +2023,36 @@ class MainScreen(QMainWindow):
         self.move(x, y)
     
     def closeEvent(self, event):
-        """Handle window close event"""
-        if self.is_monitoring:
-            self._on_stop_clicked()
+        """Handle window close event."""
         self.update_timer.stop()
         event.accept()
 
 
 if __name__ == "__main__":
-    # Test the enhanced UI
+    import random
     import yaml
-    
+
     print("Testing MainScreen...")
-    
-    # Load config
+
     with open('config.yaml', 'r') as f:
         config = yaml.safe_load(f)
-    
-    # Create application
+
     app = QApplication(sys.argv)
-    
-    # Create window
     window = MainScreen(config)
-    
-    # Set dummy callbacks
-    def on_start():
-        print("Start button clicked")
-        return True
-    
-    def on_stop():
-        print("Stop button clicked")
-    
-    window.on_start_callback = on_start
-    window.on_stop_callback = on_stop
-    
-    # Show window
     window.show()
-    
-    # Simulate sensor updates
-    import random
+
     def simulate_update():
         states = {
             'Level Low': random.choice([True, False]),
             'Level Critical': random.choice([True, False]),
-            'Cartridge In Place': random.choice([True, False])
+            'Cartridge In Place': random.choice([True, False]),
         }
         window.update_sensor_display(states)
-    
-    # Timer for simulation
+
     sim_timer = QTimer()
     sim_timer.timeout.connect(simulate_update)
     sim_timer.start(2000)
-    
-    # Run application
+
     sys.exit(app.exec())
 
 
