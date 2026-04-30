@@ -71,6 +71,10 @@ class TB6600Driver:
         self._lock = Lock()
         self._continuous_stop_event = Event()
         self._continuous_thread: Optional[Thread] = None
+        self._continuous_pwm = None
+        self._continuous_direction: int = 1
+        self._continuous_target_rpm: float = 0.0
+        self._continuous_current_rpm: float = 0.0
 
         if self.simulation_mode:
             print(f"{self.DRIVER_NAME}: simulation mode (no GPIO access)")
@@ -305,13 +309,23 @@ class TB6600Driver:
             run_speed = self._resolve_speed_rpm(speed_rpm)
             run_ramp_seconds = self.ramp_seconds if ramp_seconds is None else max(0.0, float(ramp_seconds))
             run_start_rpm = self.ramp_start_rpm if start_rpm is None else float(start_rpm)
+            self._continuous_direction = run_direction
+            self._continuous_target_rpm = run_speed
+            self._continuous_current_rpm = max(0.1, min(run_start_rpm, run_speed))
             self._continuous_thread = Thread(
                 target=self._continuous_loop,
-                args=(run_direction, float(run_speed), run_ramp_seconds, run_start_rpm),
+                args=(run_ramp_seconds,),
                 name="stepper_continuous_loop",
                 daemon=True,
             )
             self._continuous_thread.start()
+
+    def set_continuous_speed(self, speed_rpm: float) -> None:
+        """Update continuous speed target without restarting motion."""
+        with self._lock:
+            if not self._continuous_thread or not self._continuous_thread.is_alive():
+                return
+            self._continuous_target_rpm = self._resolve_speed_rpm(speed_rpm)
 
     def stop_continuous(self) -> None:
         """Stop continuous stepping loop."""
@@ -321,47 +335,93 @@ class TB6600Driver:
     def _stop_continuous_locked(self) -> None:
         """Internal stop helper; caller must hold _lock."""
         self._continuous_stop_event.set()
+        if self._continuous_pwm is not None:
+            try:
+                self._continuous_pwm.stop()
+            except Exception:
+                pass
+            self._continuous_pwm = None
+            if not self.simulation_mode and self.is_initialized:
+                GPIO.output(self.pin_step, GPIO.LOW)
         thread = self._continuous_thread
         if thread and thread.is_alive():
             thread.join(timeout=0.5)
         self._continuous_thread = None
+        self._continuous_target_rpm = 0.0
+        self._continuous_current_rpm = 0.0
 
     def _continuous_loop(
         self,
-        direction: int,
-        speed_rpm: float,
         ramp_seconds: float,
-        start_rpm: float,
     ) -> None:
         """Background step loop used for true continuous movement."""
-        target_rpm = self._resolve_speed_rpm(speed_rpm)
-        clamped_start_rpm = max(0.1, min(float(start_rpm), target_rpm))
         ramp_duration = max(0.0, float(ramp_seconds))
-        start_time = time.perf_counter()
+        if ramp_duration > 0:
+            ramp_rate_rpm_per_s = max(1.0, float(self.max_speed_rpm)) / ramp_duration
+        else:
+            ramp_rate_rpm_per_s = float("inf")
+        last_tick = time.perf_counter()
 
-        def current_rpm() -> float:
-            if ramp_duration <= 0:
-                return target_rpm
-            elapsed = time.perf_counter() - start_time
-            if elapsed >= ramp_duration:
-                return target_rpm
-            alpha = elapsed / ramp_duration
-            return clamped_start_rpm + (target_rpm - clamped_start_rpm) * alpha
+        def current_state() -> tuple[int, float]:
+            with self._lock:
+                return self._continuous_direction, self._continuous_target_rpm
+
+        def advance_ramp(target_rpm: float) -> float:
+            now = time.perf_counter()
+            dt = max(0.0, now - advance_ramp.last_tick)
+            advance_ramp.last_tick = now
+            current = self._continuous_current_rpm
+            if not (ramp_rate_rpm_per_s < float("inf")):
+                self._continuous_current_rpm = target_rpm
+                return self._continuous_current_rpm
+            delta = target_rpm - current
+            max_delta = ramp_rate_rpm_per_s * dt
+            if abs(delta) <= max_delta:
+                self._continuous_current_rpm = target_rpm
+            else:
+                self._continuous_current_rpm = current + max_delta * (1.0 if delta > 0 else -1.0)
+            return self._continuous_current_rpm
+
+        advance_ramp.last_tick = last_tick  # type: ignore[attr-defined]
 
         if self.simulation_mode:
             while not self._continuous_stop_event.is_set():
+                direction, target_rpm = current_state()
+                current_rpm = advance_ramp(target_rpm)
                 self.position_steps += direction
                 # Keep sim load light while still indicating movement.
-                sim_step_period = self._compute_step_period(current_rpm())
+                sim_step_period = self._compute_step_period(current_rpm)
                 self._sleep_precise(min(0.002, sim_step_period))
             return
 
-        GPIO.output(self.pin_dir, GPIO.HIGH if direction > 0 else GPIO.LOW)
+        current_direction, _ = current_state()
+        GPIO.output(self.pin_dir, GPIO.HIGH if current_direction > 0 else GPIO.LOW)
         time.sleep(0.000002)
+        initial_hz = max(1.0, self._frequency_from_rpm(self._continuous_current_rpm))
+        self._continuous_pwm = GPIO.PWM(self.pin_step, initial_hz)
+        self._continuous_pwm.start(50.0)
         while not self._continuous_stop_event.is_set():
-            step_period = self._compute_step_period(current_rpm())
-            self._pulse_step(step_period)
-            self.position_steps += direction
+            direction, target_rpm = current_state()
+            if direction != current_direction:
+                current_direction = direction
+                if self._continuous_pwm is not None:
+                    try:
+                        self._continuous_pwm.stop()
+                    except Exception:
+                        pass
+                    self._continuous_pwm = None
+                GPIO.output(self.pin_step, GPIO.LOW)
+                GPIO.output(self.pin_dir, GPIO.HIGH if current_direction > 0 else GPIO.LOW)
+                time.sleep(0.000002)
+                restart_hz = max(1.0, self._frequency_from_rpm(self._continuous_current_rpm))
+                self._continuous_pwm = GPIO.PWM(self.pin_step, restart_hz)
+                self._continuous_pwm.start(50.0)
+            current_rpm = advance_ramp(target_rpm)
+            if self._continuous_pwm is not None:
+                target_hz = max(1.0, self._frequency_from_rpm(current_rpm))
+                self._continuous_pwm.ChangeFrequency(target_hz)
+            # Polling interval for smooth ramp updates without high CPU load.
+            self._sleep_precise(0.02)
 
     def move_to(self, target_steps: int, speed_rpm: Optional[float] = None) -> int:
         """Move to an absolute step position."""

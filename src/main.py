@@ -284,9 +284,8 @@ class SensorMonitorApp:
         self.stepper_speed_rpm = max(1, requested_speed)
         self._update_jog_timer_interval()
         if self.stepper_continuous_forward and self.stepper_driver:
-            # Re-apply continuous speed immediately.
-            self.stepper_driver.stop_continuous()
-            self.stepper_driver.start_continuous(direction=1, speed_rpm=self.stepper_speed_rpm)
+            # Update target speed without restarting the continuous ramp from zero.
+            self.stepper_driver.set_continuous_speed(self.stepper_speed_rpm)
         if self.ui:
             self._update_stepper_ui_status()
 
