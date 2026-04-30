@@ -9,24 +9,11 @@ from typing import Optional
 class CSVLogger:
     """Append sensor + thermocouple samples to a timestamped CSV file."""
 
-    # Header columns must stay in sync with `temperature_columns`
-    # (after the boolean state columns).
-    HEADER = [
-        'timestamp',
-        'level_low',
-        'level_critical',
-        'cartridge_in_place',
-        'csf_temp_c',
-        'heat_exchanger_temp_c',
-        'temp_3_c',
-        'temp_4_c',
-    ]
-
-    TEMPERATURE_COLUMNS = ["CSF Temp", "Heat Exchanger Temp", "Temp 3", "Temp 4"]
-
     def __init__(self, config: dict):
         self.csv_directory = config['logging']['csv_directory']
         self.filename_format = config['logging']['filename_format']
+        self.temperature_columns = self._temperature_columns_from_config(config)
+        self.header = self._build_header(self.temperature_columns)
 
         self.csv_file: Optional[Path] = None
         self.csv_writer: Optional[csv.writer] = None
@@ -34,6 +21,44 @@ class CSVLogger:
         self.is_logging = False
 
         Path(self.csv_directory).mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _temperature_columns_from_config(config: dict) -> list[str]:
+        tc_cfg = config.get("thermocouples", {})
+        channels = tc_cfg.get("channels", [])
+        raw_labels = tc_cfg.get("labels", {})
+        labels = {}
+        for key, value in raw_labels.items():
+            try:
+                labels[int(key)] = str(value)
+            except (TypeError, ValueError):
+                continue
+        columns: list[str] = []
+        for channel in channels:
+            try:
+                ch = int(channel)
+            except (TypeError, ValueError):
+                continue
+            columns.append(str(labels.get(ch, f"Temp {ch}")))
+        return columns
+
+    @staticmethod
+    def _csv_slug(label: str) -> str:
+        slug = "".join(c.lower() if c.isalnum() else "_" for c in label).strip("_")
+        while "__" in slug:
+            slug = slug.replace("__", "_")
+        return slug or "temp"
+
+    def _build_header(self, temperature_columns: list[str]) -> list[str]:
+        header = [
+            'timestamp',
+            'level_low',
+            'level_critical',
+            'cartridge_in_place',
+        ]
+        for name in temperature_columns:
+            header.append(f"{self._csv_slug(name)}_c")
+        return header
 
     def start_logging(self) -> bool:
         """Start logging to a new CSV file. Returns True on success."""
@@ -47,7 +72,7 @@ class CSVLogger:
 
             self.file_handle = open(self.csv_file, 'w', newline='')
             self.csv_writer = csv.writer(self.file_handle)
-            self.csv_writer.writerow(self.HEADER)
+            self.csv_writer.writerow(self.header)
             self.file_handle.flush()
 
             self.is_logging = True
@@ -71,7 +96,7 @@ class CSVLogger:
 
             temperatures = temperatures or {}
             row = [timestamp, level_low, level_critical, cartridge]
-            for column in self.TEMPERATURE_COLUMNS:
+            for column in self.temperature_columns:
                 value = temperatures.get(column)
                 row.append(f"{float(value):.3f}" if value is not None else "")
 
@@ -126,16 +151,16 @@ if __name__ == "__main__":
 
     for i in range(10):
         state = i % 2 == 0
+        sample_temps = {}
+        for idx, name in enumerate(logger.temperature_columns):
+            sample_temps[name] = 22.0 + i * 0.1 + idx
         logger.log(
             {
                 "Level Low": state,
                 "Level Critical": not state,
                 "Cartridge In Place": True,
             },
-            {
-                "CSF Temp": 22.0 + i * 0.1,
-                "Heat Exchanger Temp": 23.0 + i * 0.1,
-            },
+            sample_temps,
         )
         time.sleep(0.5)
 

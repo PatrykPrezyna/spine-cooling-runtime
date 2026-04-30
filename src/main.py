@@ -27,6 +27,10 @@ class SensorMonitorApp:
 
     def __init__(self, config_path: str = "config.yaml"):
         self.config = self._load_config(config_path)
+        self.temperature_sensor_names = self._temperature_sensor_names_from_config(self.config)
+        self.primary_temperature_label = (
+            self.temperature_sensor_names[0] if self.temperature_sensor_names else None
+        )
 
         self.sensor_reader: Optional[MultiSensorReader] = None
         self.csv_logger: Optional[CSVLogger] = None
@@ -60,6 +64,26 @@ class SensorMonitorApp:
             config = yaml.safe_load(f)
         print(f"Configuration loaded from: {config_path}")
         return config
+
+    @staticmethod
+    def _temperature_sensor_names_from_config(config: dict) -> list[str]:
+        tc_cfg = config.get("thermocouples", {})
+        channels = tc_cfg.get("channels", [])
+        raw_labels = tc_cfg.get("labels", {})
+        labels = {}
+        for key, value in raw_labels.items():
+            try:
+                labels[int(key)] = str(value)
+            except (TypeError, ValueError):
+                continue
+        names: list[str] = []
+        for channel in channels:
+            try:
+                ch = int(channel)
+            except (TypeError, ValueError):
+                continue
+            names.append(str(labels.get(ch, f"Temp {ch}")))
+        return names
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -175,7 +199,11 @@ class SensorMonitorApp:
                 if self.thermocouple_reader
                 else {}
             )
-            body_temp = temperatures.get("CSF Temp")
+            body_temp = (
+                temperatures.get(self.primary_temperature_label)
+                if self.primary_temperature_label
+                else None
+            )
             set_temp = self.ui.main_graph_widget.set_temperature if self.ui else None
 
             if self.compressor_driver:

@@ -26,18 +26,28 @@ class ThermocoupleReader:
         self.enabled = bool(tc_cfg.get("enabled", True))
         self.stack = int(tc_cfg.get("stack", 0))
         self.i2c_bus = int(tc_cfg.get("i2c_bus", 1))
-        self.channels = tc_cfg.get("channels", [1, 2, 3, 4])
+        # Hardware input 1 on the HAT is broken; defaults skip it.
+        self.channels = tc_cfg.get("channels", [2, 3, 4, 5, 6, 7])
         configured_type = str(tc_cfg.get("sensor_type", "T")).upper()
         self.sensor_type_code = self._TYPE_MAP.get(configured_type, self._TYPE_MAP["T"])
-        self.channel_labels = tc_cfg.get(
+        configured_labels = tc_cfg.get(
             "labels",
             {
-                1: "CSF Temp",
-                2: "Heat Exchanger Temp",
-                3: "Temp 3",
-                4: "Temp 4",
+                2: "CSF Temp",
+                3: "Heat Exchanger Temp",
+                4: "Temp 3",
+                5: "Temp 4",
+                6: "Temp 5",
+                7: "Temp 6",
             },
         )
+        # Normalize keys so either "2" or 2 works in config.
+        self.channel_labels = {}
+        for key, value in configured_labels.items():
+            try:
+                self.channel_labels[int(key)] = str(value)
+            except (TypeError, ValueError):
+                continue
 
         self.is_initialized = False
         self.last_error: Optional[str] = None

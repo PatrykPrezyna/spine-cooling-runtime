@@ -16,7 +16,7 @@ from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget,
-    QLabel, QGridLayout, QGroupBox, QSlider, QComboBox, QStackedWidget,
+    QLabel, QGridLayout, QGroupBox, QSlider, QComboBox, QStackedWidget, QCheckBox,
     QSizePolicy, QTabBar,
 )
 from PyQt6.QtGui import (
@@ -90,6 +90,7 @@ class MainScreenWidget(QWidget):
         self.show_cartridge = show_cartridge
         self.show_graph = show_graph
         self.show_temp_controls = show_temp_controls
+        self.primary_temperature_label = "Temperature"
         # Compact enough for Pi screens, still grows with the main layout.
         self.setMinimumSize(640, 280)
 
@@ -203,11 +204,11 @@ class MainScreenWidget(QWidget):
     _GRAPH_SERIES = (
         # (history tuple index, label, color)
         (1, "Set Tmp",    "#0ea5e9"),
-        (2, "CSF Temp", "#16a34a"),
+        (2, "", "#16a34a"),
     )
     
     def add_temperature_sample(self, temp1: float, temp2: float):
-        """Record a new sample of (set temperature, CSF Temp, Heat Exchanger Temp) at current time"""
+        """Record a new sample of (set temperature, primary temp, secondary temp)."""
         now = time.monotonic()
         self._temp_history.append((now, self.set_temperature, float(temp1), float(temp2)))
         
@@ -361,7 +362,10 @@ class MainScreenWidget(QWidget):
     
     def _draw_graph_legend(self, painter: QPainter, graph_x: int, y: int, graph_width: int):
         """Draw legend entries for the graph series"""
-        entries = self._GRAPH_SERIES
+        entries = (
+            self._GRAPH_SERIES[0],
+            (2, self.primary_temperature_label, self._GRAPH_SERIES[1][2]),
+        )
         # Compact, right-aligned legend to avoid overlapping graph nav controls.
         entry_width = 92
         legend_total_width = entry_width * len(entries)
@@ -781,10 +785,22 @@ class MainScreenWidget(QWidget):
     def _position_graph_nav_controls(self):
         if not hasattr(self, "graph_window_combo"):
             return
-        # Keep time-axis controls visible near the bottom-left of graph area.
-        # Leave extra clearance from the widget bottom so they never clip.
-        top = max(10, self.height() - 116)
-        left = 12
+        # Anchor time controls to the bottom-left corner of the drawn graph.
+        if self.show_graph and not self.show_cartridge:
+            margin = 10
+            bottom_safe = 76
+            graph_x = margin
+            graph_y = margin
+            graph_width = self.width() - (2 * margin)
+            if self.show_temp_controls:
+                graph_width -= 200
+            graph_width = max(220, graph_width)
+            graph_height = max(330, self.height() - (2 * margin) - bottom_safe)
+            left = graph_x + 10
+            top = graph_y + graph_height - 32 - 8
+        else:
+            top = max(10, self.height() - 116)
+            left = 12
         self.graph_nav_left_button.move(left, top)
         self.graph_window_combo.setFixedSize(86, 32)
         self.graph_window_combo.move(left + 44, top)
@@ -1211,14 +1227,10 @@ class Service2Tab(QWidget):
     _LABEL_NEUTRAL_STYLE = "font-size: 12px; padding: 6px; color: #5c6b79;"
     _LABEL_STRONG_TEMPLATE = "font-size: 12px; padding: 6px; color: {color}; font-weight: 600;"
 
-    def __init__(self):
+    def __init__(self, sensor_names: list[str]):
         super().__init__()
-        self.temp_values = {
-            'CSF Temp': float("nan"),
-            'Heat Exchanger Temp': float("nan"),
-            'Temp 3': float("nan"),
-            'Temp 4': float("nan"),
-        }
+        self.sensor_names = list(sensor_names)
+        self.temp_values = {name: float("nan") for name in self.sensor_names}
         self.temp_labels = {}
         self._create_widgets()
         self._setup_layout()
@@ -1226,7 +1238,7 @@ class Service2Tab(QWidget):
     def _create_widgets(self):
         self.temp_group = QGroupBox("Temperature Sensors")
         self.temp_group.setStyleSheet(ServiceTab._group_box_style("#f59e0b", "12px"))
-        for name in ['CSF Temp', 'Heat Exchanger Temp', 'Temp 3', 'Temp 4']:
+        for name in self.sensor_names:
             label = QLabel(f"{name}: --°C")
             label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
             self.temp_labels[name] = label
@@ -1237,10 +1249,10 @@ class Service2Tab(QWidget):
         main_layout.setSpacing(10)
 
         temp_layout = QGridLayout()
-        temp_layout.addWidget(self.temp_labels['CSF Temp'], 0, 0)
-        temp_layout.addWidget(self.temp_labels['Heat Exchanger Temp'], 0, 1)
-        temp_layout.addWidget(self.temp_labels['Temp 3'], 1, 0)
-        temp_layout.addWidget(self.temp_labels['Temp 4'], 1, 1)
+        for index, name in enumerate(self.sensor_names):
+            row = index // 2
+            col = index % 2
+            temp_layout.addWidget(self.temp_labels[name], row, col)
         self.temp_group.setLayout(temp_layout)
         main_layout.addWidget(self.temp_group)
         main_layout.addStretch()
@@ -1269,6 +1281,274 @@ class Service2Tab(QWidget):
             label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
 
 
+class MultiTemperatureGraphWidget(QWidget):
+    """Custom graph widget for plotting multiple temperature channels."""
+
+    _MAX_HISTORY_SEC = 3600  # 60 minutes
+
+    def __init__(self, series_names: list[str]):
+        super().__init__()
+        self.series_names = list(series_names)
+        self._history = deque()
+        self._visible = {name: True for name in self.series_names}
+        self._x_window_minutes = 10
+        self.setMinimumHeight(260)
+
+        base_colors = [
+            "#0ea5e9",  # Set Temp
+            "#16a34a",  # CSF Temp
+            "#f59e0b",  # Heat Exchanger Temp
+            "#8b5cf6",  # Temp 3
+            "#ef4444",  # Temp 4
+            "#06b6d4",  # Temp 5
+            "#84cc16",  # Temp 6
+            "#ec4899",
+        ]
+        self._series_colors = {
+            name: base_colors[i % len(base_colors)]
+            for i, name in enumerate(self.series_names)
+        }
+
+    def set_series_visible(self, name: str, visible: bool):
+        if name in self._visible:
+            self._visible[name] = bool(visible)
+            self.update()
+
+    def add_sample(self, series_values: dict):
+        now = time.monotonic()
+        normalized = {}
+        for name in self.series_names:
+            value = series_values.get(name)
+            try:
+                normalized[name] = float(value)
+            except (TypeError, ValueError):
+                normalized[name] = float("nan")
+        self._history.append((now, normalized))
+
+        cutoff = now - self._MAX_HISTORY_SEC
+        while self._history and self._history[0][0] < cutoff:
+            self._history.popleft()
+        self.update()
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        margin = 12
+        graph_x = margin
+        graph_y = margin
+        graph_width = max(220, self.width() - 2 * margin)
+        graph_height = max(180, self.height() - 2 * margin)
+
+        painter.setBrush(QColor("#ffffff"))
+        painter.setPen(QPen(QColor("#cbd5e1"), 2))
+        painter.drawRoundedRect(graph_x, graph_y, graph_width, graph_height, 10, 10)
+
+        plot_left = graph_x + 44
+        plot_right = graph_x + graph_width - 12
+        plot_top = graph_y + 12
+        # No footer legend anymore; keep only space for x-axis labels.
+        plot_bottom = graph_y + graph_height - 24
+        plot_width = max(1, plot_right - plot_left)
+        plot_height = max(1, plot_bottom - plot_top)
+
+        now = time.monotonic()
+        window_sec = float(self._x_window_minutes) * 60.0
+        start_ts = now - window_sec
+        visible_entries = [entry for entry in self._history if entry[0] >= start_ts]
+
+        y_min, y_max = self._compute_visible_y_range(visible_entries)
+
+        # Y grid and labels
+        painter.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+        for i in range(4):
+            t = y_min + (i / 3.0) * (y_max - y_min)
+            ratio = (t - y_min) / max(0.001, (y_max - y_min))
+            py = int(plot_bottom - ratio * plot_height)
+            painter.setPen(QPen(QColor("#e2e8f0"), 1))
+            painter.drawLine(plot_left, py, plot_right, py)
+            painter.setPen(QColor("#475569"))
+            painter.drawText(
+                QRectF(graph_x + 2, py - 8, 38, 16),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                f"{t:.1f}",
+            )
+
+        # X labels
+        painter.setPen(QColor("#334155"))
+        for i in range(6):
+            ratio = i / 5.0
+            px = int(plot_left + ratio * plot_width)
+            mins_ago = int(round((1.0 - ratio) * self._x_window_minutes))
+            label = "now" if mins_ago == 0 else f"-{mins_ago}m"
+            painter.drawText(
+                QRectF(px - 18, plot_bottom + 4, 36, 14),
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                label,
+            )
+
+        painter.setPen(QPen(QColor("#64748b"), 1))
+        painter.drawLine(int(plot_left), int(plot_top), int(plot_left), int(plot_bottom))
+        painter.drawLine(int(plot_left), int(plot_bottom), int(plot_right), int(plot_bottom))
+
+        if visible_entries:
+            def temp_to_y(t: float) -> float:
+                t_clamped = max(y_min, min(y_max, t))
+                ratio = (t_clamped - y_min) / max(0.001, (y_max - y_min))
+                return plot_bottom - ratio * plot_height
+
+            def time_to_x(ts: float) -> float:
+                ratio = (ts - start_ts) / max(0.001, window_sec)
+                ratio = max(0.0, min(1.0, ratio))
+                return plot_left + ratio * plot_width
+
+            painter.save()
+            painter.setClipRect(QRectF(plot_left, plot_top, plot_width, plot_height))
+            for name in self.series_names:
+                if not self._visible.get(name, False):
+                    continue
+                painter.setPen(QPen(QColor(self._series_colors[name]), 2))
+                path = QPainterPath()
+                first = True
+                for ts, values in visible_entries:
+                    value = values.get(name, float("nan"))
+                    if math.isnan(value):
+                        continue
+                    px = time_to_x(ts)
+                    py = temp_to_y(value)
+                    if first:
+                        path.moveTo(px, py)
+                        first = False
+                    else:
+                        path.lineTo(px, py)
+                if not first:
+                    painter.drawPath(path)
+            painter.restore()
+
+    def _compute_visible_y_range(self, visible_entries):
+        values = []
+        for _ts, series_values in visible_entries:
+            for name, value in series_values.items():
+                if self._visible.get(name, False) and not math.isnan(value):
+                    values.append(value)
+        if not values:
+            return 20.0, 40.0
+        data_min = min(values)
+        data_max = max(values)
+        data_range = max(0.5, data_max - data_min)
+        margin = max(0.4, data_range * 0.08)
+        y_min = data_min - margin
+        y_max = data_max + margin
+        if y_max - y_min < 1.0:
+            midpoint = (y_min + y_max) / 2.0
+            y_min = midpoint - 0.5
+            y_max = midpoint + 0.5
+        return y_min, y_max
+
+    def _draw_legend(self, painter: QPainter, graph_x: int, y: int, graph_width: int):
+        font = QFont("Arial", 8, QFont.Weight.DemiBold)
+        painter.setFont(font)
+        latest = self._history[-1][1] if self._history else {}
+        entry_width = 120
+        visible_names = [name for name in self.series_names if self._visible.get(name, False)]
+        if not visible_names:
+            painter.setPen(QColor("#94a3b8"))
+            painter.drawText(
+                QRectF(graph_x + 8, y - 2, graph_width - 16, 16),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                "No series selected",
+            )
+            return
+        total_width = entry_width * len(visible_names)
+        start_x = max(graph_x + 8, graph_x + graph_width - total_width - 8)
+        for i, name in enumerate(visible_names):
+            ex = start_x + i * entry_width
+            painter.setPen(QPen(QColor(self._series_colors[name]), 3))
+            painter.drawLine(ex, y + 8, ex + 14, y + 8)
+            value = latest.get(name, float("nan"))
+            label_text = name if math.isnan(value) else f"{name}: {value:.1f}C"
+            painter.setPen(QColor("#334155"))
+            painter.drawText(
+                QRectF(ex + 18, y, entry_width - 20, 16),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                label_text,
+            )
+
+
+class TemperatureGraphTab(QWidget):
+    """Advanced tab: multi-temperature history graph with series toggles."""
+
+    def __init__(self, series_names: list[str]):
+        super().__init__()
+        self.series_names = list(series_names)
+        self.graph_widget = MultiTemperatureGraphWidget(self.series_names)
+        self.checkboxes = {}
+        self._create_widgets()
+        self._setup_layout()
+
+    def _create_widgets(self):
+        for name in self.series_names:
+            checkbox = QCheckBox(name)
+            checkbox.setChecked(True)
+            checkbox.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+            series_color = self.graph_widget._series_colors.get(name, "#1f2937")
+            checkbox.setStyleSheet("""
+                QCheckBox {
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: %s;
+                    min-height: 44px;
+                    padding: 4px 0;
+                }
+                QCheckBox::indicator {
+                    width: 32px;
+                    height: 32px;
+                    margin-left: 10px;
+                }
+                QCheckBox::indicator:unchecked {
+                    background-color: #fee2e2;
+                    border: 2px solid #dc2626;
+                    border-radius: 6px;
+                }
+                QCheckBox::indicator:checked {
+                    background-color: #dcfce7;
+                    border: 2px solid #16a34a;
+                    border-radius: 6px;
+                }
+            """ % series_color)
+            checkbox.stateChanged.connect(
+                lambda state, series_name=name: self.graph_widget.set_series_visible(
+                    series_name, state == Qt.CheckState.Checked.value
+                )
+            )
+            self.checkboxes[name] = checkbox
+
+    def _setup_layout(self):
+        main_layout = QHBoxLayout()
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
+
+        control_group = QGroupBox("Series Visibility")
+        control_group.setStyleSheet(ServiceTab._group_box_style("#0ea5e9", "16px"))
+        controls_layout = QVBoxLayout()
+        controls_layout.setContentsMargins(12, 14, 12, 12)
+        controls_layout.setSpacing(6)
+        for name in self.series_names:
+            controls_layout.addWidget(self.checkboxes[name])
+        controls_layout.addStretch()
+        control_group.setLayout(controls_layout)
+        # Sensor names are shorter now; keep this panel compact.
+        control_group.setFixedWidth(140)
+
+        # Maximize graph area (left) while keeping touch-friendly controls (right).
+        main_layout.addWidget(self.graph_widget, 1)
+        main_layout.addWidget(control_group, 0)
+        self.setLayout(main_layout)
+
+    def add_sample(self, series_values: dict):
+        self.graph_widget.add_sample(series_values)
+
+
 class MainScreen(QMainWindow):
     """Top-level window: hosts the main view and the advanced settings page."""
 
@@ -1276,6 +1556,13 @@ class MainScreen(QMainWindow):
         super().__init__()
 
         self.config = config
+        self.temperature_sensor_names = self._temperature_sensor_names_from_config(config)
+        self.primary_temperature_label = (
+            self.temperature_sensor_names[0] if self.temperature_sensor_names else None
+        )
+        self.secondary_temperature_label = (
+            self.temperature_sensor_names[1] if len(self.temperature_sensor_names) > 1 else None
+        )
 
         # Callbacks (set by the host application).
         self.on_start_pumping_callback: Optional[Callable] = None
@@ -1295,6 +1582,26 @@ class MainScreen(QMainWindow):
         if getattr(self, "_fullscreen_requested", False):
             # Enter fullscreen only after widgets/layout exist.
             self.showFullScreen()
+
+    @staticmethod
+    def _temperature_sensor_names_from_config(config: dict) -> list[str]:
+        tc_cfg = config.get("thermocouples", {})
+        channels = tc_cfg.get("channels", [])
+        raw_labels = tc_cfg.get("labels", {})
+        labels = {}
+        for key, value in raw_labels.items():
+            try:
+                labels[int(key)] = str(value)
+            except (TypeError, ValueError):
+                continue
+        names: list[str] = []
+        for channel in channels:
+            try:
+                ch = int(channel)
+            except (TypeError, ValueError):
+                continue
+            names.append(str(labels.get(ch, f"Temp {ch}")))
+        return names
     
     def _setup_window(self):
         """Setup main window properties"""
@@ -1390,6 +1697,8 @@ class MainScreen(QMainWindow):
             show_graph=True,
             show_temp_controls=True,
         )
+        if self.primary_temperature_label:
+            self.main_graph_widget.primary_temperature_label = self.primary_temperature_label
         self.main_graph_widget.setMinimumHeight(280)
         self.main_graph_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
@@ -1413,18 +1722,22 @@ class MainScreen(QMainWindow):
         self.service_tab.on_compressor_speed_change_callback = self._on_service_compressor_speed_change
 
         # Service 2 tab (temperature channels)
-        self.service2_tab = Service2Tab()
+        self.service2_tab = Service2Tab(self.temperature_sensor_names)
+        temp_series_names = ["Set Temp", *self.temperature_sensor_names]
+        self.temperature_graph_tab = TemperatureGraphTab(temp_series_names)
 
-        # In-window advanced area (Service / Service 2 / Widgets).
+        # In-window advanced area (Service / Service 2 / Temp Graph / Widgets).
         self.advanced_tab_selector = QTabBar()
         self.advanced_tab_selector.addTab("Service")
         self.advanced_tab_selector.addTab("Service 2")
+        self.advanced_tab_selector.addTab("Temp Graph")
         self.advanced_tab_selector.addTab("Widgets")
         self.advanced_tab_selector.setExpanding(False)
 
         self.advanced_content_stack = QStackedWidget()
         self.advanced_content_stack.addWidget(self.service_tab)
         self.advanced_content_stack.addWidget(self.service2_tab)
+        self.advanced_content_stack.addWidget(self.temperature_graph_tab)
         self.advanced_content_stack.addWidget(self.cartridge_widget)
         self.advanced_tab_selector.currentChanged.connect(self.advanced_content_stack.setCurrentIndex)
 
@@ -1760,12 +2073,26 @@ class MainScreen(QMainWindow):
         self.service_tab.update_sensors(sensor_states)
         self.service2_tab.update_temperatures(temperatures)
         
-        # Feed CSF Temp / Heat Exchanger Temp into the graph for trend display
-        temp1 = self.service2_tab.temp_values.get('CSF Temp', 0.0)
-        temp2 = self.service2_tab.temp_values.get('Heat Exchanger Temp', 0.0)
+        # Feed first two configured thermocouple channels into the main trend graph.
+        temp1 = (
+            self.service2_tab.temp_values.get(self.primary_temperature_label, 0.0)
+            if self.primary_temperature_label
+            else 0.0
+        )
+        temp2 = (
+            self.service2_tab.temp_values.get(self.secondary_temperature_label, 0.0)
+            if self.secondary_temperature_label
+            else 0.0
+        )
         if temp1 == temp1 and temp2 == temp2:  # skip NaN values
             self.main_graph_widget.add_temperature_sample(temp1, temp2)
             self.cartridge_widget.add_temperature_sample(temp1, temp2)
+
+        # Feed full temperature set into advanced multi-series graph tab.
+        series_values = {"Set Temp": float(self.main_graph_widget.set_temperature)}
+        for name in self.temperature_sensor_names:
+            series_values[name] = self.service2_tab.temp_values.get(name, float("nan"))
+        self.temperature_graph_tab.add_sample(series_values)
 
         # Keep compressor display stable unless updated by app logic.
         self.service_tab.update_outputs()
