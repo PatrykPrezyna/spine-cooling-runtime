@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import QApplication
 from multi_sensor_reader import MultiSensorReader
 from simulation_sensor_reader import SimulationSensorReader
 from csv_logger import CSVLogger
-from enhanced_ui import EnhancedSensorMonitorWindow
+from enhanced_ui import MainScreen
 from state_machine import StateMachine, State
 from stepper_driver import STSPIN220Driver
 from thermocouple_reader import ThermocoupleReader
@@ -39,7 +39,7 @@ class SensorMonitorApp:
         # Initialize components
         self.sensor_reader: Optional[MultiSensorReader | SimulationSensorReader] = None
         self.csv_logger: Optional[CSVLogger] = None
-        self.ui: Optional[EnhancedSensorMonitorWindow] = None
+        self.ui: Optional[MainScreen] = None
         self.state_machine: Optional[StateMachine] = None
         self.stepper_driver: Optional[STSPIN220Driver] = None
         self.thermocouple_reader: Optional[ThermocoupleReader] = None
@@ -463,7 +463,7 @@ class SensorMonitorApp:
             self._update_jog_timer_interval()
             
             # Create main window (pass simulation mode flag)
-            self.ui = EnhancedSensorMonitorWindow(self.config, simulation_mode=self.simulation_mode)
+            self.ui = MainScreen(self.config, simulation_mode=self.simulation_mode)
             
             # Connect callbacks
             self.ui.on_mode_change_callback = self.on_mode_changed

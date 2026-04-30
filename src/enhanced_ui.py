@@ -96,7 +96,7 @@ class CartridgeWidget(QWidget):
                 graph_x=margin,
                 graph_y=margin,
                 graph_width=max(220, graph_width),
-                graph_height=max(170, self.height() - (2 * margin) - bottom_safe),
+                graph_height=max(220, self.height() - (2 * margin) - bottom_safe),
             )
             if self.show_temp_controls:
                 self._draw_temperature_gauge(painter)
@@ -1426,7 +1426,7 @@ class SimulationTab(QWidget):
         return {name: checkbox.isChecked() for name, checkbox in self.checkboxes.items()}
 
 
-class EnhancedSensorMonitorWindow(QMainWindow):
+class MainScreen(QMainWindow):
     """Main window with enhanced cartridge visualization"""
     
     def __init__(self, config: dict, simulation_mode: bool = False):
@@ -2059,7 +2059,7 @@ if __name__ == "__main__":
     # Test the enhanced UI
     import yaml
     
-    print("Testing EnhancedSensorMonitorWindow...")
+    print("Testing MainScreen...")
     
     # Load config
     with open('config.yaml', 'r') as f:
@@ -2069,7 +2069,7 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     
     # Create window
-    window = EnhancedSensorMonitorWindow(config)
+    window = MainScreen(config)
     
     # Set dummy callbacks
     def on_start():
