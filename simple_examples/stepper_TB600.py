@@ -32,7 +32,7 @@ def move_fixed_rotations(speed_rpm: float):
 
     try:
         # Enable driver (kept same polarity as your current script).
-        GPIO.output(ENA, GPIO.High)
+        GPIO.output(ENA, GPIO.LOW)
         GPIO.output(DIR, GPIO.LOW)  # One fixed direction
 
         print(f"Speed: {speed_rpm:.1f} RPM")
