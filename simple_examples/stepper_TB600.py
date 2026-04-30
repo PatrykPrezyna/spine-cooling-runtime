@@ -57,6 +57,10 @@ def main():
     )
     parser.add_argument(
         "--speed-rpm",
+        "--speed_rpm",
+        "--rpm",
+        "--speed",
+        dest="speed_rpm",
         type=float,
         default=60.0,
         help="Motor speed in RPM (default: 60).",
