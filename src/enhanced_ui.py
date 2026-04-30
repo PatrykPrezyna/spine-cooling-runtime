@@ -25,6 +25,13 @@ from PyQt6.QtGui import (
 )
 
 
+# Target hardware: Raspberry Pi 800x480 touchscreen. The whole UI is laid out
+# for this exact resolution so layout never shifts between windowed and
+# fullscreen/frameless modes.
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 480
+
+
 # ---------------------------------------------------------------------------
 # Shared style sheets (kept at module level so they can be tweaked once).
 # ---------------------------------------------------------------------------
@@ -50,10 +57,10 @@ _GRAPH_NAV_BUTTON_STYLE = """
     QPushButton {
         background-color: #475569;
         color: white;
-        font-size: 14px;
+        font-size: 12px;
         font-weight: bold;
-        border: 2px solid #334155;
-        border-radius: 6px;
+        border: 1px solid #334155;
+        border-radius: 5px;
     }
     QPushButton:pressed { background-color: #334155; }
     QPushButton:disabled {
@@ -65,14 +72,15 @@ _GRAPH_NAV_BUTTON_STYLE = """
 
 _GRAPH_WINDOW_COMBO_STYLE = """
     QComboBox {
-        font-size: 11px;
+        font-size: 10px;
         font-weight: bold;
         color: #1f2937;
         background-color: white;
-        border: 2px solid #94a3b8;
-        border-radius: 6px;
-        padding: 4px 8px;
+        border: 1px solid #94a3b8;
+        border-radius: 5px;
+        padding: 2px 6px;
     }
+    QComboBox::drop-down { width: 14px; }
 """
 
 
@@ -723,11 +731,17 @@ class MainScreenWidget(QWidget):
         self.temp_minus_button = make("-", self._on_temp_decrement)
         self.temp_plus_button = make("+", self._on_temp_increment)
 
+    # Compact size used for graph X-axis nav controls (fits inside main graph).
+    _GRAPH_NAV_BTN_W = 26
+    _GRAPH_NAV_BTN_H = 24
+    _GRAPH_NAV_COMBO_W = 64
+    _GRAPH_NAV_GAP = 4
+
     def _create_graph_nav_controls(self):
         """Create graph X-axis controls (window size and panning)."""
         def make_nav(text: str, on_click) -> QPushButton:
             btn = QPushButton(text, self)
-            btn.setFixedSize(40, 32)
+            btn.setFixedSize(self._GRAPH_NAV_BTN_W, self._GRAPH_NAV_BTN_H)
             btn.setStyleSheet(_GRAPH_NAV_BUTTON_STYLE)
             btn.clicked.connect(on_click)
             return btn
@@ -737,12 +751,13 @@ class MainScreenWidget(QWidget):
 
         self.graph_window_combo = QComboBox(self)
         for minutes in self._x_window_minutes_options:
-            self.graph_window_combo.addItem(f"{minutes} min", minutes)
+            self.graph_window_combo.addItem(f"{minutes}m", minutes)
         self.graph_window_combo.setCurrentIndex(
             self._x_window_minutes_options.index(self._x_window_minutes)
         )
         self.graph_window_combo.currentIndexChanged.connect(self._on_graph_window_changed)
         self.graph_window_combo.setStyleSheet(_GRAPH_WINDOW_COMBO_STYLE)
+        self.graph_window_combo.setFixedSize(self._GRAPH_NAV_COMBO_W, self._GRAPH_NAV_BTN_H)
     
     def _position_temp_buttons(self):
         """Position +/- buttons below the gauge"""
@@ -786,6 +801,11 @@ class MainScreenWidget(QWidget):
     def _position_graph_nav_controls(self):
         if not hasattr(self, "graph_window_combo"):
             return
+        btn_w = self._GRAPH_NAV_BTN_W
+        btn_h = self._GRAPH_NAV_BTN_H
+        combo_w = self._GRAPH_NAV_COMBO_W
+        gap = self._GRAPH_NAV_GAP
+
         # Anchor time controls to the bottom-left corner of the drawn graph.
         if self.show_graph and not self.show_cartridge:
             margin = 10
@@ -797,15 +817,15 @@ class MainScreenWidget(QWidget):
                 graph_width -= 200
             graph_width = max(220, graph_width)
             graph_height = max(330, self.height() - (2 * margin) - bottom_safe)
-            left = graph_x + 10
-            top = graph_y + graph_height - 32 - 8
+            left = graph_x + 6
+            top = graph_y + graph_height - btn_h - 6
         else:
             top = max(10, self.height() - 116)
             left = 12
+
         self.graph_nav_left_button.move(left, top)
-        self.graph_window_combo.setFixedSize(86, 32)
-        self.graph_window_combo.move(left + 44, top)
-        self.graph_nav_right_button.move(left + 44 + 90, top)
+        self.graph_window_combo.move(left + btn_w + gap, top)
+        self.graph_nav_right_button.move(left + btn_w + gap + combo_w + gap, top)
 
     def _on_graph_window_changed(self, index: int):
         self._x_window_minutes = int(self.graph_window_combo.itemData(index))
@@ -1580,9 +1600,6 @@ class MainScreen(QMainWindow):
         self._create_widgets()
         self._setup_layout()
         self._setup_timer()
-        if getattr(self, "_fullscreen_requested", False):
-            # Enter fullscreen only after widgets/layout exist.
-            self.showFullScreen()
 
     @staticmethod
     def _temperature_sensor_names_from_config(config: dict) -> list[str]:
@@ -1605,14 +1622,18 @@ class MainScreen(QMainWindow):
         return names
     
     def _setup_window(self):
-        """Setup main window properties"""
+        """Setup main window properties.
+
+        The UI is hard-locked to ``SCREEN_WIDTH`` x ``SCREEN_HEIGHT`` (the Pi
+        touchscreen native resolution) regardless of frameless/windowed mode,
+        so the internal layout never reflows when toggling fullscreen.
+        """
         self.setWindowTitle("Cartridge Level Monitor")
         ui_config = self.config.get("ui", {})
-        self._fullscreen_requested = bool(ui_config.get("fullscreen", False))
-        if self._fullscreen_requested:
+        self._frameless_requested = bool(ui_config.get("fullscreen", False))
+        if self._frameless_requested:
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        else:
-            self.setFixedSize(800, 480)
+        self.setFixedSize(SCREEN_WIDTH, SCREEN_HEIGHT)
         self.setStyleSheet("""
             QMainWindow, QWidget {
                 background: #eef2f5;
@@ -1683,12 +1704,14 @@ class MainScreen(QMainWindow):
             }
         """)
         
-        # Center window on screen when running windowed.
-        if not self._fullscreen_requested:
-            screen = QApplication.primaryScreen().geometry()
-            x = (screen.width() - 800) // 2
-            y = (screen.height() - 480) // 2
-            self.move(x, y)
+        # Always center the fixed-size window on the active screen.
+        self._center_on_screen()
+
+    def _center_on_screen(self):
+        screen = QApplication.primaryScreen().geometry()
+        x = max(0, (screen.width() - SCREEN_WIDTH) // 2)
+        y = max(0, (screen.height() - SCREEN_HEIGHT) // 2)
+        self.move(x, y)
     
     def _create_widgets(self):
         """Create UI widgets"""
@@ -2000,8 +2023,7 @@ class MainScreen(QMainWindow):
         self.content_stack.setCurrentWidget(self.advanced_page)
         self._set_main_action_buttons_visible(False)
         self.to_main_menu_button.setVisible(True)
-        half_width = max(260, (self.width() - 20) // 2)
-        self.state_label.setFixedWidth(half_width)
+        self.state_label.setFixedWidth(self._ADVANCED_STATE_LABEL_WIDTH)
 
     def _show_main_view(self):
         """Return to main screen from advanced settings page."""
@@ -2101,44 +2123,35 @@ class MainScreen(QMainWindow):
     def set_status_message(self, message: str, is_error: bool = False):
         """No-op kept for API compatibility (status shown visually elsewhere)."""
 
-    def resizeEvent(self, event):
-        """Keep advanced-mode status indicator at half-width on resize."""
-        super().resizeEvent(event)
-        if hasattr(self, "content_stack") and self.content_stack.currentWidget() is self.advanced_page:
-            half_width = max(260, (self.width() - 20) // 2)
-            self.state_label.setFixedWidth(half_width)
+    # Width of the state indicator on the advanced page (half of usable width).
+    _ADVANCED_STATE_LABEL_WIDTH = max(260, (SCREEN_WIDTH - 20) // 2)
 
     def keyPressEvent(self, event):
-        """Allow exiting/toggling fullscreen with keyboard shortcuts."""
-        if event.key() == Qt.Key.Key_Escape and self.isFullScreen():
-            self._leave_fullscreen_mode()
+        """Allow toggling frameless mode (F11) and leaving it (Esc)."""
+        if event.key() == Qt.Key.Key_Escape and self._frameless_requested:
+            self._set_frameless_mode(False)
             event.accept()
             return
         if event.key() == Qt.Key.Key_F11:
-            if self.isFullScreen():
-                self._leave_fullscreen_mode()
-            else:
-                self._enter_fullscreen_mode()
+            self._set_frameless_mode(not self._frameless_requested)
             event.accept()
             return
         super().keyPressEvent(event)
 
-    def _enter_fullscreen_mode(self):
-        """Switch to frameless fullscreen mode."""
-        self._fullscreen_requested = True
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        self.showFullScreen()
-
-    def _leave_fullscreen_mode(self):
-        """Return to normal windowed mode with title bar."""
-        self._fullscreen_requested = False
-        self.setWindowFlags(Qt.WindowType.Window)
-        self.showNormal()
-        self.setFixedSize(800, 480)
-        screen = QApplication.primaryScreen().geometry()
-        x = (screen.width() - 800) // 2
-        y = (screen.height() - 480) // 2
-        self.move(x, y)
+    def _set_frameless_mode(self, frameless: bool):
+        """Toggle frameless borders without changing the 800x480 content area."""
+        self._frameless_requested = bool(frameless)
+        flags = (
+            Qt.WindowType.FramelessWindowHint
+            if self._frameless_requested
+            else Qt.WindowType.Window
+        )
+        self.setWindowFlags(flags)
+        # Re-applying flags hides the window in some Qt builds; keep it shown
+        # and re-apply the fixed size so the layout never reflows.
+        self.setFixedSize(SCREEN_WIDTH, SCREEN_HEIGHT)
+        self._center_on_screen()
+        self.show()
     
     def closeEvent(self, event):
         """Handle window close event."""
