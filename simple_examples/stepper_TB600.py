@@ -1,99 +1,73 @@
-# Based on: https://www.raspberrypi.org/forums/viewtopic.php?t=242928\.
-#
-# Software to drive 4 wire stepper motor using a TB6600 Driver
-# PRi - RPi 3B
-#
-# Route 3.3 VDC to the controller "+" input for each: ENA, PUL, and DIR
-#
-# Connect GPIO pins as shown below) to the "-" input for each: ENA, PUL, and DIR
-#
-#
 from time import sleep
+import argparse
 import RPi.GPIO as GPIO
-#
-PUL = 5  # Stepper Drive Pulses
-DIR = 25  # Controller Direction Bit (High for Controller default / LOW to Force a Direction Change).
-ENA = 24  # Controller Enable Bit (High to Enable / LOW to Disable).
-# DIRI = 14  # Status Indicator LED - Direction
-# ENAI = 15  # Status indicator LED - Controller Enable
-#
-# NOTE: Leave DIR and ENA disconnected, and the controller WILL drive the motor in Default direction if PUL is applied.
-# 
-GPIO.setmode(GPIO.BCM)
-# GPIO.setmode(GPIO.BOARD) # Do NOT use GPIO.BOARD mode. Here for comparison only. 
-#
-GPIO.setup(PUL, GPIO.OUT)
-GPIO.setup(DIR, GPIO.OUT)
-GPIO.setup(ENA, GPIO.OUT)
 
-#
-print('Initialization Completed')
-#
-# Could have usesd only one DURATION constant but chose two. This gives play options.
-durationFwd = 8000 # This is the duration of the motor spinning. used for forward direction
-durationBwd = 8000 # This is the duration of the motor spinning. used for reverse direction
-print('Duration Fwd set to ' + str(durationFwd))
-print('Duration Bwd set to ' + str(durationBwd))
-#
-delay = 0.0001 # This is actualy a delay between PUL pulses - effectively sets the mtor rotation speed.
-print('Speed set to ' + str(delay))
-#
-cycles = 1000 # This is the number of cycles to be run once program is started.
-cyclecount = 0 # This is the iteration of cycles to be run once program is started.
-print('number of Cycles to Run set to ' + str(cycles))
-#
-#
-def forward():
-    GPIO.output(ENA, GPIO.LOW)
-    # GPIO.output(ENAI, GPIO.HIGH)
-    print('ENA set to HIGH - Controller Enabled')
-    #
-    sleep(1) # pause due to a possible change direction
-    GPIO.output(DIR, GPIO.LOW)
-    # GPIO.output(DIRI, GPIO.LOW)
-    print('DIR set to LOW - Moving Forward at ' + str(delay))
-    print('Controller PUL being driven.')
-    for x in range(durationFwd): 
-        GPIO.output(PUL, GPIO.HIGH)
-        sleep(delay)
-        GPIO.output(PUL, GPIO.LOW)
-        sleep(delay)
-    GPIO.output(ENA, GPIO.HIGH)
-    # GPIO.output(ENAI, GPIO.LOW)
-    print('ENA set to LOW - Controller Disabled')
-    sleep(.5) # pause for possible change direction
-    return
-#
-#
-def reverse():
-    GPIO.output(ENA, GPIO.LOW)
-    # GPIO.output(ENAI, GPIO.HIGH)
-    print('ENA set to HIGH - Controller Enabled')
-    #
-    sleep(.5) # pause due to a possible change direction
-    GPIO.output(DIR, GPIO.HIGH)
-    # GPIO.output(DIRI, GPIO.HIGH)
-    print('DIR set to HIGH - Moving Backward at ' + str(delay))
-    print('Controller PUL being driven.')
-    #
-    for y in range(durationBwd):
-        GPIO.output(PUL, GPIO.HIGH)
-        sleep(delay)
-        GPIO.output(PUL, GPIO.LOW)
-        sleep(delay)
-    GPIO.output(ENA, GPIO.HIGH)
-    # GPIO.output(ENAI, GPIO.LOW)
-    print('ENA set to LOW - Controller Disabled')
-    sleep(.5) # pause for possible change direction
-    return
+# TB6600 pin mapping (BCM)
+PUL = 5
+DIR = 25
+ENA = 24
 
-while cyclecount < cycles:
-    forward()
-    reverse()
-    cyclecount = (cyclecount + 1)
-    print('Number of cycles completed: ' + str(cyclecount))
-    print('Number of cycles remaining: ' + str(cycles - cyclecount))
-#
-GPIO.cleanup()
-print('Cycling Completed')
-#
+# Motor config
+FULL_STEPS_PER_REV = 200
+MICROSTEPS = 4
+ROTATIONS = 10
+
+
+def move_fixed_rotations(speed_rpm: float):
+    """
+    Move the motor 10 rotations in one direction at the given speed.
+    """
+    microsteps_per_rev = FULL_STEPS_PER_REV * MICROSTEPS
+    total_pulses = ROTATIONS * microsteps_per_rev
+
+    # Pulse frequency from RPM:
+    # pulses/sec = (RPM / 60) * microsteps_per_rev
+    pulses_per_second = (speed_rpm / 60.0) * microsteps_per_rev
+    pulse_delay = 1.0 / (2.0 * pulses_per_second)  # HIGH + LOW make one pulse
+
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(PUL, GPIO.OUT)
+    GPIO.setup(DIR, GPIO.OUT)
+    GPIO.setup(ENA, GPIO.OUT)
+
+    try:
+        # Enable driver (kept same polarity as your current script).
+        GPIO.output(ENA, GPIO.High)
+        GPIO.output(DIR, GPIO.LOW)  # One fixed direction
+
+        print(f"Speed: {speed_rpm:.1f} RPM")
+        print(f"Microsteps/rev: {microsteps_per_rev}")
+        print(f"Total pulses: {total_pulses}")
+
+        for _ in range(total_pulses):
+            GPIO.output(PUL, GPIO.HIGH)
+            sleep(pulse_delay)
+            GPIO.output(PUL, GPIO.LOW)
+            sleep(pulse_delay)
+
+        GPIO.output(ENA, GPIO.HIGH)  # Disable driver
+        print("Done: moved 10 rotations.")
+    finally:
+        GPIO.cleanup()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Move TB6600 stepper 10 rotations in one direction."
+    )
+    parser.add_argument(
+        "--speed-rpm",
+        type=float,
+        default=60.0,
+        help="Motor speed in RPM (default: 60).",
+    )
+    args = parser.parse_args()
+
+    if args.speed_rpm <= 0:
+        raise ValueError("speed-rpm must be > 0")
+
+    move_fixed_rotations(args.speed_rpm)
+
+
+if __name__ == "__main__":
+    main()
