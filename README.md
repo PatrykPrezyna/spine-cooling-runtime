@@ -82,6 +82,56 @@ Press `ENTER` to stop the loop.
    ```bash
    pip install -r requirements.txt
    ```
+
+## Stepper Control (pigpio)
+
+The `simple_examples/stepper_TB600.py` script uses `pigpio` for stable pulse timing.
+
+### Install pigpio (Debian/Raspberry Pi)
+
+```bash
+sudo apt update
+sudo apt install -y pigpio python3-pigpio
+```
+
+If `pigpiod` is not available from apt on your image, build from source:
+
+```bash
+sudo apt install -y git make gcc
+cd /tmp
+git clone https://github.com/joan2937/pigpio.git
+cd pigpio
+make
+sudo make install
+sudo ldconfig
+```
+
+### Enable and start the pigpio daemon
+
+```bash
+sudo systemctl enable pigpiod
+sudo systemctl start pigpiod
+```
+
+Or start manually for the current session:
+
+```bash
+sudo pigpiod
+```
+
+### Verify pigpio is running
+
+```bash
+pigs t
+```
+
+If you get a timestamp number, the daemon is running.
+
+### Run the stepper example
+
+```bash
+python simple_examples/stepper_TB600.py --speed-rpm 60 --microsteps 4 --start-rpm 5 --ramp-rotations 2
+```
    
 ## Setup
 
