@@ -84,9 +84,9 @@ class CartridgeWidget(QWidget):
 
         if self.show_graph and not self.show_cartridge:
             margin = 10
-            # Reserve space inside this widget for local graph controls while
-            # leaving more room for the plotted area.
-            bottom_safe = 88
+            # Reserve only the space needed for local graph controls so the
+            # plotted graph can use more of the available height.
+            bottom_safe = 76
             graph_width = self.width() - (2 * margin)
             if self.show_temp_controls:
                 # Keep room for the right-side gauge and +/- controls.
@@ -96,7 +96,7 @@ class CartridgeWidget(QWidget):
                 graph_x=margin,
                 graph_y=margin,
                 graph_width=max(220, graph_width),
-                graph_height=max(160, self.height() - (2 * margin) - bottom_safe),
+                graph_height=max(170, self.height() - (2 * margin) - bottom_safe),
             )
             if self.show_temp_controls:
                 self._draw_temperature_gauge(painter)
@@ -1766,9 +1766,10 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         state_button_layout.addWidget(self.acknowledge_button)
         state_button_layout.addWidget(self.advanced_settings_button)
         self.state_buttons_row.setLayout(state_button_layout)
-        self.state_buttons_row.setMinimumHeight(56)
-        self.state_buttons_row.setMaximumHeight(56)
-        self.state_buttons_row.setFixedHeight(56)
+        # Slightly taller footer row prevents action buttons from clipping on Pi.
+        self.state_buttons_row.setMinimumHeight(64)
+        self.state_buttons_row.setMaximumHeight(64)
+        self.state_buttons_row.setFixedHeight(64)
         self.state_buttons_row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         main_layout.addWidget(self.state_buttons_row)
         
