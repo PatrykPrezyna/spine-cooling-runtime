@@ -1,7 +1,4 @@
-"""
-Thermocouple Reader Module
-Reads Sequent SMtc thermocouple channels via I2C.
-"""
+"""Thermocouple reader for Sequent SMtc boards (I2C)."""
 
 from __future__ import annotations
 
