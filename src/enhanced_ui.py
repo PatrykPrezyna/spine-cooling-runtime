@@ -1911,7 +1911,18 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         QTimer.singleShot(60, self._refresh_main_action_buttons_row)
 
     def _set_main_action_buttons_visible(self, visible: bool):
-        """Show or hide the main-page action controls reliably."""
+        """Show/hide controls; fullscreen uses disable-only workaround."""
+        # Raspberry Pi fullscreen + frameless mode can fail to restore widgets
+        # after hide/show cycles. In fullscreen, keep the row shown and only
+        # toggle enabled state.
+        if self.isFullScreen():
+            self.state_buttons_row.show()
+            self.pumping_toggle_button.show()
+            self.acknowledge_button.show()
+            self.advanced_settings_button.show()
+            self.state_buttons_row.setEnabled(visible)
+            return
+
         self.state_buttons_row.setVisible(visible)
         self.pumping_toggle_button.setVisible(visible)
         self.acknowledge_button.setVisible(visible)

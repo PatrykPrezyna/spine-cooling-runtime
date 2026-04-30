@@ -53,7 +53,7 @@ ui:
   window_width: 500
   window_height: 450
   update_interval_ms: 100   # Update UI every 100ms
-  fullscreen: false
+  fullscreen: true
 
 # Stepper motor driver configuration (STMicroelectronics STSPIN220)
 stepper_motor:
@@ -67,7 +67,7 @@ stepper_motor:
   default_speed_rpm: 30
   pumping_speed_rpm: 120
   pumping_slow_speed_rpm: 20
-  max_speed_rpm: 120
+  max_speed_rpm: 240
 
   # Safety / power
   enable_on_startup: false    # Leave motor de-energised at boot
