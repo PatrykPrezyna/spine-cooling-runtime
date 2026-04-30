@@ -1513,6 +1513,8 @@ class TemperatureGraphTab(QWidget):
             checkbox.setChecked(True)
             checkbox.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
             series_color = self.graph_widget._series_colors.get(name, "#1f2937")
+            # Unchecked = neutral gray; checked = series color (matches the
+            # plotted line and the label text).
             checkbox.setStyleSheet("""
                 QCheckBox {
                     font-size: 18px;
@@ -1525,18 +1527,17 @@ class TemperatureGraphTab(QWidget):
                     width: 32px;
                     height: 32px;
                     margin-left: 10px;
+                    border-radius: 6px;
                 }
                 QCheckBox::indicator:unchecked {
-                    background-color: #fee2e2;
-                    border: 2px solid #dc2626;
-                    border-radius: 6px;
+                    background-color: #e5e7eb;
+                    border: 2px solid #9ca3af;
                 }
                 QCheckBox::indicator:checked {
-                    background-color: #dcfce7;
-                    border: 2px solid #16a34a;
-                    border-radius: 6px;
+                    background-color: %s;
+                    border: 2px solid %s;
                 }
-            """ % series_color)
+            """ % (series_color, series_color, series_color))
             checkbox.stateChanged.connect(
                 lambda state, series_name=name: self.graph_widget.set_series_visible(
                     series_name, state == Qt.CheckState.Checked.value
@@ -1558,8 +1559,9 @@ class TemperatureGraphTab(QWidget):
             controls_layout.addWidget(self.checkboxes[name])
         controls_layout.addStretch()
         control_group.setLayout(controls_layout)
-        # Sensor names are shorter now; keep this panel compact.
-        control_group.setFixedWidth(140)
+        # Wide enough to fit the longest configured sensor name (e.g.
+        # "Heat Exchanger Temp") at 18px bold next to the 32px indicator.
+        control_group.setFixedWidth(210)
 
         # Maximize graph area (left) while keeping touch-friendly controls (right).
         main_layout.addWidget(self.graph_widget, 1)
@@ -1600,6 +1602,10 @@ class MainScreen(QMainWindow):
         self._create_widgets()
         self._setup_layout()
         self._setup_timer()
+        if self._fullscreen_requested:
+            # Enter fullscreen only after widgets/layout exist so the inner
+            # 800x480 content frame is built before the OS takes over geometry.
+            self.showFullScreen()
 
     @staticmethod
     def _temperature_sensor_names_from_config(config: dict) -> list[str]:
@@ -1624,16 +1630,19 @@ class MainScreen(QMainWindow):
     def _setup_window(self):
         """Setup main window properties.
 
-        The UI is hard-locked to ``SCREEN_WIDTH`` x ``SCREEN_HEIGHT`` (the Pi
-        touchscreen native resolution) regardless of frameless/windowed mode,
-        so the internal layout never reflows when toggling fullscreen.
+        The UI is laid out inside a fixed ``SCREEN_WIDTH`` x ``SCREEN_HEIGHT``
+        content frame (the Pi touchscreen native resolution) so the internal
+        layout never reflows on page changes. The outer ``QMainWindow`` is
+        either pinned to that same size in windowed mode or expands to the
+        full display in fullscreen mode (with the content frame centered).
         """
         self.setWindowTitle("Cartridge Level Monitor")
         ui_config = self.config.get("ui", {})
-        self._frameless_requested = bool(ui_config.get("fullscreen", False))
-        if self._frameless_requested:
+        self._fullscreen_requested = bool(ui_config.get("fullscreen", False))
+        if self._fullscreen_requested:
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        self.setFixedSize(SCREEN_WIDTH, SCREEN_HEIGHT)
+        else:
+            self.setFixedSize(SCREEN_WIDTH, SCREEN_HEIGHT)
         self.setStyleSheet("""
             QMainWindow, QWidget {
                 background: #eef2f5;
@@ -1704,8 +1713,9 @@ class MainScreen(QMainWindow):
             }
         """)
         
-        # Always center the fixed-size window on the active screen.
-        self._center_on_screen()
+        # In windowed mode, center the 800x480 window on the active screen.
+        if not self._fullscreen_requested:
+            self._center_on_screen()
 
     def _center_on_screen(self):
         screen = QApplication.primaryScreen().geometry()
@@ -1726,13 +1736,6 @@ class MainScreen(QMainWindow):
         self.main_graph_widget.setMinimumHeight(280)
         self.main_graph_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
-        # Widgets tab: cartridge + 3 sensors only
-        self.cartridge_widget = MainScreenWidget(
-            show_cartridge=True,
-            show_graph=False,
-            show_temp_controls=False,
-        )
-        
         # Service tab
         self.service_tab = ServiceTab(
             self.config.get('stepper_motor', {}),
@@ -1750,19 +1753,17 @@ class MainScreen(QMainWindow):
         temp_series_names = ["Set Temp", *self.temperature_sensor_names]
         self.temperature_graph_tab = TemperatureGraphTab(temp_series_names)
 
-        # In-window advanced area (Service / Service 2 / Temp Graph / Widgets).
+        # In-window advanced area (Service / Animal Study / Temp Graph).
         self.advanced_tab_selector = QTabBar()
         self.advanced_tab_selector.addTab("Service")
-        self.advanced_tab_selector.addTab("Service 2")
+        self.advanced_tab_selector.addTab("Animal Study")
         self.advanced_tab_selector.addTab("Temp Graph")
-        self.advanced_tab_selector.addTab("Widgets")
         self.advanced_tab_selector.setExpanding(False)
 
         self.advanced_content_stack = QStackedWidget()
         self.advanced_content_stack.addWidget(self.service_tab)
         self.advanced_content_stack.addWidget(self.service2_tab)
         self.advanced_content_stack.addWidget(self.temperature_graph_tab)
-        self.advanced_content_stack.addWidget(self.cartridge_widget)
         self.advanced_tab_selector.currentChanged.connect(self.advanced_content_stack.setCurrentIndex)
 
         self.to_main_menu_button = QPushButton("To Main Menu")
@@ -1885,11 +1886,29 @@ class MainScreen(QMainWindow):
         self.error_label.setWordWrap(True)
     
     def _setup_layout(self):
-        """Setup widget layout"""
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        
-        main_layout = QVBoxLayout()
+        """Setup widget layout.
+
+        The actual UI lives inside a fixed-size ``content_frame``
+        (``SCREEN_WIDTH`` x ``SCREEN_HEIGHT``) centered within the window.
+        That guarantees the layout never reflows when the outer window
+        toggles between windowed and fullscreen sizes — only the gray
+        margins around the frame change.
+        """
+        outer = QWidget()
+        self.setCentralWidget(outer)
+        outer_layout = QGridLayout(outer)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+        outer_layout.setRowStretch(0, 1)
+        outer_layout.setRowStretch(2, 1)
+        outer_layout.setColumnStretch(0, 1)
+        outer_layout.setColumnStretch(2, 1)
+
+        content_frame = QWidget()
+        content_frame.setFixedSize(SCREEN_WIDTH, SCREEN_HEIGHT)
+        outer_layout.addWidget(content_frame, 1, 1, Qt.AlignmentFlag.AlignCenter)
+
+        main_layout = QVBoxLayout(content_frame)
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(8)
         
@@ -1920,8 +1939,7 @@ class MainScreen(QMainWindow):
         self.state_buttons_row.setFixedHeight(64)
         self.state_buttons_row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         main_layout.addWidget(self.state_buttons_row)
-        
-        central_widget.setLayout(main_layout)
+
         self._show_main_view()
     
     def _setup_timer(self):
@@ -2092,7 +2110,6 @@ class MainScreen(QMainWindow):
     
     def update_sensor_display(self, sensor_states: dict, temperatures: Optional[dict] = None):
         """Update sensor display"""
-        self.cartridge_widget.set_sensor_states(sensor_states)
         self.service_tab.update_sensors(sensor_states)
         self.service2_tab.update_temperatures(temperatures)
         
@@ -2109,7 +2126,6 @@ class MainScreen(QMainWindow):
         )
         if temp1 == temp1 and temp2 == temp2:  # skip NaN values
             self.main_graph_widget.add_temperature_sample(temp1, temp2)
-            self.cartridge_widget.add_temperature_sample(temp1, temp2)
 
         # Feed full temperature set into advanced multi-series graph tab.
         series_values = {"Set Temp": float(self.main_graph_widget.set_temperature)}
@@ -2125,33 +2141,40 @@ class MainScreen(QMainWindow):
 
     # Width of the state indicator on the advanced page (half of usable width).
     _ADVANCED_STATE_LABEL_WIDTH = max(260, (SCREEN_WIDTH - 20) // 2)
+    # Sentinel used to drop a previous setFixedSize(...) constraint.
+    _QWIDGET_SIZE_MAX = 16777215
 
     def keyPressEvent(self, event):
-        """Allow toggling frameless mode (F11) and leaving it (Esc)."""
-        if event.key() == Qt.Key.Key_Escape and self._frameless_requested:
-            self._set_frameless_mode(False)
+        """Allow toggling fullscreen (F11) and leaving it (Esc)."""
+        if event.key() == Qt.Key.Key_Escape and self.isFullScreen():
+            self._set_fullscreen_mode(False)
             event.accept()
             return
         if event.key() == Qt.Key.Key_F11:
-            self._set_frameless_mode(not self._frameless_requested)
+            self._set_fullscreen_mode(not self.isFullScreen())
             event.accept()
             return
         super().keyPressEvent(event)
 
-    def _set_frameless_mode(self, frameless: bool):
-        """Toggle frameless borders without changing the 800x480 content area."""
-        self._frameless_requested = bool(frameless)
-        flags = (
-            Qt.WindowType.FramelessWindowHint
-            if self._frameless_requested
-            else Qt.WindowType.Window
-        )
-        self.setWindowFlags(flags)
-        # Re-applying flags hides the window in some Qt builds; keep it shown
-        # and re-apply the fixed size so the layout never reflows.
-        self.setFixedSize(SCREEN_WIDTH, SCREEN_HEIGHT)
-        self._center_on_screen()
-        self.show()
+    def _set_fullscreen_mode(self, fullscreen: bool):
+        """Toggle between fullscreen frameless and windowed 800x480.
+
+        The inner ``content_frame`` always stays at ``SCREEN_WIDTH`` x
+        ``SCREEN_HEIGHT``, so this only changes how much gray padding is
+        drawn around it — it does not reflow the UI.
+        """
+        self._fullscreen_requested = bool(fullscreen)
+        if self._fullscreen_requested:
+            self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+            # Drop the windowed-mode fixed size so the WM can stretch us.
+            self.setMinimumSize(0, 0)
+            self.setMaximumSize(self._QWIDGET_SIZE_MAX, self._QWIDGET_SIZE_MAX)
+            self.showFullScreen()
+        else:
+            self.setWindowFlags(Qt.WindowType.Window)
+            self.setFixedSize(SCREEN_WIDTH, SCREEN_HEIGHT)
+            self.showNormal()
+            self._center_on_screen()
     
     def closeEvent(self, event):
         """Handle window close event."""
