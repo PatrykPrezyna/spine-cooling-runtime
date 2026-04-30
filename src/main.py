@@ -15,7 +15,6 @@ from compressor_uart_driver import CompressorTelemetry, CompressorUartDriver
 from csv_logger import CSVLogger
 from enhanced_ui import MainScreen
 from multi_sensor_reader import MultiSensorReader
-from simulation_sensor_reader import SimulationSensorReader
 from state_machine import State, StateMachine
 from stepper_driver import STSPIN220Driver
 from thermocouple_reader import ThermocoupleReader
@@ -26,11 +25,10 @@ class SensorMonitorApp:
 
     UPDATE_INTERVAL_MS = 1000
 
-    def __init__(self, config_path: str = "config.yaml", simulation_mode: bool = True):
+    def __init__(self, config_path: str = "config.yaml"):
         self.config = self._load_config(config_path)
-        self.simulation_mode = simulation_mode
 
-        self.sensor_reader: Optional[MultiSensorReader | SimulationSensorReader] = None
+        self.sensor_reader: Optional[MultiSensorReader] = None
         self.csv_logger: Optional[CSVLogger] = None
         self.ui: Optional[MainScreen] = None
         self.state_machine: Optional[StateMachine] = None
@@ -74,13 +72,7 @@ class SensorMonitorApp:
             self.state_machine = StateMachine()
             self.state_machine.on_state_change = self._on_state_changed
 
-            if self.simulation_mode:
-                print("Using SIMULATION mode with manual sensor control")
-                self.sensor_reader = SimulationSensorReader(self.config)
-            else:
-                print("Using REAL sensor mode")
-                self.sensor_reader = MultiSensorReader(self.config)
-
+            self.sensor_reader = MultiSensorReader(self.config)
             if not self.sensor_reader.is_initialized:
                 error_msg = "Sensor reader initialization failed"
                 print(f"Error: {error_msg}")
@@ -90,19 +82,13 @@ class SensorMonitorApp:
             self.csv_logger = CSVLogger(self.config)
 
             # Optional, non-fatal subsystems.
-            self.thermocouple_reader = ThermocoupleReader(
-                self.config, simulation_mode=self.simulation_mode
-            )
+            self.thermocouple_reader = ThermocoupleReader(self.config)
             self._log_optional_status("Thermocouple reader", self.thermocouple_reader)
 
-            self.compressor_driver = CompressorUartDriver(
-                self.config, simulation_mode=self.simulation_mode
-            )
+            self.compressor_driver = CompressorUartDriver(self.config)
             self._log_optional_status("Compressor UART driver", self.compressor_driver)
 
-            self.stepper_driver = STSPIN220Driver(
-                self.config, force_simulation=self.simulation_mode
-            )
+            self.stepper_driver = STSPIN220Driver(self.config)
             # Keep the driver energised while service jog controls are used.
             self.stepper_driver.disable_on_idle = False
             self.stepper_driver.enable()
@@ -307,54 +293,6 @@ class SensorMonitorApp:
             self.stepper_driver.stop_continuous()
         self._update_stepper_ui_status()
 
-    def on_simulation_sensor_changed(self, sensor_name: str, state: bool):
-        if self.simulation_mode and isinstance(self.sensor_reader, SimulationSensorReader):
-            self.sensor_reader.set_sensor(sensor_name, state)
-            self.update_display()
-
-    def on_mode_changed(self, simulation_mode: bool):
-        """Switch between real-sensor and simulation modes at runtime."""
-        print(f"Switching to {'SIMULATION' if simulation_mode else 'REAL SENSOR'} mode...")
-
-        if self.sensor_reader:
-            self.sensor_reader.cleanup()
-        self.simulation_mode = simulation_mode
-
-        try:
-            if self.simulation_mode:
-                self.sensor_reader = SimulationSensorReader(self.config)
-                print("Simulation mode activated - use Simulation tab to control sensors")
-            else:
-                self.sensor_reader = MultiSensorReader(self.config, force_simulation=False)
-                print("Real sensor mode activated - reading from GPIO")
-
-            self.thermocouple_reader = ThermocoupleReader(
-                self.config, simulation_mode=self.simulation_mode
-            )
-            self.compressor_driver = CompressorUartDriver(
-                self.config, simulation_mode=self.simulation_mode
-            )
-            self.last_compressor_telemetry = None
-
-            if self.ui:
-                self.ui.simulation_mode = self.simulation_mode
-
-            self.update_display()
-
-        except RuntimeError as e:
-            error_msg = str(e)
-            print(f"Error switching to real sensor mode: {error_msg}")
-            # Fall back to simulation.
-            self.simulation_mode = True
-            self.sensor_reader = SimulationSensorReader(self.config)
-            if self.ui:
-                self.ui.simulation_mode = True
-                self.ui.simulation_tab.update_mode_display(True)
-                self.ui.set_status_message(
-                    f"Real sensors not available: {error_msg}", is_error=True
-                )
-            self.update_display()
-
     # ------------------------------------------------------------------
     # Run
     # ------------------------------------------------------------------
@@ -366,7 +304,7 @@ class SensorMonitorApp:
 
             app = QApplication(sys.argv)
 
-            self.ui = MainScreen(self.config, simulation_mode=self.simulation_mode)
+            self.ui = MainScreen(self.config)
             self._wire_ui_callbacks()
             self.ui.set_update_callback(self.update_display)
             self.ui.update_timer.start(self.UPDATE_INTERVAL_MS)
@@ -375,8 +313,7 @@ class SensorMonitorApp:
             if self.stepper_driver:
                 self._update_stepper_ui_status()
 
-            mode_text = "SIMULATION MODE" if self.simulation_mode else "REAL SENSOR MODE"
-            print(f"Application started in {mode_text}. Close window to exit.")
+            print("Application started. Close window to exit.")
 
             exit_code = app.exec()
             self.cleanup()
@@ -390,8 +327,6 @@ class SensorMonitorApp:
     def _wire_ui_callbacks(self) -> None:
         """Connect every UI callback hook to its handler on this app."""
         ui = self.ui
-        ui.on_mode_change_callback = self.on_mode_changed
-        ui.on_sensor_change_callback = self.on_simulation_sensor_changed
         ui.on_start_pumping_callback = self.on_start_pumping
         ui.on_stop_pumping_callback = self.on_stop_pumping
         ui.on_acknowledge_callback = self.on_acknowledge_error
@@ -409,11 +344,8 @@ def main() -> int:
     print("Medical Device Prototype")
     print("=" * 50)
     print()
-    print("Starting in REAL SENSOR MODE (default)")
-    print("Use the mode toggle button to switch between Real Sensor and Simulation modes")
-    print()
 
-    app = SensorMonitorApp(simulation_mode=False)
+    app = SensorMonitorApp()
     exit_code = app.run()
 
     print()

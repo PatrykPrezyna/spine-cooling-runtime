@@ -1,16 +1,10 @@
-"""Simple pulse/dir/enable stepper driver module (TB6600/TB600 style)."""
+"""Pulse/dir/enable stepper driver (TB6600/TB600 style) for Raspberry Pi."""
 
 import time
-from threading import Event, Thread
-from threading import Lock
+from threading import Event, Lock, Thread
 from typing import Optional
 
-try:
-    import RPi.GPIO as GPIO
-    GPIO_AVAILABLE = True
-except (ImportError, RuntimeError):
-    GPIO_AVAILABLE = False
-    print("Warning: RPi.GPIO not available. Stepper driver running in simulation mode.")
+import RPi.GPIO as GPIO
 
 
 class TB6600Driver:
@@ -24,7 +18,7 @@ class TB6600Driver:
     DRIVER_NAME = "TB6600"
     SUPPORTED_MICROSTEPPING = (1, 2, 4, 8, 16, 32, 64, 128, 256)
 
-    def __init__(self, config: dict, force_simulation: bool = False):
+    def __init__(self, config: dict):
         """
         Initialize the simplified pulse/dir/enable driver.
 
@@ -32,8 +26,6 @@ class TB6600Driver:
             config: Configuration dictionary. The relevant section is
                 ``stepper_motor`` with a ``pins`` sub-section containing
                 ``pul/step``, ``dir``, and ``ena/en_fault``.
-            force_simulation: If True, skip hardware initialisation and run
-                in simulation mode even when RPi.GPIO is available.
         """
         stepper_cfg = config.get('stepper_motor', {})
         pins_cfg = stepper_cfg.get('pins', {})
@@ -63,7 +55,6 @@ class TB6600Driver:
         if self.ramp_start_rpm <= 0:
             raise ValueError("ramp_start_rpm must be > 0")
 
-        self.simulation_mode: bool = force_simulation or not GPIO_AVAILABLE
         self.is_initialized: bool = False
         self.enabled: bool = False
         self.position_steps: int = 0
@@ -76,26 +67,21 @@ class TB6600Driver:
         self._continuous_target_rpm: float = 0.0
         self._continuous_current_rpm: float = 0.0
 
-        if self.simulation_mode:
-            print(f"{self.DRIVER_NAME}: simulation mode (no GPIO access)")
-            self.is_initialized = True
-        else:
-            self._initialize_gpio()
+        self._initialize_gpio()
 
         if self.enable_on_startup:
             self.enable()
 
+    # ------------------------------------------------------------------
+    # GPIO setup / shutdown
+    # ------------------------------------------------------------------
     def _initialize_gpio(self) -> None:
         """Configure GPIO pins for STEP, DIR and ENABLE outputs."""
         try:
             GPIO.setmode(GPIO.BCM)
             GPIO.setwarnings(False)
 
-            for pin in (
-                self.pin_step,
-                self.pin_dir,
-                self.pin_enable,
-            ):
+            for pin in (self.pin_step, self.pin_dir, self.pin_enable):
                 GPIO.setup(pin, GPIO.OUT, initial=GPIO.LOW)
 
             GPIO.output(self.pin_enable, self._en_off_level())
@@ -113,19 +99,46 @@ class TB6600Driver:
             self.is_initialized = False
             raise
 
+    def cleanup(self) -> None:
+        """Release GPIO resources and disable the driver."""
+        self.stop_continuous()
+        if not self.is_initialized:
+            return
+        try:
+            GPIO.output(self.pin_enable, self._en_off_level())
+            for pin in (self.pin_enable, self.pin_step, self.pin_dir):
+                GPIO.cleanup(pin)
+            print(f"{self.DRIVER_NAME}: GPIO cleaned up")
+        except Exception as exc:
+            print(f"Error cleaning up {self.DRIVER_NAME}: {exc}")
+        finally:
+            self.is_initialized = False
+            self.enabled = False
+
+    def __del__(self):
+        try:
+            if self.is_initialized:
+                self.cleanup()
+        except Exception:
+            # Avoid destructor-time exceptions during interpreter shutdown.
+            pass
+
+    # ------------------------------------------------------------------
+    # Enable/disable + status
+    # ------------------------------------------------------------------
     def enable(self) -> None:
         """Assert ENA to energise the motor coils."""
         with self._lock:
             self.enabled = True
             self.fault = False
-            if not self.simulation_mode and self.is_initialized:
+            if self.is_initialized:
                 GPIO.output(self.pin_enable, self._en_on_level())
 
     def disable(self) -> None:
         """Release ENA so the coils are de-energised."""
         with self._lock:
             self.enabled = False
-            if not self.simulation_mode and self.is_initialized:
+            if self.is_initialized:
                 GPIO.output(self.pin_enable, self._en_off_level())
 
     def check_fault(self) -> bool:
@@ -137,14 +150,39 @@ class TB6600Driver:
         """
         return self.fault
 
-    def _pulse_step(self, period_seconds: float) -> None:
-        """
-        Emit a single step pulse paced by a target pulse period.
+    def get_status(self) -> dict:
+        """Return a snapshot of the driver state suitable for the UI."""
+        return {
+            'driver': self.DRIVER_NAME,
+            'initialized': self.is_initialized,
+            'enabled': self.enabled,
+            'fault': self.fault,
+            'position_steps': self.position_steps,
+            'microstepping': self.microstepping,
+            'en_active_high': self.en_active_high,
+        }
 
-        Using a full-period budget (instead of two symmetric sleeps) keeps the
-        achieved speed closer to the requested RPM because GPIO/loop overhead is
-        accounted for inside the period.
-        """
+    def set_microstepping(self, microstepping: int) -> int:
+        """Apply a new microstepping ratio. Returns the applied value."""
+        requested = int(microstepping)
+        if requested not in self.SUPPORTED_MICROSTEPPING:
+            raise ValueError(
+                "Unsupported microstepping value. "
+                f"Expected one of {list(self.SUPPORTED_MICROSTEPPING)}, got {requested}."
+            )
+
+        with self._lock:
+            # For simple drivers microstepping is typically set via DIP
+            # switches. We still store the user-selected value so the speed
+            # math stays coherent with the configured mechanical behavior.
+            self.microstepping = requested
+            return self.microstepping
+
+    # ------------------------------------------------------------------
+    # Pulse generation primitives
+    # ------------------------------------------------------------------
+    def _pulse_step(self, period_seconds: float) -> None:
+        """Emit a single step pulse paced by a target pulse period."""
         pulse_high_seconds = min(0.00001, period_seconds / 2.0)
         start = time.perf_counter()
         GPIO.output(self.pin_step, GPIO.HIGH)
@@ -157,22 +195,14 @@ class TB6600Driver:
 
     @staticmethod
     def _sleep_precise(delay_seconds: float) -> None:
-        """
-        Sleep with better precision for short pulse timings.
-
-        `time.sleep()` is often too coarse for sub-millisecond delays used at
-        higher microstepping ratios, which makes the motor appear much slower
-        than requested. For short waits we busy-wait on perf_counter.
-        """
+        """Sleep with better precision for short pulse timings."""
         if delay_seconds <= 0:
             return
         if delay_seconds >= 0.0005:
             time.sleep(delay_seconds)
             return
-
         target = time.perf_counter() + delay_seconds
         while time.perf_counter() < target:
-            # Cooperative yield helps avoid periodic long stalls under load.
             time.sleep(0)
 
     def _compute_step_period(self, speed_rpm: Optional[float]) -> float:
@@ -196,29 +226,15 @@ class TB6600Driver:
         """Convert RPM to pulse frequency (Hz) using current microstepping."""
         return (float(rpm) / 60.0) * float(self._pulses_per_revolution())
 
-    def set_microstepping(self, microstepping: int) -> int:
-        """
-        Apply a new microstepping ratio.
+    def _en_on_level(self):
+        return GPIO.HIGH if self.en_active_high else GPIO.LOW
 
-        Returns the applied microstepping value.
-        """
-        requested = int(microstepping)
-        if requested not in self.SUPPORTED_MICROSTEPPING:
-            raise ValueError(
-                "Unsupported microstepping value. "
-                f"Expected one of {list(self.SUPPORTED_MICROSTEPPING)}, got {requested}."
-            )
+    def _en_off_level(self):
+        return GPIO.LOW if self.en_active_high else GPIO.HIGH
 
-        with self._lock:
-            if requested == self.microstepping:
-                return self.microstepping
-
-            # For simple drivers microstepping is typically set via DIP switches.
-            # We still store user-selected value so speed calculations remain
-            # coherent with the configured mechanical behavior.
-            self.microstepping = requested
-            return self.microstepping
-
+    # ------------------------------------------------------------------
+    # Finite-step move
+    # ------------------------------------------------------------------
     def step(
         self,
         num_steps: int,
@@ -241,25 +257,18 @@ class TB6600Driver:
         self.stop_continuous()
 
         with self._lock:
-            if not self.is_initialized:
+            if not self.is_initialized or not self.enabled:
                 return 0
-            if not self.enabled:
-                if not self.simulation_mode:
-                    return 0
-                # In simulation mode, auto-enable for convenience.
-                self.enabled = True
 
             direction = 1 if num_steps > 0 else -1
             remaining = abs(num_steps)
 
             target_rpm = self._resolve_speed_rpm(speed_rpm)
-            applied_ramp_seconds = self.ramp_seconds if ramp_seconds is None else max(0.0, float(ramp_seconds))
+            applied_ramp_seconds = (
+                self.ramp_seconds if ramp_seconds is None else max(0.0, float(ramp_seconds))
+            )
             applied_start_rpm = self.ramp_start_rpm if start_rpm is None else float(start_rpm)
             applied_start_rpm = max(0.1, min(applied_start_rpm, target_rpm))
-
-            if self.simulation_mode:
-                self.position_steps += direction * remaining
-                return direction * remaining
 
             GPIO.output(self.pin_dir, GPIO.HIGH if direction > 0 else GPIO.LOW)
             time.sleep(0.000002)
@@ -286,6 +295,23 @@ class TB6600Driver:
 
             return direction * remaining
 
+    def move_to(self, target_steps: int, speed_rpm: Optional[float] = None) -> int:
+        """Move to an absolute step position."""
+        delta = target_steps - self.position_steps
+        return self.step(delta, speed_rpm=speed_rpm)
+
+    def home(self, speed_rpm: Optional[float] = None) -> int:
+        """Move to position 0."""
+        return self.move_to(0, speed_rpm=speed_rpm)
+
+    def set_position(self, position_steps: int) -> None:
+        """Manually override the tracked position (e.g. after homing)."""
+        with self._lock:
+            self.position_steps = position_steps
+
+    # ------------------------------------------------------------------
+    # Continuous stepping (background thread + PWM)
+    # ------------------------------------------------------------------
     def start_continuous(
         self,
         direction: int = 1,
@@ -298,16 +324,15 @@ class TB6600Driver:
             if not self.is_initialized:
                 return
             if not self.enabled:
-                if self.simulation_mode:
-                    self.enabled = True
-                else:
-                    self.enable()
+                self.enable()
             # Stop existing continuous mode first so speed/direction can update.
             self._stop_continuous_locked()
             self._continuous_stop_event.clear()
             run_direction = 1 if direction >= 0 else -1
             run_speed = self._resolve_speed_rpm(speed_rpm)
-            run_ramp_seconds = self.ramp_seconds if ramp_seconds is None else max(0.0, float(ramp_seconds))
+            run_ramp_seconds = (
+                self.ramp_seconds if ramp_seconds is None else max(0.0, float(ramp_seconds))
+            )
             run_start_rpm = self.ramp_start_rpm if start_rpm is None else float(start_rpm)
             self._continuous_direction = run_direction
             self._continuous_target_rpm = run_speed
@@ -341,7 +366,7 @@ class TB6600Driver:
             except Exception:
                 pass
             self._continuous_pwm = None
-            if not self.simulation_mode and self.is_initialized:
+            if self.is_initialized:
                 GPIO.output(self.pin_step, GPIO.LOW)
         thread = self._continuous_thread
         if thread and thread.is_alive():
@@ -350,26 +375,25 @@ class TB6600Driver:
         self._continuous_target_rpm = 0.0
         self._continuous_current_rpm = 0.0
 
-    def _continuous_loop(
-        self,
-        ramp_seconds: float,
-    ) -> None:
+    def _continuous_loop(self, ramp_seconds: float) -> None:
         """Background step loop used for true continuous movement."""
         ramp_duration = max(0.0, float(ramp_seconds))
         if ramp_duration > 0:
             ramp_rate_rpm_per_s = max(1.0, float(self.max_speed_rpm)) / ramp_duration
         else:
             ramp_rate_rpm_per_s = float("inf")
-        last_tick = time.perf_counter()
 
         def current_state() -> tuple[int, float]:
             with self._lock:
                 return self._continuous_direction, self._continuous_target_rpm
 
+        last_tick = time.perf_counter()
+
         def advance_ramp(target_rpm: float) -> float:
+            nonlocal last_tick
             now = time.perf_counter()
-            dt = max(0.0, now - advance_ramp.last_tick)
-            advance_ramp.last_tick = now
+            dt = max(0.0, now - last_tick)
+            last_tick = now
             current = self._continuous_current_rpm
             if not (ramp_rate_rpm_per_s < float("inf")):
                 self._continuous_current_rpm = target_rpm
@@ -381,18 +405,6 @@ class TB6600Driver:
             else:
                 self._continuous_current_rpm = current + max_delta * (1.0 if delta > 0 else -1.0)
             return self._continuous_current_rpm
-
-        advance_ramp.last_tick = last_tick  # type: ignore[attr-defined]
-
-        if self.simulation_mode:
-            while not self._continuous_stop_event.is_set():
-                direction, target_rpm = current_state()
-                current_rpm = advance_ramp(target_rpm)
-                self.position_steps += direction
-                # Keep sim load light while still indicating movement.
-                sim_step_period = self._compute_step_period(current_rpm)
-                self._sleep_precise(min(0.002, sim_step_period))
-            return
 
         current_direction, _ = current_state()
         GPIO.output(self.pin_dir, GPIO.HIGH if current_direction > 0 else GPIO.LOW)
@@ -423,70 +435,8 @@ class TB6600Driver:
             # Polling interval for smooth ramp updates without high CPU load.
             self._sleep_precise(0.02)
 
-    def move_to(self, target_steps: int, speed_rpm: Optional[float] = None) -> int:
-        """Move to an absolute step position."""
-        delta = target_steps - self.position_steps
-        return self.step(delta, speed_rpm=speed_rpm)
 
-    def home(self, speed_rpm: Optional[float] = None) -> int:
-        """Move to position 0."""
-        return self.move_to(0, speed_rpm=speed_rpm)
-
-    def set_position(self, position_steps: int) -> None:
-        """Manually override the tracked position (e.g. after homing)."""
-        with self._lock:
-            self.position_steps = position_steps
-
-    def get_status(self) -> dict:
-        """Return a snapshot of the driver state suitable for the UI."""
-        return {
-            'driver': self.DRIVER_NAME,
-            'initialized': self.is_initialized,
-            'simulation': self.simulation_mode,
-            'enabled': self.enabled,
-            'fault': self.fault,
-            'position_steps': self.position_steps,
-            'microstepping': self.microstepping,
-            'en_active_high': self.en_active_high,
-        }
-
-    def cleanup(self) -> None:
-        """Release GPIO resources and disable the driver."""
-        self.stop_continuous()
-        if self.simulation_mode or not self.is_initialized:
-            self.is_initialized = False
-            return
-        try:
-            GPIO.output(self.pin_enable, self._en_off_level())
-            for pin in (
-                self.pin_enable,
-                self.pin_step,
-                self.pin_dir,
-            ):
-                GPIO.cleanup(pin)
-            print(f"{self.DRIVER_NAME}: GPIO cleaned up")
-        except Exception as exc:
-            print(f"Error cleaning up {self.DRIVER_NAME}: {exc}")
-        finally:
-            self.is_initialized = False
-            self.enabled = False
-
-    def _en_on_level(self):
-        return GPIO.HIGH if self.en_active_high else GPIO.LOW
-
-    def _en_off_level(self):
-        return GPIO.LOW if self.en_active_high else GPIO.HIGH
-
-    def __del__(self):
-        try:
-            if self.is_initialized:
-                self.cleanup()
-        except Exception:
-            # Avoid destructor-time exceptions during interpreter shutdown.
-            pass
-
-
-# Backward compatibility for existing imports in the app.
+# Backward-compat alias for older imports in the app.
 STSPIN220Driver = TB6600Driver
 
 
@@ -498,7 +448,7 @@ if __name__ == "__main__":
     with open('config.yaml', 'r') as f:
         cfg = yaml.safe_load(f)
 
-    driver = TB6600Driver(cfg, force_simulation=True)
+    driver = TB6600Driver(cfg)
     print("Status:", driver.get_status())
 
     driver.enable()
@@ -514,5 +464,3 @@ if __name__ == "__main__":
     driver.disable()
     driver.cleanup()
     print("Test complete.")
-
-

@@ -3,7 +3,7 @@ PyQt6 user interface for the Spine Cooling runtime.
 
 Contains the main application window (`MainScreen`) and its primary
 visualization/control widget (`MainScreenWidget`), plus auxiliary tab
-widgets (`ServiceTab`, `Service2Tab`, `SimulationTab`).
+widgets (`ServiceTab`, `Service2Tab`).
 """
 
 import math
@@ -16,7 +16,7 @@ from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget,
-    QLabel, QGridLayout, QGroupBox, QCheckBox, QSlider, QComboBox, QStackedWidget,
+    QLabel, QGridLayout, QGroupBox, QSlider, QComboBox, QStackedWidget,
     QSizePolicy, QTabBar,
 )
 from PyQt6.QtGui import (
@@ -1267,169 +1267,17 @@ class Service2Tab(QWidget):
                 color = "#16a34a"
             label.setText(f"{name}: {value:.1f}°C")
             label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
-    
-class SimulationTab(QWidget):
-    """Simulation tab for manual sensor control"""
-    
-    def __init__(self, sensor_names: list, simulation_mode: bool = True):
-        super().__init__()
-        
-        self.sensor_names = sensor_names
-        self.checkboxes = {}
-        self.simulation_mode = simulation_mode
-        self.on_sensor_change_callback: Optional[Callable[[str, bool], None]] = None
-        self.on_mode_change_callback: Optional[Callable[[bool], None]] = None
-        
-        self._create_widgets()
-        self._setup_layout()
-
-    def _create_widgets(self):
-        """Create simulation tab widgets"""
-        
-        # Sensors group
-        self.sensors_group = QGroupBox("Sensor States")
-        self.sensors_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 12px;
-                border: 2px solid #3b82f6;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-                background-color: white;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-                color: #1f2937;
-            }
-        """)
-        
-        # Create checkboxes for each sensor
-        for sensor_name in self.sensor_names:
-            checkbox = QCheckBox(sensor_name)
-            checkbox.setStyleSheet("""
-                QCheckBox {
-                    font-size: 12px;
-                    padding: 8px;
-                    color: #1f2937;
-                }
-                QCheckBox::indicator {
-                    width: 20px;
-                    height: 20px;
-                }
-                QCheckBox::indicator:unchecked {
-                    background-color: #fee2e2;
-                    border: 2px solid #dc2626;
-                    border-radius: 4px;
-                }
-                QCheckBox::indicator:checked {
-                    background-color: #dcfce7;
-                    border: 2px solid #16a34a;
-                    border-radius: 4px;
-                }
-            """)
-            checkbox.stateChanged.connect(lambda state, name=sensor_name: self._on_checkbox_changed(name, state))
-            self.checkboxes[sensor_name] = checkbox
-        
-        # Mode toggle button
-        self.mode_button = QPushButton("SIMULATION MODE" if self.simulation_mode else "REAL SENSOR MODE")
-        self.mode_button.setMinimumHeight(40)
-        self.mode_button.setStyleSheet("""
-            QPushButton {
-                background-color: #8b5cf6;
-                color: white;
-                font-size: 12px;
-                font-weight: bold;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #7c3aed;
-            }
-            QPushButton:disabled {
-                background-color: #9ca3af;
-            }
-        """)
-        self.mode_button.clicked.connect(self._on_mode_toggle_clicked)
-        
-    def _setup_layout(self):
-        """Setup simulation tab layout"""
-        main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
-        
-        # Sensors layout (horizontal)
-        sensors_layout = QHBoxLayout()
-        sensors_layout.setSpacing(5)
-        for sensor_name in self.sensor_names:
-            sensors_layout.addWidget(self.checkboxes[sensor_name])
-        self.sensors_group.setLayout(sensors_layout)
-        main_layout.addWidget(self.sensors_group)
-        
-        # Add mode toggle button
-        main_layout.addWidget(self.mode_button)
-        
-        # Add stretch to push everything to top
-        main_layout.addStretch()
-        
-        self.setLayout(main_layout)
-    
-    def _on_checkbox_changed(self, sensor_name: str, state: int):
-        """Handle checkbox state change"""
-        is_checked = state == Qt.CheckState.Checked.value
-        if self.on_sensor_change_callback:
-            self.on_sensor_change_callback(sensor_name, is_checked)
-    
-    def _on_mode_toggle_clicked(self):
-        """Handle mode toggle button click"""
-        # Toggle mode
-        self.simulation_mode = not self.simulation_mode
-        
-        # Update button text
-        if self.simulation_mode:
-            self.mode_button.setText("Switch to REAL SENSOR MODE")
-        else:
-            self.mode_button.setText("Switch to SIMULATION MODE")
-        
-        # Notify callback
-        if self.on_mode_change_callback:
-            self.on_mode_change_callback(self.simulation_mode)
-    
-    def set_mode_button_enabled(self, enabled: bool):
-        """Enable or disable mode toggle button"""
-        self.mode_button.setEnabled(enabled)
-    
-    def update_mode_display(self, simulation_mode: bool):
-        """Update mode button text"""
-        self.simulation_mode = simulation_mode
-        if simulation_mode:
-            self.mode_button.setText("SIMULATION MODE")
-        else:
-            self.mode_button.setText("REAL SENSOR MODE")
-    
-    def set_sensor_state(self, sensor_name: str, state: bool):
-        """Set a sensor state programmatically"""
-        if sensor_name in self.checkboxes:
-            self.checkboxes[sensor_name].setChecked(state)
-    
-    def get_sensor_states(self) -> dict:
-        """Get current sensor states"""
-        return {name: checkbox.isChecked() for name, checkbox in self.checkboxes.items()}
 
 
 class MainScreen(QMainWindow):
     """Top-level window: hosts the main view and the advanced settings page."""
 
-    def __init__(self, config: dict, simulation_mode: bool = False):
+    def __init__(self, config: dict):
         super().__init__()
 
         self.config = config
-        self.simulation_mode = simulation_mode
 
         # Callbacks (set by the host application).
-        self.on_sensor_change_callback: Optional[Callable[[str, bool], None]] = None
-        self.on_mode_change_callback: Optional[Callable[[bool], None]] = None
         self.on_start_pumping_callback: Optional[Callable] = None
         self.on_stop_pumping_callback: Optional[Callable] = None
         self.on_acknowledge_callback: Optional[Callable] = None
@@ -1525,24 +1373,6 @@ class MainScreen(QMainWindow):
                 color: #24313d;
                 font-weight: 600;
             }
-            QCheckBox {
-                color: #2f3b47;
-                font-size: 12px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-            }
-            QCheckBox::indicator:unchecked {
-                background-color: #fbe7e3;
-                border: 2px solid #d97f66;
-                border-radius: 4px;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #dff0f2;
-                border: 2px solid #0e6a76;
-                border-radius: 4px;
-            }
         """)
         
         # Center window on screen when running windowed.
@@ -1584,25 +1414,17 @@ class MainScreen(QMainWindow):
 
         # Service 2 tab (temperature channels)
         self.service2_tab = Service2Tab()
-        
-        # Simulation tab (always create it)
-        sensor_names = [sensor['name'] for sensor in self.config['sensors']]
-        self.simulation_tab = SimulationTab(sensor_names, self.simulation_mode)
-        self.simulation_tab.on_sensor_change_callback = self._on_simulation_sensor_changed
-        self.simulation_tab.on_mode_change_callback = self._on_simulation_mode_changed
 
-        # In-window advanced area (service + simulation tabs)
+        # In-window advanced area (Service / Service 2 / Widgets).
         self.advanced_tab_selector = QTabBar()
         self.advanced_tab_selector.addTab("Service")
         self.advanced_tab_selector.addTab("Service 2")
-        self.advanced_tab_selector.addTab("Simulation")
         self.advanced_tab_selector.addTab("Widgets")
         self.advanced_tab_selector.setExpanding(False)
 
         self.advanced_content_stack = QStackedWidget()
         self.advanced_content_stack.addWidget(self.service_tab)
         self.advanced_content_stack.addWidget(self.service2_tab)
-        self.advanced_content_stack.addWidget(self.simulation_tab)
         self.advanced_content_stack.addWidget(self.cartridge_widget)
         self.advanced_tab_selector.currentChanged.connect(self.advanced_content_stack.setCurrentIndex)
 
@@ -1778,19 +1600,6 @@ class MainScreen(QMainWindow):
             pass
         self.update_timer.timeout.connect(callback)
 
-    def _on_simulation_sensor_changed(self, sensor_name: str, state: bool):
-        if self.on_sensor_change_callback:
-            self.on_sensor_change_callback(sensor_name, state)
-
-    def _on_simulation_mode_changed(self, simulation_mode: bool):
-        """Handle mode change from simulation tab."""
-        self.simulation_mode = simulation_mode
-        # Refresh state display so the colors reflect the new mode.
-        state_text = self.state_label.text().replace("State: ", "")
-        self.update_state_display(state_text)
-        if self.on_mode_change_callback:
-            self.on_mode_change_callback(self.simulation_mode)
-    
     def _on_service_stepper_speed_change(self, speed_rpm: int):
         """Forward service-tab speed slider updates to app callback."""
         if self.on_stepper_speed_change_callback:
@@ -1892,12 +1701,7 @@ class MainScreen(QMainWindow):
     def _set_main_action_buttons_visible(self, visible: bool):
         """Show or hide the bottom action row (children follow the parent)."""
         self.state_buttons_row.setVisible(visible)
-    
-    def set_mode_button_enabled(self, enabled: bool):
-        """Enable or disable mode toggle button in simulation tab"""
-        if self.simulation_tab:
-            self.simulation_tab.set_mode_button_enabled(enabled)
-    
+
     def update_state_display(self, state_name: str, error_message: Optional[str] = None):
         """
         Update state display and button visibility
@@ -1909,24 +1713,15 @@ class MainScreen(QMainWindow):
         # Update state label
         self.state_label.setText(f"State: {state_name}")
         
-        # Update state label color based on state and simulation mode
+        # Error state -> red, otherwise green.
         if state_name == "Error":
-            # Error state is always red
             bg_color = "#f8e5db"
             border_color = "#d06a45"
             text_color = "#7e3f26"
         else:
-            # Non-error states: green if real mode, yellow if simulation mode
-            if self.simulation_mode:
-                # Simulation mode: yellow
-                bg_color = "#f4ead2"
-                border_color = "#d2b06c"
-                text_color = "#6f5522"
-            else:
-                # Real mode: green
-                bg_color = "#dff0f2"
-                border_color = "#8fc8cf"
-                text_color = "#245962"
+            bg_color = "#dff0f2"
+            border_color = "#8fc8cf"
+            text_color = "#245962"
         
         self.state_label.setStyleSheet(f"""
             QLabel {{
@@ -1971,12 +1766,7 @@ class MainScreen(QMainWindow):
         if temp1 == temp1 and temp2 == temp2:  # skip NaN values
             self.main_graph_widget.add_temperature_sample(temp1, temp2)
             self.cartridge_widget.add_temperature_sample(temp1, temp2)
-        
-        # Update simulation tab if in simulation mode
-        if self.simulation_mode and self.simulation_tab:
-            for sensor_name, state in sensor_states.items():
-                self.simulation_tab.set_sensor_state(sensor_name, state)
-        
+
         # Keep compressor display stable unless updated by app logic.
         self.service_tab.update_outputs()
     
@@ -2029,6 +1819,7 @@ class MainScreen(QMainWindow):
 
 
 if __name__ == "__main__":
+    # Standalone UI smoke test: random sensor toggles drive the display.
     import random
     import yaml
 
@@ -2041,7 +1832,7 @@ if __name__ == "__main__":
     window = MainScreen(config)
     window.show()
 
-    def simulate_update():
+    def _feed_random_update():
         states = {
             'Level Low': random.choice([True, False]),
             'Level Critical': random.choice([True, False]),
@@ -2049,9 +1840,9 @@ if __name__ == "__main__":
         }
         window.update_sensor_display(states)
 
-    sim_timer = QTimer()
-    sim_timer.timeout.connect(simulate_update)
-    sim_timer.start(2000)
+    test_timer = QTimer()
+    test_timer.timeout.connect(_feed_random_update)
+    test_timer.start(2000)
 
     sys.exit(app.exec())
 

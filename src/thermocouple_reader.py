@@ -4,15 +4,12 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-try:
-    import sm_tc  # type: ignore
-    SMTC_AVAILABLE = True
-except ImportError:
-    SMTC_AVAILABLE = False
+import sm_tc  # type: ignore
 
 
 class ThermocoupleReader:
     """Read thermocouple channels from Sequent SMtc board."""
+
     _TYPE_MAP = {
         "B": 0,
         "E": 1,
@@ -24,10 +21,9 @@ class ThermocoupleReader:
         "T": 7,
     }
 
-    def __init__(self, config: dict, simulation_mode: bool = False):
+    def __init__(self, config: dict):
         tc_cfg = config.get("thermocouples", {})
         self.enabled = bool(tc_cfg.get("enabled", True))
-        self.simulation_mode = bool(simulation_mode)
         self.stack = int(tc_cfg.get("stack", 0))
         self.i2c_bus = int(tc_cfg.get("i2c_bus", 1))
         self.channels = tc_cfg.get("channels", [1, 2, 3, 4])
@@ -49,13 +45,6 @@ class ThermocoupleReader:
 
         if not self.enabled:
             self.last_error = "Thermocouple reader disabled by config"
-            return
-        if self.simulation_mode:
-            # In simulation mode we keep the module available but inactive.
-            self.last_error = "Simulation mode active"
-            return
-        if not SMTC_AVAILABLE:
-            self.last_error = "sm_tc package is not installed"
             return
 
         try:

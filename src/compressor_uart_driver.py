@@ -1,6 +1,7 @@
-"""
-Compressor UART driver.
-Implements 16-byte command/response protocol from compressor specification.
+"""Compressor UART driver.
+
+Implements the 16-byte command/response protocol from the compressor
+specification.
 """
 
 from __future__ import annotations
@@ -8,11 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-try:
-    import serial  # type: ignore
-    SERIAL_AVAILABLE = True
-except ImportError:
-    SERIAL_AVAILABLE = False
+import serial  # type: ignore
 
 
 @dataclass
@@ -50,10 +47,9 @@ class CompressorUartDriver:
     MASTER_ADDR = 0x00
     SLAVE_ADDR = 0x01
 
-    def __init__(self, config: dict, simulation_mode: bool = False):
+    def __init__(self, config: dict):
         c_cfg = config.get("compressor", {})
         self.enabled = bool(c_cfg.get("enabled", False))
-        self.simulation_mode = bool(simulation_mode)
         self.port = str(c_cfg.get("port", "/dev/ttyS0"))
         self.baudrate = int(c_cfg.get("baudrate", 600))
         self.timeout_s = float(c_cfg.get("timeout_s", 0.08))
@@ -62,16 +58,9 @@ class CompressorUartDriver:
         self.last_error: Optional[str] = None
         self.is_initialized = False
         self._serial = None
-        self._sim_actual_rpm = 0
 
         if not self.enabled:
             self.last_error = "Compressor UART disabled by config"
-            return
-        if self.simulation_mode:
-            self.is_initialized = True
-            return
-        if not SERIAL_AVAILABLE:
-            self.last_error = "pyserial not installed"
             return
 
         try:
@@ -149,21 +138,6 @@ class CompressorUartDriver:
 
         command = self._build_command_frame(on, set_speed_rpm)
 
-        if self.simulation_mode:
-            target = max(0, min(int(set_speed_rpm), self.max_speed_rpm)) if on else 0
-            if self._sim_actual_rpm < target:
-                self._sim_actual_rpm = min(target, self._sim_actual_rpm + 400)
-            else:
-                self._sim_actual_rpm = max(target, self._sim_actual_rpm - 500)
-            return CompressorTelemetry(
-                actual_rpm=self._sim_actual_rpm,
-                current_a=4.0 if self._sim_actual_rpm > 0 else 0.0,
-                bus_voltage_v=26.1,
-                fault_manual=0x00,
-                fault_auto=0x00,
-                raw_reply=bytes([0] * self.FRAME_LEN),
-            )
-
         try:
             assert self._serial is not None
             self._serial.reset_input_buffer()
@@ -185,4 +159,3 @@ class CompressorUartDriver:
                 pass
         self._serial = None
         self.is_initialized = False
-
