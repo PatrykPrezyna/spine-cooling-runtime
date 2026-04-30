@@ -768,11 +768,12 @@ class MainScreenWidget(QWidget):
         
         buttons_total_width = 2 * self._TEMP_BUTTON_SIZE + self._TEMP_BUTTON_GAP
         buttons_left = gauge_center_x - buttons_total_width // 2
-        buttons_top = gauge_y + gauge_height + 48
-        # Keep a larger bottom gap so controls don't collide visually with
-        # the main window action buttons below the tab area.
-        max_top = self.height() - self._TEMP_BUTTON_SIZE - 36
-        buttons_top = min(buttons_top, max_top)
+        # Anchor +/- buttons just above the bottom edge of this widget, so they
+        # sit immediately above the acknowledge button row in the main window.
+        buttons_top = self.height() - self._TEMP_BUTTON_SIZE - 4
+        # Don't let them overlap the gauge if the widget is unusually short.
+        min_top = gauge_y + gauge_height + 8
+        buttons_top = max(min_top, buttons_top)
         
         self.temp_minus_button.move(buttons_left, buttons_top)
         self.temp_plus_button.move(
