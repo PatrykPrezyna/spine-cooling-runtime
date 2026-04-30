@@ -13,6 +13,7 @@ PyYAML>=6.0
 
 # Hardware Interface (Raspberry Pi)
 RPi.GPIO>=0.7.1
+pigpio>=1.78
 
 # ============================================================================
 # FUTURE PHASES DEPENDENCIES
