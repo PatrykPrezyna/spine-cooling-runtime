@@ -127,12 +127,12 @@ class CartridgeWidget(QWidget):
     _GRAPH_SERIES = (
         # (history tuple index, label, color)
         (1, "Set Tmp",    "#0ea5e9"),
-        (2, "Body Temp", "#16a34a"),
-        (3, "Plate Temp", "#f59e0b"),
+        (2, "CSF Temp", "#16a34a"),
+        (3, "Heat Exchanger Temp", "#f59e0b"),
     )
     
     def add_temperature_sample(self, temp1: float, temp2: float):
-        """Record a new sample of (set temperature, Body Temp, Plate Temp) at current time"""
+        """Record a new sample of (set temperature, CSF Temp, Heat Exchanger Temp) at current time"""
         now = time.monotonic()
         self._temp_history.append((now, self.set_temperature, float(temp1), float(temp2)))
         
@@ -1223,8 +1223,8 @@ class Service2Tab(QWidget):
     def __init__(self):
         super().__init__()
         self.temp_values = {
-            'Body Temp': float("nan"),
-            'Plate Temp': float("nan"),
+            'CSF Temp': float("nan"),
+            'Heat Exchanger Temp': float("nan"),
             'Temp 3': float("nan"),
             'Temp 4': float("nan"),
         }
@@ -1235,7 +1235,7 @@ class Service2Tab(QWidget):
     def _create_widgets(self):
         self.temp_group = QGroupBox("Temperature Sensors")
         self.temp_group.setStyleSheet(ServiceTab._group_box_style("#f59e0b", "12px"))
-        for name in ['Body Temp', 'Plate Temp', 'Temp 3', 'Temp 4']:
+        for name in ['CSF Temp', 'Heat Exchanger Temp', 'Temp 3', 'Temp 4']:
             label = QLabel(f"{name}: --°C")
             label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
             self.temp_labels[name] = label
@@ -1246,8 +1246,8 @@ class Service2Tab(QWidget):
         main_layout.setSpacing(10)
 
         temp_layout = QGridLayout()
-        temp_layout.addWidget(self.temp_labels['Body Temp'], 0, 0)
-        temp_layout.addWidget(self.temp_labels['Plate Temp'], 0, 1)
+        temp_layout.addWidget(self.temp_labels['CSF Temp'], 0, 0)
+        temp_layout.addWidget(self.temp_labels['Heat Exchanger Temp'], 0, 1)
         temp_layout.addWidget(self.temp_labels['Temp 3'], 1, 0)
         temp_layout.addWidget(self.temp_labels['Temp 4'], 1, 1)
         self.temp_group.setLayout(temp_layout)
@@ -1985,9 +1985,9 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.service_tab.update_sensors(sensor_states)
         self.service2_tab.update_temperatures(temperatures)
         
-        # Feed Body Temp / Plate Temp into the graph for trend display
-        temp1 = self.service2_tab.temp_values.get('Body Temp', 0.0)
-        temp2 = self.service2_tab.temp_values.get('Plate Temp', 0.0)
+        # Feed CSF Temp / Heat Exchanger Temp into the graph for trend display
+        temp1 = self.service2_tab.temp_values.get('CSF Temp', 0.0)
+        temp2 = self.service2_tab.temp_values.get('Heat Exchanger Temp', 0.0)
         if temp1 == temp1 and temp2 == temp2:  # skip NaN values
             self.main_graph_widget.add_temperature_sample(temp1, temp2)
             self.cartridge_widget.add_temperature_sample(temp1, temp2)

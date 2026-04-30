@@ -224,7 +224,7 @@ class SensorMonitorApp:
             temperatures = {}
             if self.thermocouple_reader:
                 temperatures = self.thermocouple_reader.read_temperatures()
-            body_temp = temperatures.get("Body Temp")
+            body_temp = temperatures.get("CSF Temp")
             set_temp = self.ui.main_graph_widget.set_temperature if self.ui else None
             compressor_should_run = self.compressor_command_on
             if self.compressor_driver:

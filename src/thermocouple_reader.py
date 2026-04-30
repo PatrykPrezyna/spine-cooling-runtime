@@ -39,8 +39,8 @@ class ThermocoupleReader:
         self.channel_labels = tc_cfg.get(
             "labels",
             {
-                1: "Body Temp",
-                2: "Plate Temp",
+                1: "CSF Temp",
+                2: "Heat Exchanger Temp",
                 3: "Temp 3",
                 4: "Temp 4",
             },

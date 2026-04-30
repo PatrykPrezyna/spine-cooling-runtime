@@ -27,7 +27,7 @@ class CSVLogger:
         self.csv_writer: Optional[csv.writer] = None
         self.file_handle = None
         self.is_logging = False
-        self.temperature_columns = ["Body Temp", "Plate Temp", "Temp 3", "Temp 4"]
+        self.temperature_columns = ["CSF Temp", "Heat Exchanger Temp", "Temp 3", "Temp 4"]
         
         # Create directory if it doesn't exist
         Path(self.csv_directory).mkdir(parents=True, exist_ok=True)
@@ -181,8 +181,8 @@ if __name__ == "__main__":
                 "Cartridge In Place": True,
             },
             {
-                "Body Temp": 22.0 + i * 0.1,
-                "Plate Temp": 23.0 + i * 0.1,
+                "CSF Temp": 22.0 + i * 0.1,
+                "Heat Exchanger Temp": 23.0 + i * 0.1,
             },
         )
         print(f"  Logged sample {i + 1}")
