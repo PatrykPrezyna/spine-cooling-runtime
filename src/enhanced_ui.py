@@ -29,7 +29,9 @@ class CartridgeWidget(QWidget):
         self.show_cartridge = show_cartridge
         self.show_graph = show_graph
         self.show_temp_controls = show_temp_controls
-        self.setMinimumSize(800, 420)
+        # Keep this widget compact so the main action row below remains visible
+        # on smaller/fullscreen Raspberry Pi displays.
+        self.setMinimumSize(640, 300)
         
         # Sensor states
         self.level_low = False
@@ -83,7 +85,7 @@ class CartridgeWidget(QWidget):
         if self.show_graph and not self.show_cartridge:
             margin = 10
             # Keep clear space above the global bottom action buttons.
-            bottom_safe = 72
+            bottom_safe = 110
             graph_width = self.width() - (2 * margin)
             if self.show_temp_controls:
                 # Keep room for the right-side gauge and +/- controls.
@@ -93,7 +95,7 @@ class CartridgeWidget(QWidget):
                 graph_x=margin,
                 graph_y=margin,
                 graph_width=max(220, graph_width),
-                graph_height=max(180, self.height() - (2 * margin) - bottom_safe),
+                graph_height=max(140, self.height() - (2 * margin) - bottom_safe),
             )
             if self.show_temp_controls:
                 self._draw_temperature_gauge(painter)
@@ -1566,6 +1568,9 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             show_graph=True,
             show_temp_controls=True,
         )
+        self.main_graph_widget.setMinimumHeight(260)
+        self.main_graph_widget.setMaximumHeight(360)
+        self.main_graph_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         # Widgets tab: cartridge + 3 sensors only
         self.cartridge_widget = CartridgeWidget(
