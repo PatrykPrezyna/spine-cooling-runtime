@@ -61,13 +61,13 @@ stepper_motor:
 
   # Motor specification
   steps_per_revolution: 200    # Full steps per revolution (1.8° motor)
-  microstepping: 4           # set on the driver manually
+  microstepping: 16           # set on the driver manually
 
   # Motion
   default_speed_rpm: 30
-  pumping_speed_rpm: 60
-  pumping_slow_speed_rpm: 3
-  max_speed_rpm: 600
+  pumping_speed_rpm: 120
+  pumping_slow_speed_rpm: 20
+  max_speed_rpm: 120
 
   # Safety / power
   enable_on_startup: false    # Leave motor de-energised at boot

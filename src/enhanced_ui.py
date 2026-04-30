@@ -1737,6 +1737,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(8)
+        self._main_layout = main_layout
         
         # Header row: state indicator + advanced settings button
         header_row = QHBoxLayout()
@@ -1761,6 +1762,8 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         state_button_layout.addWidget(self.acknowledge_button)
         state_button_layout.addWidget(self.advanced_settings_button)
         self.state_buttons_row.setLayout(state_button_layout)
+        self.state_buttons_row.setMinimumHeight(56)
+        self.state_buttons_row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         main_layout.addWidget(self.state_buttons_row)
         
         central_widget.setLayout(main_layout)
@@ -1894,6 +1897,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
     def _show_main_view(self):
         """Return to main screen from advanced settings page."""
         self.content_stack.setCurrentWidget(self.main_graph_widget)
+        self._ensure_state_buttons_row_attached()
         self._set_main_action_buttons_visible(True)
         self.to_main_menu_button.setVisible(False)
         self.state_label.setMinimumWidth(0)
@@ -1904,6 +1908,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         # and refresh on the next event loop tick.
         self._refresh_main_action_buttons_row()
         QTimer.singleShot(0, self._refresh_main_action_buttons_row)
+        QTimer.singleShot(60, self._refresh_main_action_buttons_row)
 
     def _set_main_action_buttons_visible(self, visible: bool):
         """Show or hide the main-page action controls reliably."""
@@ -1926,6 +1931,13 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         self.state_buttons_row.updateGeometry()
         self.state_buttons_row.update()
         self.state_buttons_row.repaint()
+
+    def _ensure_state_buttons_row_attached(self):
+        """Ensure the action row is attached at the bottom of the main layout."""
+        if not hasattr(self, "_main_layout") or not self._main_layout:
+            return
+        self._main_layout.removeWidget(self.state_buttons_row)
+        self._main_layout.addWidget(self.state_buttons_row)
     
     def set_mode_button_enabled(self, enabled: bool):
         """Enable or disable mode toggle button in simulation tab"""
