@@ -29,9 +29,9 @@ class CartridgeWidget(QWidget):
         self.show_cartridge = show_cartridge
         self.show_graph = show_graph
         self.show_temp_controls = show_temp_controls
-        # Keep this widget compact so the main action row below remains visible
-        # on smaller/fullscreen Raspberry Pi displays.
-        self.setMinimumSize(640, 300)
+        # Keep this widget compact enough for Pi screens, but still allow it
+        # to grow and use all remaining space in the main layout.
+        self.setMinimumSize(640, 280)
         
         # Sensor states
         self.level_low = False
@@ -84,8 +84,9 @@ class CartridgeWidget(QWidget):
 
         if self.show_graph and not self.show_cartridge:
             margin = 10
-            # Keep clear space above the global bottom action buttons.
-            bottom_safe = 110
+            # Reserve space inside this widget for local graph controls while
+            # leaving more room for the plotted area.
+            bottom_safe = 88
             graph_width = self.width() - (2 * margin)
             if self.show_temp_controls:
                 # Keep room for the right-side gauge and +/- controls.
@@ -95,7 +96,7 @@ class CartridgeWidget(QWidget):
                 graph_x=margin,
                 graph_y=margin,
                 graph_width=max(220, graph_width),
-                graph_height=max(140, self.height() - (2 * margin) - bottom_safe),
+                graph_height=max(160, self.height() - (2 * margin) - bottom_safe),
             )
             if self.show_temp_controls:
                 self._draw_temperature_gauge(painter)
@@ -1568,8 +1569,7 @@ class EnhancedSensorMonitorWindow(QMainWindow):
             show_graph=True,
             show_temp_controls=True,
         )
-        self.main_graph_widget.setMinimumHeight(260)
-        self.main_graph_widget.setMaximumHeight(360)
+        self.main_graph_widget.setMinimumHeight(280)
         self.main_graph_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         # Widgets tab: cartridge + 3 sensors only
@@ -1742,7 +1742,6 @@ class EnhancedSensorMonitorWindow(QMainWindow):
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(8)
-        self._main_layout = main_layout
         
         # Header row: state indicator + advanced settings button
         header_row = QHBoxLayout()
@@ -1904,66 +1903,18 @@ class EnhancedSensorMonitorWindow(QMainWindow):
     def _show_main_view(self):
         """Return to main screen from advanced settings page."""
         self.content_stack.setCurrentWidget(self.main_graph_widget)
-        self._ensure_state_buttons_row_attached()
-        self.state_buttons_row.show()
-        self.pumping_toggle_button.show()
-        self.acknowledge_button.show()
-        self.advanced_settings_button.show()
         self._set_main_action_buttons_visible(True)
         self.to_main_menu_button.setVisible(False)
         self.state_label.setMinimumWidth(0)
         self.state_label.setMaximumWidth(16777215)
         self.state_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        # Force a full relayout + repaint pass. Some Raspberry Pi Qt builds can
-        # leave this row visually hidden after page switches unless we re-show
-        # and refresh on the next event loop tick.
-        self._refresh_main_action_buttons_row()
-        QTimer.singleShot(0, self._refresh_main_action_buttons_row)
-        QTimer.singleShot(60, self._refresh_main_action_buttons_row)
-        QTimer.singleShot(140, self._refresh_main_action_buttons_row)
 
     def _set_main_action_buttons_visible(self, visible: bool):
-        """Show/hide controls; fullscreen uses disable-only workaround."""
-        fullscreen_mode = bool(getattr(self, "_fullscreen_requested", False) or self.isFullScreen())
-        # Raspberry Pi fullscreen + frameless mode can fail to restore widgets
-        # after hide/show cycles. In fullscreen, keep the row shown and only
-        # toggle enabled state.
-        if fullscreen_mode:
-            self.state_buttons_row.show()
-            self.pumping_toggle_button.show()
-            self.acknowledge_button.show()
-            self.advanced_settings_button.show()
-            self.state_buttons_row.setEnabled(visible)
-            if visible:
-                self._refresh_main_action_buttons_row()
-            return
-
+        """Show or hide the main-page action controls reliably."""
         self.state_buttons_row.setVisible(visible)
         self.pumping_toggle_button.setVisible(visible)
         self.acknowledge_button.setVisible(visible)
         self.advanced_settings_button.setVisible(visible)
-
-    def _refresh_main_action_buttons_row(self):
-        """Force the bottom action row to be shown and repainted."""
-        self.state_buttons_row.show()
-        self.pumping_toggle_button.show()
-        self.acknowledge_button.show()
-        self.advanced_settings_button.show()
-        layout = self.centralWidget().layout() if self.centralWidget() else None
-        if layout:
-            layout.invalidate()
-            layout.activate()
-        self.state_buttons_row.raise_()
-        self.state_buttons_row.updateGeometry()
-        self.state_buttons_row.update()
-        self.state_buttons_row.repaint()
-
-    def _ensure_state_buttons_row_attached(self):
-        """Ensure the action row is attached at the bottom of the main layout."""
-        if not hasattr(self, "_main_layout") or not self._main_layout:
-            return
-        self._main_layout.removeWidget(self.state_buttons_row)
-        self._main_layout.addWidget(self.state_buttons_row)
     
     def set_mode_button_enabled(self, enabled: bool):
         """Enable or disable mode toggle button in simulation tab"""
