@@ -15,6 +15,10 @@ def key_capture_thread():
 
 if __name__ == "__main__":
     t = sm_tc.SMtc(0)
+    # Type T thermocouple (copper / constantan), code 7 in the SMtc driver.
+    TYPE_T = 7
+    for ch in range(1, 9):
+        t.set_sensor_type(ch, TYPE_T)
     if len(sys.argv) > 1:
         filename = sys.argv[1]
     else:
