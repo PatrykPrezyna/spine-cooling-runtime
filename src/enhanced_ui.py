@@ -99,6 +99,7 @@ class MainScreenWidget(QWidget):
         self.show_graph = show_graph
         self.show_temp_controls = show_temp_controls
         self.primary_temperature_label = "Temperature"
+        self.secondary_temperature_label: Optional[str] = None
         # Compact enough for Pi screens, still grows with the main layout.
         self.setMinimumSize(640, 280)
 
@@ -210,9 +211,21 @@ class MainScreenWidget(QWidget):
     _GRAPH_TEMP_MAX = 40.0
     _GRAPH_SERIES = (
         # (history tuple index, label, color)
-        (1, "Set Tmp",    "#0ea5e9"),
+        (1, "Set Tmp", "#0ea5e9"),
         (2, "", "#16a34a"),
+        (3, "", "#f59e0b"),
     )
+
+    def _active_graph_series(self) -> tuple:
+        """Return the series tuples to actually draw / legend.
+
+        The third series (secondary probe) is omitted when no secondary
+        thermocouple label has been configured, otherwise it would draw
+        as a flat line at the placeholder value of 0 deg C.
+        """
+        if self.secondary_temperature_label:
+            return self._GRAPH_SERIES
+        return tuple(s for s in self._GRAPH_SERIES if s[0] != 3)
     
     def add_temperature_sample(self, temp1: float, temp2: float):
         """Record a new sample of (set temperature, primary temp, secondary temp)."""
@@ -312,12 +325,11 @@ class MainScreenWidget(QWidget):
             painter.save()
             painter.setClipRect(QRectF(plot_left, plot_top, plot_width, plot_height))
             
-            for series_index, _label, color_hex in self._GRAPH_SERIES:
+            for series_index, _label, color_hex in self._active_graph_series():
                 pen = QPen(QColor(color_hex), 4)
                 if series_index == 1:  # Set temperature: dashed line
                     pen.setDashPattern([6, 3])
-                painter.setPen(pen)
-                
+
                 path = QPainterPath()
                 first = True
                 for entry in visible_entries:
@@ -330,7 +342,9 @@ class MainScreenWidget(QWidget):
                         first = False
                     else:
                         path.lineTo(px, py)
-                painter.drawPath(path)
+                # strokePath ignores the active brush, so crossing lines
+                # don't clobber each other with the background fill.
+                painter.strokePath(path, pen)
             
             painter.restore()
         else:
@@ -360,10 +374,14 @@ class MainScreenWidget(QWidget):
     
     def _draw_graph_legend(self, painter: QPainter, graph_x: int, y: int, graph_width: int):
         """Draw legend entries for the graph series"""
-        entries = (
+        entries = [
             self._GRAPH_SERIES[0],
             (2, self.primary_temperature_label, self._GRAPH_SERIES[1][2]),
-        )
+        ]
+        if self.secondary_temperature_label:
+            entries.append(
+                (3, self.secondary_temperature_label, self._GRAPH_SERIES[2][2])
+            )
         # Compact, right-aligned legend to avoid overlapping graph nav controls.
         entry_width = 92
         legend_total_width = entry_width * len(entries)
@@ -1463,7 +1481,7 @@ class MultiTemperatureGraphWidget(QWidget):
             for name in self.series_names:
                 if not self._visible.get(name, False):
                     continue
-                painter.setPen(QPen(QColor(self._series_colors[name]), 2))
+                pen = QPen(QColor(self._series_colors[name]), 2)
                 path = QPainterPath()
                 first = True
                 for ts, values in visible_entries:
@@ -1478,7 +1496,9 @@ class MultiTemperatureGraphWidget(QWidget):
                     else:
                         path.lineTo(px, py)
                 if not first:
-                    painter.drawPath(path)
+                    # strokePath ignores the active brush, so crossing
+                    # lines don't fill-clobber each other.
+                    painter.strokePath(path, pen)
             painter.restore()
 
     def _compute_visible_y_range(self, visible_entries):
@@ -1782,6 +1802,8 @@ class MainScreen(QMainWindow):
         )
         if self.primary_temperature_label:
             self.main_graph_widget.primary_temperature_label = self.primary_temperature_label
+        if self.secondary_temperature_label:
+            self.main_graph_widget.secondary_temperature_label = self.secondary_temperature_label
         self.main_graph_widget.setMinimumHeight(280)
         self.main_graph_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
