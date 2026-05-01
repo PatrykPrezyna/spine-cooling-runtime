@@ -205,10 +205,9 @@ class MainScreenWidget(QWidget):
     
     # Temperature history graph configuration
     _MAX_HISTORY_SEC = 3600  # Keep up to 60 minutes for panning
-    _GRAPH_TEMP_MIN = 25.0
+    # Fixed temperature (Y) axis range for the main-screen graph.
+    _GRAPH_TEMP_MIN = 20.0
     _GRAPH_TEMP_MAX = 40.0
-    _GRAPH_Y_MARGIN_DEG = 0.4
-    _GRAPH_Y_MARGIN_RATIO = 0.08
     _GRAPH_SERIES = (
         # (history tuple index, label, color)
         (1, "Set Tmp",    "#0ea5e9"),
@@ -346,20 +345,11 @@ class MainScreenWidget(QWidget):
             )
 
     def _compute_visible_y_range(self, visible_entries):
-        if not visible_entries:
-            return self._GRAPH_TEMP_MIN, self._GRAPH_TEMP_MAX
-        values = [value for entry in visible_entries for value in entry[1:4]]
-        data_min = min(values)
-        data_max = max(values)
-        data_range = max(0.5, data_max - data_min)
-        margin = max(self._GRAPH_Y_MARGIN_DEG, data_range * self._GRAPH_Y_MARGIN_RATIO)
-        y_min = data_min - margin
-        y_max = data_max + margin
-        if y_max - y_min < 1.0:
-            midpoint = (y_min + y_max) / 2.0
-            y_min = midpoint - 0.5
-            y_max = midpoint + 0.5
-        return y_min, y_max
+        # Y axis is intentionally locked to a fixed range so the visual
+        # baseline does not shift as samples come in. Values outside the
+        # range are clamped/clipped at draw time.
+        del visible_entries
+        return self._GRAPH_TEMP_MIN, self._GRAPH_TEMP_MAX
 
     @staticmethod
     def _build_y_ticks(y_min: float, y_max: float, count: int = 4):
