@@ -1605,6 +1605,20 @@ class TemperatureGraphTab(QWidget):
 
     def add_sample(self, series_values: dict):
         self.graph_widget.add_sample(series_values)
+        self._update_checkbox_labels(series_values)
+
+    def _update_checkbox_labels(self, series_values: dict) -> None:
+        """Show the latest value next to each probe name in the toggles."""
+        for name, checkbox in self.checkboxes.items():
+            raw = series_values.get(name)
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                value = float("nan")
+            if math.isnan(value):
+                checkbox.setText(name)
+            else:
+                checkbox.setText(f"{name}  {value:.1f} \u00b0C")
 
 
 class MainScreen(QMainWindow):
