@@ -2,6 +2,11 @@
 
 Wires together the sensor reader, CSV logger, state machine, drivers
 (stepper, compressor, thermocouple) and the Qt UI.
+
+The slow per-tick I/O (sensor reads, thermocouple I2C reads, compressor
+UART exchange, CSV append) runs on a dedicated ``QThread`` worker so the
+main GUI thread stays free to repaint and the stepper PWM thread is not
+starved by GIL contention.
 """
 
 import sys
@@ -9,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
+from PyQt6.QtCore import QObject, Qt, QThread, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import QApplication
 
 from compressor_uart_driver import CompressorTelemetry, CompressorUartDriver
@@ -20,12 +26,62 @@ from stepper_driver import STSPIN220Driver
 from thermocouple_reader import ThermocoupleReader
 
 
-class SensorMonitorApp:
-    """Top-level application coordinator."""
+class _BackgroundIOWorker(QObject):
+    """Runs all per-tick blocking I/O off the GUI thread.
+
+    Owns no UI; results are emitted via the ``tick_complete`` signal and
+    consumed back on the main thread.
+    """
+
+    tick_complete = pyqtSignal(object, object, object, object)
+    # payload: (sensor_states, temperatures, telemetry, error_message)
+
+    def __init__(
+        self,
+        sensor_reader: MultiSensorReader,
+        thermocouple_reader: Optional[ThermocoupleReader],
+        compressor_driver: Optional[CompressorUartDriver],
+        csv_logger: Optional[CSVLogger],
+    ):
+        super().__init__()
+        self._sensor_reader = sensor_reader
+        self._thermocouple_reader = thermocouple_reader
+        self._compressor_driver = compressor_driver
+        self._csv_logger = csv_logger
+
+    @pyqtSlot(bool, int)
+    def tick(self, compressor_on: bool, compressor_speed_rpm: int) -> None:
+        sensor_states: dict = {}
+        temperatures: dict = {}
+        telemetry: Optional[CompressorTelemetry] = None
+        error_message: Optional[str] = None
+        try:
+            if self._sensor_reader is not None:
+                sensor_states = self._sensor_reader.read_all()
+            if self._thermocouple_reader is not None:
+                temperatures = self._thermocouple_reader.read_temperatures()
+            if self._compressor_driver is not None:
+                telemetry = self._compressor_driver.exchange(
+                    on=bool(compressor_on),
+                    set_speed_rpm=int(compressor_speed_rpm),
+                )
+            if self._csv_logger is not None:
+                self._csv_logger.log(sensor_states, temperatures)
+        except Exception as exc:
+            error_message = f"Error during update: {exc}"
+        self.tick_complete.emit(sensor_states, temperatures, telemetry, error_message)
+
+
+class SensorMonitorApp(QObject):
+    """Top-level application coordinator (lives on the GUI thread)."""
 
     UPDATE_INTERVAL_MS = 1000
 
+    # Emitted on every UI tick to ask the IO worker thread to do its work.
+    request_io_tick = pyqtSignal(bool, int)
+
     def __init__(self, config_path: str = "config.yaml"):
+        super().__init__()
         self.config = self._load_config(config_path)
         self.temperature_sensor_names = self._temperature_sensor_names_from_config(self.config)
         self.primary_temperature_label = (
@@ -51,6 +107,11 @@ class SensorMonitorApp:
         self.stepper_continuous_forward: bool = False
 
         self.is_running = False
+
+        self._io_thread: Optional[QThread] = None
+        self._io_worker: Optional[_BackgroundIOWorker] = None
+        # Skip a tick if the worker hasn't finished the previous one yet.
+        self._tick_in_progress: bool = False
 
     # ------------------------------------------------------------------
     # Configuration
@@ -149,9 +210,17 @@ class SensorMonitorApp:
         """Release every resource owned by the application."""
         print("Cleaning up...")
 
+        self._stop_io_worker()
+
         if self.is_running and self.csv_logger:
             self.csv_logger.stop_logging()
             print("CSV logging stopped")
+
+        if self.thermocouple_reader is not None:
+            try:
+                self.thermocouple_reader.cleanup()
+            except Exception:
+                pass
 
         if self.sensor_reader:
             self.sensor_reader.cleanup()
@@ -166,6 +235,56 @@ class SensorMonitorApp:
         self.thermocouple_reader = None
 
         print("Cleanup complete")
+
+    # ------------------------------------------------------------------
+    # Background IO worker plumbing
+    # ------------------------------------------------------------------
+    def _start_io_worker(self) -> None:
+        """Spin up the background QThread that runs the per-tick IO."""
+        if self._io_thread is not None:
+            return
+        worker = _BackgroundIOWorker(
+            self.sensor_reader,
+            self.thermocouple_reader,
+            self.compressor_driver,
+            self.csv_logger,
+        )
+        thread = QThread()
+        thread.setObjectName("io_worker")
+        worker.moveToThread(thread)
+
+        # Cross-thread connections: GUI->worker is queued (worker has no
+        # event loop assumptions), worker->GUI is auto/queued because the
+        # receiver lives on a different thread.
+        self.request_io_tick.connect(worker.tick, Qt.ConnectionType.QueuedConnection)
+        worker.tick_complete.connect(
+            self._on_io_tick_complete, Qt.ConnectionType.QueuedConnection
+        )
+
+        thread.start()
+        self._io_thread = thread
+        self._io_worker = worker
+
+    def _stop_io_worker(self) -> None:
+        """Tear down the background IO thread cleanly."""
+        if self._io_thread is None:
+            return
+        try:
+            self.request_io_tick.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+        if self._io_worker is not None:
+            try:
+                self._io_worker.tick_complete.disconnect()
+            except (TypeError, RuntimeError):
+                pass
+        self._io_thread.quit()
+        if not self._io_thread.wait(1500):
+            print("IO worker thread did not stop in time; terminating.")
+            self._io_thread.terminate()
+            self._io_thread.wait(500)
+        self._io_thread = None
+        self._io_worker = None
 
     # ------------------------------------------------------------------
     # State machine bridge
@@ -188,31 +307,52 @@ class SensorMonitorApp:
             self.on_stepper_continuous_toggle(False)
 
     # ------------------------------------------------------------------
-    # Periodic update tick
+    # Periodic update tick (now non-blocking on the GUI thread)
     # ------------------------------------------------------------------
     def update_display(self):
-        """Update sensors, drivers and UI. Called once per second."""
+        """Request a sensor/IO tick on the worker thread.
+
+        Returns immediately. Results land in ``_on_io_tick_complete``.
+        """
+        if self._tick_in_progress:
+            # Worker is still busy with the previous tick; skip this one
+            # rather than queueing up and falling behind.
+            return
+        if self._io_worker is None:
+            # Worker not started yet (e.g. UI flushing during startup).
+            return
+        self._tick_in_progress = True
+        self.request_io_tick.emit(
+            bool(self.compressor_command_on),
+            int(self.compressor_speed_rpm),
+        )
+
+    @pyqtSlot(object, object, object, object)
+    def _on_io_tick_complete(self, sensor_states, temperatures, telemetry, error_message):
+        """Apply the worker's results back on the GUI thread."""
         try:
-            sensor_states = self.sensor_reader.read_all()
-            temperatures = (
-                self.thermocouple_reader.read_temperatures()
-                if self.thermocouple_reader
-                else {}
-            )
+            if error_message:
+                print(error_message)
+                if self.state_machine:
+                    self.state_machine.handle_sensor_error(error_message)
+                if self.ui:
+                    self.ui.set_status_message(error_message, is_error=True)
+                return
+
+            sensor_states = sensor_states or {}
+            temperatures = temperatures or {}
+
+            if telemetry is not None:
+                self.last_compressor_telemetry = telemetry
+            if self.compressor_driver and self.compressor_driver.last_error:
+                print(self.compressor_driver.last_error)
+
             body_temp = (
                 temperatures.get(self.primary_temperature_label)
                 if self.primary_temperature_label
                 else None
             )
             set_temp = self.ui.main_graph_widget.set_temperature if self.ui else None
-
-            if self.compressor_driver:
-                self.last_compressor_telemetry = self.compressor_driver.exchange(
-                    on=self.compressor_command_on,
-                    set_speed_rpm=self.compressor_speed_rpm,
-                )
-                if self.compressor_driver.last_error:
-                    print(self.compressor_driver.last_error)
 
             if self.state_machine:
                 self.state_machine.update(
@@ -223,17 +363,8 @@ class SensorMonitorApp:
                 self.ui.update_sensor_display(sensor_states, temperatures)
                 if self.stepper_driver:
                     self._update_stepper_ui_status()
-
-            if self.csv_logger:
-                self.csv_logger.log(sensor_states, temperatures)
-
-        except Exception as e:
-            error_msg = f"Error during update: {e}"
-            print(error_msg)
-            if self.state_machine:
-                self.state_machine.handle_sensor_error(error_msg)
-            if self.ui:
-                self.ui.set_status_message(error_msg, is_error=True)
+        finally:
+            self._tick_in_progress = False
 
     def _update_stepper_ui_status(self):
         """Push latest compressor + stepper values into the service tab."""
@@ -335,6 +466,11 @@ class SensorMonitorApp:
             self.ui = MainScreen(self.config)
             self._wire_ui_callbacks()
             self.ui.set_update_callback(self.update_display)
+
+            # Background IO must be started before the timer kicks off so
+            # the very first tick can be dispatched right away.
+            self._start_io_worker()
+
             self.ui.update_timer.start(self.UPDATE_INTERVAL_MS)
             self.ui.show()
 

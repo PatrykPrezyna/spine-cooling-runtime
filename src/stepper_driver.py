@@ -1,10 +1,24 @@
-"""Pulse/dir/enable stepper driver (TB6600/TB600 style) for Raspberry Pi."""
+"""Pulse/dir/enable stepper driver (TB6600/TB600 style) for Raspberry Pi.
+
+Pulse generation prefers ``pigpio`` (DMA-driven, daemon-side timing) so the
+STEP waveform is unaffected by the Python GIL or main-thread load. If
+``pigpio`` cannot be reached, the driver falls back to ``RPi.GPIO`` software
+PWM with the same external API.
+"""
 
 import time
 from threading import Event, Lock, Thread
 from typing import Optional
 
 import RPi.GPIO as GPIO
+
+try:
+    import pigpio  # type: ignore
+
+    _PIGPIO_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dep at runtime
+    pigpio = None  # type: ignore
+    _PIGPIO_AVAILABLE = False
 
 
 class TB6600Driver:
@@ -17,6 +31,11 @@ class TB6600Driver:
 
     DRIVER_NAME = "TB6600"
     SUPPORTED_MICROSTEPPING = (1, 2, 4, 8, 16, 32, 64, 128, 256)
+
+    # pigpio's DMA "soft" PWM is set with a duty range of 0..PWM_RANGE.
+    # 50% gives a clean square wave, which is what step drivers expect.
+    _PIGPIO_PWM_RANGE = 1000
+    _PIGPIO_PWM_DUTY = 500  # 50%
 
     def __init__(self, config: dict):
         """
@@ -62,10 +81,29 @@ class TB6600Driver:
         self._lock = Lock()
         self._continuous_stop_event = Event()
         self._continuous_thread: Optional[Thread] = None
-        self._continuous_pwm = None
         self._continuous_direction: int = 1
         self._continuous_target_rpm: float = 0.0
         self._continuous_current_rpm: float = 0.0
+
+        # pigpio-backed pulse generation (preferred path).
+        self._pi = None
+        self._pigpio_active = False
+        if _PIGPIO_AVAILABLE:
+            try:
+                pi = pigpio.pi()  # type: ignore[union-attr]
+                if pi.connected:
+                    self._pi = pi
+                else:
+                    try:
+                        pi.stop()
+                    except Exception:
+                        pass
+            except Exception as exc:
+                print(f"{self.DRIVER_NAME}: pigpio unavailable ({exc}); falling back to RPi.GPIO")
+                self._pi = None
+
+        # Legacy RPi.GPIO software-PWM handle, used only as fallback.
+        self._continuous_pwm = None
 
         self._initialize_gpio()
 
@@ -73,26 +111,49 @@ class TB6600Driver:
             self.enable()
 
     # ------------------------------------------------------------------
+    # Backend helpers
+    # ------------------------------------------------------------------
+    def _using_pigpio(self) -> bool:
+        return self._pi is not None
+
+    def _write_pin(self, pin: int, level: int) -> None:
+        if self._using_pigpio():
+            self._pi.write(pin, 1 if level else 0)  # type: ignore[union-attr]
+        else:
+            GPIO.output(pin, GPIO.HIGH if level else GPIO.LOW)
+
+    # ------------------------------------------------------------------
     # GPIO setup / shutdown
     # ------------------------------------------------------------------
     def _initialize_gpio(self) -> None:
         """Configure GPIO pins for STEP, DIR and ENABLE outputs."""
         try:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setwarnings(False)
-
-            for pin in (self.pin_step, self.pin_dir, self.pin_enable):
-                GPIO.setup(pin, GPIO.OUT, initial=GPIO.LOW)
-
-            GPIO.output(self.pin_enable, self._en_off_level())
-            GPIO.output(self.pin_step, GPIO.LOW)
-            GPIO.output(self.pin_dir, GPIO.LOW)
+            if self._using_pigpio():
+                pi = self._pi
+                assert pi is not None
+                for pin in (self.pin_step, self.pin_dir, self.pin_enable):
+                    pi.set_mode(pin, pigpio.OUTPUT)  # type: ignore[union-attr]
+                    pi.write(pin, 0)
+                # Pre-arm PWM range/duty (still off until we set frequency).
+                pi.set_PWM_range(self.pin_step, self._PIGPIO_PWM_RANGE)
+                pi.set_PWM_dutycycle(self.pin_step, 0)
+                pi.write(self.pin_enable, 1 if self._en_off_level_logical() else 0)
+                backend = "pigpio"
+            else:
+                GPIO.setmode(GPIO.BCM)
+                GPIO.setwarnings(False)
+                for pin in (self.pin_step, self.pin_dir, self.pin_enable):
+                    GPIO.setup(pin, GPIO.OUT, initial=GPIO.LOW)
+                GPIO.output(self.pin_enable, self._en_off_level())
+                GPIO.output(self.pin_step, GPIO.LOW)
+                GPIO.output(self.pin_dir, GPIO.LOW)
+                backend = "RPi.GPIO"
 
             self.is_initialized = True
             print(
                 f"{self.DRIVER_NAME} initialized on GPIO "
                 f"(ENA={self.pin_enable}, PUL={self.pin_step}, DIR={self.pin_dir}) "
-                f"@ 1/{self.microstepping} step"
+                f"@ 1/{self.microstepping} step [backend={backend}]"
             )
         except Exception as exc:
             print(f"Error initializing {self.DRIVER_NAME}: {exc}")
@@ -103,17 +164,34 @@ class TB6600Driver:
         """Release GPIO resources and disable the driver."""
         self.stop_continuous()
         if not self.is_initialized:
+            self._teardown_pigpio()
             return
         try:
-            GPIO.output(self.pin_enable, self._en_off_level())
-            for pin in (self.pin_enable, self.pin_step, self.pin_dir):
-                GPIO.cleanup(pin)
+            if self._using_pigpio():
+                pi = self._pi
+                assert pi is not None
+                pi.set_PWM_dutycycle(self.pin_step, 0)
+                pi.write(self.pin_step, 0)
+                pi.write(self.pin_enable, 1 if self._en_off_level_logical() else 0)
+            else:
+                GPIO.output(self.pin_enable, self._en_off_level())
+                for pin in (self.pin_enable, self.pin_step, self.pin_dir):
+                    GPIO.cleanup(pin)
             print(f"{self.DRIVER_NAME}: GPIO cleaned up")
         except Exception as exc:
             print(f"Error cleaning up {self.DRIVER_NAME}: {exc}")
         finally:
+            self._teardown_pigpio()
             self.is_initialized = False
             self.enabled = False
+
+    def _teardown_pigpio(self) -> None:
+        if self._pi is not None:
+            try:
+                self._pi.stop()
+            except Exception:
+                pass
+            self._pi = None
 
     def __del__(self):
         try:
@@ -132,14 +210,14 @@ class TB6600Driver:
             self.enabled = True
             self.fault = False
             if self.is_initialized:
-                GPIO.output(self.pin_enable, self._en_on_level())
+                self._write_pin(self.pin_enable, self._en_on_level_logical())
 
     def disable(self) -> None:
         """Release ENA so the coils are de-energised."""
         with self._lock:
             self.enabled = False
             if self.is_initialized:
-                GPIO.output(self.pin_enable, self._en_off_level())
+                self._write_pin(self.pin_enable, self._en_off_level_logical())
 
     def check_fault(self) -> bool:
         """
@@ -160,6 +238,7 @@ class TB6600Driver:
             'position_steps': self.position_steps,
             'microstepping': self.microstepping,
             'en_active_high': self.en_active_high,
+            'backend': 'pigpio' if self._using_pigpio() else 'RPi.GPIO',
         }
 
     def set_microstepping(self, microstepping: int) -> int:
@@ -179,15 +258,15 @@ class TB6600Driver:
             return self.microstepping
 
     # ------------------------------------------------------------------
-    # Pulse generation primitives
+    # Pulse generation primitives (used by the finite-step path)
     # ------------------------------------------------------------------
     def _pulse_step(self, period_seconds: float) -> None:
         """Emit a single step pulse paced by a target pulse period."""
         pulse_high_seconds = min(0.00001, period_seconds / 2.0)
         start = time.perf_counter()
-        GPIO.output(self.pin_step, GPIO.HIGH)
+        self._write_pin(self.pin_step, 1)
         self._sleep_precise(pulse_high_seconds)
-        GPIO.output(self.pin_step, GPIO.LOW)
+        self._write_pin(self.pin_step, 0)
         elapsed = time.perf_counter() - start
         remaining = period_seconds - elapsed
         if remaining > 0:
@@ -225,6 +304,12 @@ class TB6600Driver:
     def _frequency_from_rpm(self, rpm: float) -> float:
         """Convert RPM to pulse frequency (Hz) using current microstepping."""
         return (float(rpm) / 60.0) * float(self._pulses_per_revolution())
+
+    def _en_on_level_logical(self) -> int:
+        return 1 if self.en_active_high else 0
+
+    def _en_off_level_logical(self) -> int:
+        return 0 if self.en_active_high else 1
 
     def _en_on_level(self):
         return GPIO.HIGH if self.en_active_high else GPIO.LOW
@@ -270,7 +355,7 @@ class TB6600Driver:
             applied_start_rpm = self.ramp_start_rpm if start_rpm is None else float(start_rpm)
             applied_start_rpm = max(0.1, min(applied_start_rpm, target_rpm))
 
-            GPIO.output(self.pin_dir, GPIO.HIGH if direction > 0 else GPIO.LOW)
+            self._write_pin(self.pin_dir, 1 if direction > 0 else 0)
             time.sleep(0.000002)
 
             if applied_ramp_seconds > 0:
@@ -290,7 +375,7 @@ class TB6600Driver:
                 self.position_steps += direction
 
             if self.disable_on_idle:
-                GPIO.output(self.pin_enable, self._en_off_level())
+                self._write_pin(self.pin_enable, self._en_off_level_logical())
                 self.enabled = False
 
             return direction * remaining
@@ -310,7 +395,7 @@ class TB6600Driver:
             self.position_steps = position_steps
 
     # ------------------------------------------------------------------
-    # Continuous stepping (background thread + PWM)
+    # Continuous stepping (background thread + DMA/PWM)
     # ------------------------------------------------------------------
     def start_continuous(
         self,
@@ -360,13 +445,20 @@ class TB6600Driver:
     def _stop_continuous_locked(self) -> None:
         """Internal stop helper; caller must hold _lock."""
         self._continuous_stop_event.set()
+        # pigpio: shut off DMA PWM cleanly; RPi.GPIO: stop SW PWM.
+        if self._using_pigpio() and self.is_initialized:
+            try:
+                self._pi.set_PWM_dutycycle(self.pin_step, 0)  # type: ignore[union-attr]
+                self._pi.write(self.pin_step, 0)  # type: ignore[union-attr]
+            except Exception:
+                pass
         if self._continuous_pwm is not None:
             try:
                 self._continuous_pwm.stop()
             except Exception:
                 pass
             self._continuous_pwm = None
-            if self.is_initialized:
+            if self.is_initialized and not self._using_pigpio():
                 GPIO.output(self.pin_step, GPIO.LOW)
         thread = self._continuous_thread
         if thread and thread.is_alive():
@@ -377,6 +469,89 @@ class TB6600Driver:
 
     def _continuous_loop(self, ramp_seconds: float) -> None:
         """Background step loop used for true continuous movement."""
+        if self._using_pigpio():
+            self._continuous_loop_pigpio(ramp_seconds)
+        else:
+            self._continuous_loop_rpi_gpio(ramp_seconds)
+
+    # ------------------------------------------------------------------
+    # pigpio continuous loop (DMA-timed PWM, immune to GIL stalls)
+    # ------------------------------------------------------------------
+    def _continuous_loop_pigpio(self, ramp_seconds: float) -> None:
+        pi = self._pi
+        assert pi is not None
+
+        ramp_duration = max(0.0, float(ramp_seconds))
+        if ramp_duration > 0:
+            ramp_rate_rpm_per_s = max(1.0, float(self.max_speed_rpm)) / ramp_duration
+        else:
+            ramp_rate_rpm_per_s = float("inf")
+
+        def current_state() -> tuple[int, float]:
+            with self._lock:
+                return self._continuous_direction, self._continuous_target_rpm
+
+        last_tick = time.perf_counter()
+
+        def advance_ramp(target_rpm: float) -> float:
+            nonlocal last_tick
+            now = time.perf_counter()
+            dt = max(0.0, now - last_tick)
+            last_tick = now
+            current = self._continuous_current_rpm
+            if not (ramp_rate_rpm_per_s < float("inf")):
+                self._continuous_current_rpm = target_rpm
+                return self._continuous_current_rpm
+            delta = target_rpm - current
+            max_delta = ramp_rate_rpm_per_s * dt
+            if abs(delta) <= max_delta:
+                self._continuous_current_rpm = target_rpm
+            else:
+                self._continuous_current_rpm = current + max_delta * (1.0 if delta > 0 else -1.0)
+            return self._continuous_current_rpm
+
+        current_direction, _ = current_state()
+        try:
+            pi.write(self.pin_dir, 1 if current_direction > 0 else 0)
+            time.sleep(0.000002)
+            initial_hz = max(1, int(round(self._frequency_from_rpm(self._continuous_current_rpm))))
+            applied_hz = pi.set_PWM_frequency(self.pin_step, initial_hz)
+            del applied_hz  # actual frequency picked by pigpio; we don't need it here
+            pi.set_PWM_dutycycle(self.pin_step, self._PIGPIO_PWM_DUTY)
+        except Exception as exc:
+            print(f"{self.DRIVER_NAME}: pigpio start failed: {exc}")
+            return
+
+        last_freq_hz = -1
+        try:
+            while not self._continuous_stop_event.is_set():
+                direction, target_rpm = current_state()
+                if direction != current_direction:
+                    current_direction = direction
+                    pi.set_PWM_dutycycle(self.pin_step, 0)
+                    pi.write(self.pin_step, 0)
+                    pi.write(self.pin_dir, 1 if current_direction > 0 else 0)
+                    time.sleep(0.000002)
+                    pi.set_PWM_dutycycle(self.pin_step, self._PIGPIO_PWM_DUTY)
+                    last_freq_hz = -1  # force re-apply
+                current_rpm = advance_ramp(target_rpm)
+                target_hz = max(1, int(round(self._frequency_from_rpm(current_rpm))))
+                if target_hz != last_freq_hz:
+                    pi.set_PWM_frequency(self.pin_step, target_hz)
+                    last_freq_hz = target_hz
+                # Polling interval for smooth ramp updates without high CPU load.
+                self._sleep_precise(0.02)
+        finally:
+            try:
+                pi.set_PWM_dutycycle(self.pin_step, 0)
+                pi.write(self.pin_step, 0)
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
+    # Legacy RPi.GPIO continuous loop (software PWM fallback)
+    # ------------------------------------------------------------------
+    def _continuous_loop_rpi_gpio(self, ramp_seconds: float) -> None:
         ramp_duration = max(0.0, float(ramp_seconds))
         if ramp_duration > 0:
             ramp_rate_rpm_per_s = max(1.0, float(self.max_speed_rpm)) / ramp_duration
@@ -432,11 +607,9 @@ class TB6600Driver:
             if self._continuous_pwm is not None:
                 target_hz = max(1.0, self._frequency_from_rpm(current_rpm))
                 self._continuous_pwm.ChangeFrequency(target_hz)
-            # Polling interval for smooth ramp updates without high CPU load.
             self._sleep_precise(0.02)
 
 
-# Backward-compat alias for older imports in the app.
 STSPIN220Driver = TB6600Driver
 
 

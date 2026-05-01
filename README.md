@@ -85,7 +85,13 @@ Press `ENTER` to stop the loop.
 
 ## Stepper Control (pigpio)
 
-The `simple_examples/stepper_TB600.py` script uses `pigpio` for stable pulse timing.
+Both the main application (`src/main.py`) and the
+`simple_examples/stepper_TB600.py` script use `pigpio` for stable pulse
+timing. `pigpio` runs the step waveform from a system daemon (`pigpiod`)
+using DMA, so the motor is unaffected by GIL contention or GUI repaints
+in the Python process. If the daemon is unreachable the main driver
+silently falls back to `RPi.GPIO` software PWM (audible 1-Hz stutter is
+expected in that fallback mode).
 
 ### Install pigpio (Debian/Raspberry Pi)
 

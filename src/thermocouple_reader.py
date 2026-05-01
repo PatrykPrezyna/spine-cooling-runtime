@@ -1,9 +1,16 @@
-"""Thermocouple reader for Sequent SMtc boards (I2C)."""
+"""Thermocouple reader for Sequent SMtc boards (I2C).
+
+Uses ``sm_tc`` only to program the sensor type at init time; runtime reads
+go through a persistent ``smbus2.SMBus`` handle and a single block read so
+the GIL is not held for repeated bus open/close cycles every second.
+"""
 
 from __future__ import annotations
 
+import struct
 from typing import Dict, Optional
 
+import smbus2  # type: ignore
 import sm_tc  # type: ignore
 
 
@@ -20,6 +27,13 @@ class ThermocoupleReader:
         "S": 6,
         "T": 7,
     }
+
+    # Layout from upstream sm_tc/__init__.py.
+    _CARD_BASE_ADDRESS = 0x16
+    _TCP_VAL1_ADD = 0
+    _TEMP_SCALE_FACTOR = 10.0
+    _IN_CH_COUNT = 8
+    _TEMP_BLOCK_BYTES = _IN_CH_COUNT * 2  # 8 channels x int16
 
     def __init__(self, config: dict):
         tc_cfg = config.get("thermocouples", {})
@@ -52,6 +66,8 @@ class ThermocoupleReader:
         self.is_initialized = False
         self.last_error: Optional[str] = None
         self._device = None
+        self._bus: Optional[smbus2.SMBus] = None
+        self._hw_address = self._CARD_BASE_ADDRESS + self.stack
 
         if not self.enabled:
             self.last_error = "Thermocouple reader disabled by config"
@@ -60,6 +76,9 @@ class ThermocoupleReader:
         try:
             self._device = sm_tc.SMtc(self.stack, self.i2c_bus)
             self._apply_sensor_type()
+            # Persistent SMBus handle reused for every read; this avoids the
+            # open/close churn the upstream lib does on every get_temp().
+            self._bus = smbus2.SMBus(self.i2c_bus)
             self.is_initialized = True
         except Exception as exc:
             self.last_error = f"SMtc initialization failed: {exc}"
@@ -79,15 +98,59 @@ class ThermocoupleReader:
             dict[str, float]: mapping from label to temperature in Celsius.
             Returns empty dict when not initialized.
         """
-        if not self.is_initialized or not self._device:
+        if not self.is_initialized or self._bus is None:
             return {}
+
+        try:
+            block = self._bus.read_i2c_block_data(
+                self._hw_address, self._TCP_VAL1_ADD, self._TEMP_BLOCK_BYTES
+            )
+        except Exception as exc:
+            # Block read may fail if the bus is busy or disconnected. Fall
+            # back to per-channel reads so a single failure doesn't kill
+            # the rest of the cycle.
+            return self._read_temperatures_per_channel(exc)
 
         values: Dict[str, float] = {}
         for channel in self.channels:
             try:
-                raw_value = self._device.get_temp(int(channel))
-                label = self.channel_labels.get(channel, f"Temp {channel}")
-                values[label] = float(raw_value)
+                ch = int(channel)
+                if ch < 1 or ch > self._IN_CH_COUNT:
+                    continue
+                offset = (ch - 1) * 2
+                raw = struct.unpack(
+                    "h", bytes(block[offset:offset + 2])
+                )[0]
+                label = self.channel_labels.get(ch, f"Temp {ch}")
+                values[label] = raw / self._TEMP_SCALE_FACTOR
+            except Exception as exc:
+                self.last_error = f"Failed parsing thermocouple channel {channel}: {exc}"
+        return values
+
+    def _read_temperatures_per_channel(self, block_error: Exception) -> Dict[str, float]:
+        """Slow-path fallback used when the block read fails."""
+        values: Dict[str, float] = {}
+        if self._bus is None:
+            self.last_error = f"Block read failed: {block_error}"
+            return values
+        for channel in self.channels:
+            try:
+                ch = int(channel)
+                offset = self._TCP_VAL1_ADD + (ch - 1) * 2
+                pair = self._bus.read_i2c_block_data(self._hw_address, offset, 2)
+                raw = struct.unpack("h", bytes(pair))[0]
+                label = self.channel_labels.get(ch, f"Temp {ch}")
+                values[label] = raw / self._TEMP_SCALE_FACTOR
             except Exception as exc:
                 self.last_error = f"Failed reading thermocouple channel {channel}: {exc}"
         return values
+
+    def cleanup(self) -> None:
+        """Close the persistent I2C bus handle."""
+        if self._bus is not None:
+            try:
+                self._bus.close()
+            except Exception:
+                pass
+            self._bus = None
+        self.is_initialized = False
