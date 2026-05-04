@@ -19,3 +19,10 @@ python main.py
 
 - The UI reads the CPU temperature from `/sys/class/thermal/thermal_zone0/temp`.
 - If the file is unavailable, the app displays an "unavailable" message.
+
+how to change the display brightness
+echo 255 > /sys/class/backlight/10-0045/brightness
+
+
+run on startup instruction:
+https://www.instructables.com/Raspberry-Pi-Launch-Python-script-on-startup/
