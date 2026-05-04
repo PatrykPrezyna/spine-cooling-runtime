@@ -105,6 +105,8 @@ class SensorMonitorApp(QObject):
         self.compressor_speed_rpm: int = int(compressor_cfg.get('default_speed_rpm', 3000))
         self.compressor_command_on: bool = bool(compressor_cfg.get('start_on', False))
         self.stepper_continuous_forward: bool = False
+        _cont_dir = int(stepper_cfg.get("continuous_direction", 1))
+        self.stepper_continuous_direction: int = 1 if _cont_dir >= 0 else -1
 
         self.is_running = False
 
@@ -438,7 +440,7 @@ class SensorMonitorApp(QObject):
         self._update_stepper_ui_status()
 
     def on_stepper_continuous_toggle(self, enabled: bool):
-        """Toggle continuous forward movement ON/OFF."""
+        """Toggle continuous movement ON/OFF (direction: ``stepper_continuous_direction`` / config)."""
         self.stepper_continuous_forward = bool(enabled)
         if not self.stepper_driver:
             return
@@ -447,7 +449,10 @@ class SensorMonitorApp(QObject):
                 self.stepper_driver.enable()
             # Restart so the latest speed/direction takes effect.
             self.stepper_driver.stop_continuous()
-            self.stepper_driver.start_continuous(direction=1, speed_rpm=self.stepper_speed_rpm)
+            self.stepper_driver.start_continuous(
+                direction=self.stepper_continuous_direction,
+                speed_rpm=self.stepper_speed_rpm,
+            )
         else:
             self.stepper_driver.stop_continuous()
         self._update_stepper_ui_status()

@@ -32,8 +32,8 @@ thermocouples:
   sensor_type: "T"
   channels: [1, 2, 3, 4, 5, 6]
   labels:
-    1: "CSF"
-    2: "Heat Ex"
+    1: "Heat Ex"
+    2: "CSF"
     3: "Input"
     4: "Output"
     5: "Temp 5"
@@ -70,6 +70,8 @@ stepper_motor:
   pumping_speed_rpm: 120
   pumping_slow_speed_rpm: 20
   max_speed_rpm: 240
+  # Continuous RUN + state-machine pumping: +1 (same as JOG FORWARD) or -1 (same as JOG REVERSE)
+  continuous_direction: -1
 
   # Safety / power
   enable_on_startup: false    # Leave motor de-energised at boot
