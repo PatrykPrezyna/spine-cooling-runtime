@@ -34,6 +34,10 @@ python-daemon>=2.3.0
 # OPTIONAL DEPENDENCIES
 # ============================================================================
 
+# For offline analysis / plot_temps.py
+pandas>=2.0
+matplotlib>=3.7
+
 # For Phase 2: Real-time charting
 # pyqtgraph>=0.13.0
 
