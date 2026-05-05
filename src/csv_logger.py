@@ -50,14 +50,11 @@ class CSVLogger:
         return slug or "temp"
 
     def _build_header(self, temperature_columns: list[str]) -> list[str]:
-        header = [
-            'timestamp',
-            'level_low',
-            'level_critical',
-            'cartridge_in_place',
-        ]
+        header = ['timestamp']
         for name in temperature_columns:
             header.append(f"{self._csv_slug(name)}_c")
+        header.append('set_temperature_c')
+        header.append('peristaltic_pump_set_speed_rpm')
         return header
 
     def start_logging(self) -> bool:
@@ -83,22 +80,43 @@ class CSVLogger:
             self.is_logging = False
             return False
 
-    def log(self, sensor_states: dict, temperatures: Optional[dict] = None):
-        """Append a single row with the current sensor + temperature state."""
+    def log(
+        self,
+        sensor_states: dict,
+        temperatures: Optional[dict] = None,
+        peristaltic_pump_set_speed_rpm: Optional[float] = None,
+        set_temperature_c: Optional[float] = None,
+    ):
+        """Append a single row with the current temperature + actuator state.
+
+        ``sensor_states`` is accepted for backwards compatibility but is no
+        longer logged — the cartridge level digital sensors are tracked in
+        the conditions registry instead.
+        ``peristaltic_pump_set_speed_rpm`` is the latest stepper setpoint
+        (the peristaltic pump is driven by the stepper).
+        ``set_temperature_c`` is the user-selected target temperature.
+        """
+        del sensor_states  # not logged anymore; kept for API compatibility
         if not self.is_logging:
             return
 
         try:
             timestamp = datetime.now().isoformat()
-            level_low = 1 if sensor_states.get('Level Low', False) else 0
-            level_critical = 1 if sensor_states.get('Level Critical', False) else 0
-            cartridge = 1 if sensor_states.get('Cartridge In Place', False) else 0
-
             temperatures = temperatures or {}
-            row = [timestamp, level_low, level_critical, cartridge]
+            row: list = [timestamp]
             for column in self.temperature_columns:
                 value = temperatures.get(column)
                 row.append(f"{float(value):.3f}" if value is not None else "")
+            row.append(
+                f"{float(set_temperature_c):.3f}"
+                if set_temperature_c is not None
+                else ""
+            )
+            row.append(
+                f"{float(peristaltic_pump_set_speed_rpm):.2f}"
+                if peristaltic_pump_set_speed_rpm is not None
+                else ""
+            )
 
             self.csv_writer.writerow(row)
             self.file_handle.flush()
@@ -150,17 +168,14 @@ if __name__ == "__main__":
     print(f"Log file: {logger.get_log_file_path()}")
 
     for i in range(10):
-        state = i % 2 == 0
         sample_temps = {}
         for idx, name in enumerate(logger.temperature_columns):
             sample_temps[name] = 22.0 + i * 0.1 + idx
         logger.log(
-            {
-                "Level Low": state,
-                "Level Critical": not state,
-                "Cartridge In Place": True,
-            },
-            sample_temps,
+            sensor_states={},
+            temperatures=sample_temps,
+            peristaltic_pump_set_speed_rpm=30 + i,
+            set_temperature_c=33.0,
         )
         time.sleep(0.5)
 

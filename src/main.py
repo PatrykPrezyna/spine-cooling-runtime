@@ -49,8 +49,14 @@ class _BackgroundIOWorker(QObject):
         self._compressor_driver = compressor_driver
         self._csv_logger = csv_logger
 
-    @pyqtSlot(bool, int)
-    def tick(self, compressor_on: bool, compressor_speed_rpm: int) -> None:
+    @pyqtSlot(bool, int, int, float)
+    def tick(
+        self,
+        compressor_on: bool,
+        compressor_speed_rpm: int,
+        peristaltic_pump_set_speed_rpm: int,
+        set_temperature_c: float,
+    ) -> None:
         sensor_states: dict = {}
         temperatures: dict = {}
         telemetry: Optional[CompressorTelemetry] = None
@@ -66,7 +72,12 @@ class _BackgroundIOWorker(QObject):
                     set_speed_rpm=int(compressor_speed_rpm),
                 )
             if self._csv_logger is not None:
-                self._csv_logger.log(sensor_states, temperatures)
+                self._csv_logger.log(
+                    sensor_states,
+                    temperatures,
+                    peristaltic_pump_set_speed_rpm=int(peristaltic_pump_set_speed_rpm),
+                    set_temperature_c=float(set_temperature_c),
+                )
         except Exception as exc:
             error_message = f"Error during update: {exc}"
         self.tick_complete.emit(sensor_states, temperatures, telemetry, error_message)
@@ -78,7 +89,9 @@ class SensorMonitorApp(QObject):
     UPDATE_INTERVAL_MS = 1000
 
     # Emitted on every UI tick to ask the IO worker thread to do its work.
-    request_io_tick = pyqtSignal(bool, int)
+    # Payload: (compressor_on, compressor_speed_rpm,
+    #           peristaltic_pump_set_speed_rpm, set_temperature_c).
+    request_io_tick = pyqtSignal(bool, int, int, float)
 
     def __init__(self, config_path: str = "config.yaml"):
         super().__init__()
@@ -323,10 +336,16 @@ class SensorMonitorApp(QObject):
         if self._io_worker is None:
             # Worker not started yet (e.g. UI flushing during startup).
             return
+        set_temperature_c = (
+            float(self.ui.main_graph_widget.set_temperature)
+            if self.ui else float("nan")
+        )
         self._tick_in_progress = True
         self.request_io_tick.emit(
             bool(self.compressor_command_on),
             int(self.compressor_speed_rpm),
+            int(self.stepper_speed_rpm),
+            set_temperature_c,
         )
 
     @pyqtSlot(object, object, object, object)
