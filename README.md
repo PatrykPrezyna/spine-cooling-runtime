@@ -109,7 +109,17 @@ pigs t
 
 ### Testing Without Hardware
 
-tbd
+Run the calibration unit test:
+
+```bash
+python -m unittest tests.test_temperature_calibration
+```
+
+If you are using the project virtual environment on Windows:
+
+```powershell
+.\venv\Scripts\python.exe -m unittest tests.test_temperature_calibration
+```
 
 ## License
 
@@ -118,6 +128,14 @@ Medical device prototype - Internal use only
 
 ----
 #TODO:
+
+1) test original fillin system with water
+2) test with our pump
+3) add the battery tot hes sytem 
+3) parametrisize the thermocouple type
+
+4) claibrate sensors
+
 
 
 Stepper Motor:

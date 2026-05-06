@@ -38,6 +38,17 @@ thermocouples:
     4: "Output"
     5: "Temp 5"
     6: "Temp 6"
+  # Optional two-point calibration at fixed references 0C and 100C.
+  # corrected = (raw - measured_at_0c) * 100 / (measured_at_100c - measured_at_0c)
+  # Use "default" to apply to all channels, then override individual channels if needed.
+  calibration:
+    default:
+      measured_at_0c: 0.0
+      measured_at_100c: 100.0
+    channels:
+      1:
+        measured_at_0c: 0.0
+        measured_at_100c: 100.0
 
 compressor:
   enabled: true

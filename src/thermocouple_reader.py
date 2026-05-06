@@ -12,6 +12,11 @@ from typing import Dict, Optional
 
 import smbus2  # type: ignore
 import sm_tc  # type: ignore
+from temperature_calibration import (
+    IDENTITY_CALIBRATION,
+    apply_linear_calibration,
+    build_two_point_calibration,
+)
 
 
 class ThermocoupleReader:
@@ -68,6 +73,7 @@ class ThermocoupleReader:
         self._device = None
         self._bus: Optional[smbus2.SMBus] = None
         self._hw_address = self._CARD_BASE_ADDRESS + self.stack
+        self._channel_calibration = self._build_calibration(tc_cfg)
 
         if not self.enabled:
             self.last_error = "Thermocouple reader disabled by config"
@@ -82,6 +88,58 @@ class ThermocoupleReader:
             self.is_initialized = True
         except Exception as exc:
             self.last_error = f"SMtc initialization failed: {exc}"
+
+    def _build_calibration(self, tc_cfg: dict) -> Dict[int, tuple[float, float]]:
+        """Build linear calibration params (gain, offset) for each channel."""
+        calibration_cfg = tc_cfg.get("calibration", {})
+        if not calibration_cfg:
+            return {}
+
+        default_gain, default_offset = IDENTITY_CALIBRATION
+        if isinstance(calibration_cfg, dict):
+            default_cfg = calibration_cfg.get("default", {})
+            if isinstance(default_cfg, dict):
+                default_gain, default_offset = self._compute_two_point_params(
+                    default_cfg,
+                    channel_name="default",
+                )
+
+        channels_cfg = calibration_cfg.get("channels", {}) if isinstance(calibration_cfg, dict) else {}
+        params: Dict[int, tuple[float, float]] = {}
+        for channel in self.channels:
+            try:
+                ch = int(channel)
+            except (TypeError, ValueError):
+                continue
+
+            gain = default_gain
+            offset = default_offset
+            if isinstance(channels_cfg, dict):
+                point_cfg = channels_cfg.get(str(ch), channels_cfg.get(ch))
+                if isinstance(point_cfg, dict):
+                    gain, offset = self._compute_two_point_params(
+                        point_cfg,
+                        channel_name=f"channel {ch}",
+                    )
+            params[ch] = (gain, offset)
+        return params
+
+    def _compute_two_point_params(
+        self, point_cfg: dict, channel_name: str
+    ) -> tuple[float, float]:
+        """Calculate gain/offset from measured values at 0C and 100C."""
+        calibration, error = build_two_point_calibration(
+            point_cfg.get("measured_at_0c"),
+            point_cfg.get("measured_at_100c"),
+        )
+        if error:
+            self.last_error = f"Invalid calibration for {channel_name}: {error}"
+        return calibration
+
+    def _apply_calibration(self, channel: int, raw_temperature_c: float) -> float:
+        """Apply per-channel linear calibration."""
+        gain, offset = self._channel_calibration.get(int(channel), IDENTITY_CALIBRATION)
+        return apply_linear_calibration(raw_temperature_c, gain, offset)
 
     def _apply_sensor_type(self) -> None:
         """Set configured thermocouple type on all active channels."""
@@ -122,7 +180,8 @@ class ThermocoupleReader:
                     "h", bytes(block[offset:offset + 2])
                 )[0]
                 label = self.channel_labels.get(ch, f"Temp {ch}")
-                values[label] = raw / self._TEMP_SCALE_FACTOR
+                raw_temperature_c = raw / self._TEMP_SCALE_FACTOR
+                values[label] = self._apply_calibration(ch, raw_temperature_c)
             except Exception as exc:
                 self.last_error = f"Failed parsing thermocouple channel {channel}: {exc}"
         return values
@@ -140,7 +199,8 @@ class ThermocoupleReader:
                 pair = self._bus.read_i2c_block_data(self._hw_address, offset, 2)
                 raw = struct.unpack("h", bytes(pair))[0]
                 label = self.channel_labels.get(ch, f"Temp {ch}")
-                values[label] = raw / self._TEMP_SCALE_FACTOR
+                raw_temperature_c = raw / self._TEMP_SCALE_FACTOR
+                values[label] = self._apply_calibration(ch, raw_temperature_c)
             except Exception as exc:
                 self.last_error = f"Failed reading thermocouple channel {channel}: {exc}"
         return values
