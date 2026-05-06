@@ -74,6 +74,7 @@ class ThermocoupleReader:
         self._bus: Optional[smbus2.SMBus] = None
         self._hw_address = self._CARD_BASE_ADDRESS + self.stack
         self._channel_calibration = self._build_calibration(tc_cfg)
+        self._last_raw_temperatures: Dict[str, float] = {}
 
         if not self.enabled:
             self.last_error = "Thermocouple reader disabled by config"
@@ -141,6 +142,30 @@ class ThermocoupleReader:
         gain, offset = self._channel_calibration.get(int(channel), IDENTITY_CALIBRATION)
         return apply_linear_calibration(raw_temperature_c, gain, offset)
 
+    def set_channel_two_point_calibration(
+        self,
+        channel: int,
+        measured_at_0c: float,
+        measured_at_100c: float,
+    ) -> tuple[bool, str]:
+        """Set runtime two-point calibration for one hardware channel."""
+        try:
+            ch = int(channel)
+        except (TypeError, ValueError):
+            return False, f"Invalid channel: {channel}"
+        if ch < 1 or ch > self._IN_CH_COUNT:
+            return False, f"Channel out of range: {ch}"
+
+        calibration, error = build_two_point_calibration(measured_at_0c, measured_at_100c)
+        if error:
+            msg = f"Invalid calibration for channel {ch}: {error}"
+            self.last_error = msg
+            return False, msg
+
+        self._channel_calibration[ch] = calibration
+        self.last_error = None
+        return True, f"Calibration updated for channel {ch}"
+
     def _apply_sensor_type(self) -> None:
         """Set configured thermocouple type on all active channels."""
         if not self._device:
@@ -170,6 +195,7 @@ class ThermocoupleReader:
             return self._read_temperatures_per_channel(exc)
 
         values: Dict[str, float] = {}
+        raw_values: Dict[str, float] = {}
         for channel in self.channels:
             try:
                 ch = int(channel)
@@ -181,14 +207,17 @@ class ThermocoupleReader:
                 )[0]
                 label = self.channel_labels.get(ch, f"Temp {ch}")
                 raw_temperature_c = raw / self._TEMP_SCALE_FACTOR
+                raw_values[label] = raw_temperature_c
                 values[label] = self._apply_calibration(ch, raw_temperature_c)
             except Exception as exc:
                 self.last_error = f"Failed parsing thermocouple channel {channel}: {exc}"
+        self._last_raw_temperatures = raw_values
         return values
 
     def _read_temperatures_per_channel(self, block_error: Exception) -> Dict[str, float]:
         """Slow-path fallback used when the block read fails."""
         values: Dict[str, float] = {}
+        raw_values: Dict[str, float] = {}
         if self._bus is None:
             self.last_error = f"Block read failed: {block_error}"
             return values
@@ -200,10 +229,16 @@ class ThermocoupleReader:
                 raw = struct.unpack("h", bytes(pair))[0]
                 label = self.channel_labels.get(ch, f"Temp {ch}")
                 raw_temperature_c = raw / self._TEMP_SCALE_FACTOR
+                raw_values[label] = raw_temperature_c
                 values[label] = self._apply_calibration(ch, raw_temperature_c)
             except Exception as exc:
                 self.last_error = f"Failed reading thermocouple channel {channel}: {exc}"
+        self._last_raw_temperatures = raw_values
         return values
+
+    def get_last_raw_temperatures(self) -> Dict[str, float]:
+        """Return latest raw (uncalibrated) readings keyed by sensor label."""
+        return dict(self._last_raw_temperatures)
 
     def cleanup(self) -> None:
         """Close the persistent I2C bus handle."""

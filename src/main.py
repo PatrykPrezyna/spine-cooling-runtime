@@ -33,8 +33,8 @@ class _BackgroundIOWorker(QObject):
     consumed back on the main thread.
     """
 
-    tick_complete = pyqtSignal(object, object, object, object)
-    # payload: (sensor_states, temperatures, telemetry, error_message)
+    tick_complete = pyqtSignal(object, object, object, object, object)
+    # payload: (sensor_states, temperatures, raw_temperatures, telemetry, error_message)
 
     def __init__(
         self,
@@ -59,6 +59,7 @@ class _BackgroundIOWorker(QObject):
     ) -> None:
         sensor_states: dict = {}
         temperatures: dict = {}
+        raw_temperatures: dict = {}
         telemetry: Optional[CompressorTelemetry] = None
         error_message: Optional[str] = None
         try:
@@ -66,6 +67,7 @@ class _BackgroundIOWorker(QObject):
                 sensor_states = self._sensor_reader.read_all()
             if self._thermocouple_reader is not None:
                 temperatures = self._thermocouple_reader.read_temperatures()
+                raw_temperatures = self._thermocouple_reader.get_last_raw_temperatures()
             if self._compressor_driver is not None:
                 telemetry = self._compressor_driver.exchange(
                     on=bool(compressor_on),
@@ -80,7 +82,13 @@ class _BackgroundIOWorker(QObject):
                 )
         except Exception as exc:
             error_message = f"Error during update: {exc}"
-        self.tick_complete.emit(sensor_states, temperatures, telemetry, error_message)
+        self.tick_complete.emit(
+            sensor_states,
+            temperatures,
+            raw_temperatures,
+            telemetry,
+            error_message,
+        )
 
 
 class SensorMonitorApp(QObject):
@@ -95,10 +103,13 @@ class SensorMonitorApp(QObject):
 
     def __init__(self, config_path: str = "config.yaml"):
         super().__init__()
+        self.config_path = Path(config_path)
         self.config = self._load_config(config_path)
         self.temperature_sensor_names = self._temperature_sensor_names_from_config(self.config)
         self.primary_temperature_label = (
-            self.temperature_sensor_names[0] if self.temperature_sensor_names else None
+            self.temperature_sensor_names[1]
+            if len(self.temperature_sensor_names) > 1
+            else (self.temperature_sensor_names[0] if self.temperature_sensor_names else None)
         )
 
         self.sensor_reader: Optional[MultiSensorReader] = None
@@ -348,8 +359,15 @@ class SensorMonitorApp(QObject):
             set_temperature_c,
         )
 
-    @pyqtSlot(object, object, object, object)
-    def _on_io_tick_complete(self, sensor_states, temperatures, telemetry, error_message):
+    @pyqtSlot(object, object, object, object, object)
+    def _on_io_tick_complete(
+        self,
+        sensor_states,
+        temperatures,
+        raw_temperatures,
+        telemetry,
+        error_message,
+    ):
         """Apply the worker's results back on the GUI thread."""
         try:
             if error_message:
@@ -362,6 +380,7 @@ class SensorMonitorApp(QObject):
 
             sensor_states = sensor_states or {}
             temperatures = temperatures or {}
+            raw_temperatures = raw_temperatures or {}
 
             if telemetry is not None:
                 self.last_compressor_telemetry = telemetry
@@ -381,7 +400,7 @@ class SensorMonitorApp(QObject):
                 )
 
             if self.ui:
-                self.ui.update_sensor_display(sensor_states, temperatures)
+                self.ui.update_sensor_display(sensor_states, temperatures, raw_temperatures)
                 if self.stepper_driver:
                     self._update_stepper_ui_status()
         finally:
@@ -476,6 +495,62 @@ class SensorMonitorApp(QObject):
             self.stepper_driver.stop_continuous()
         self._update_stepper_ui_status()
 
+    def on_temperature_calibration_requested(
+        self, sensor_name: str, measured_at_0c: float, measured_at_100c: float
+    ) -> tuple[bool, str]:
+        """Apply and persist two-point calibration for a selected sensor label."""
+        if not self.thermocouple_reader or not self.thermocouple_reader.is_initialized:
+            return False, "Thermocouple reader not available"
+        channel = self._channel_for_sensor_label(sensor_name)
+        if channel is None:
+            return False, f"Unknown sensor label: {sensor_name}"
+
+        ok, message = self.thermocouple_reader.set_channel_two_point_calibration(
+            channel,
+            measured_at_0c,
+            measured_at_100c,
+        )
+        if not ok:
+            return False, message
+
+        self._save_channel_calibration(channel, measured_at_0c, measured_at_100c)
+        return True, f"{sensor_name}: calibration saved"
+
+    def _channel_for_sensor_label(self, sensor_name: str) -> Optional[int]:
+        """Resolve configured thermocouple channel number for a UI label."""
+        tc_cfg = self.config.get("thermocouples", {})
+        channels = tc_cfg.get("channels", [])
+        raw_labels = tc_cfg.get("labels", {})
+        labels: dict[int, str] = {}
+        for key, value in raw_labels.items():
+            try:
+                labels[int(key)] = str(value)
+            except (TypeError, ValueError):
+                continue
+        for channel in channels:
+            try:
+                ch = int(channel)
+            except (TypeError, ValueError):
+                continue
+            label = str(labels.get(ch, f"Temp {ch}"))
+            if label == sensor_name:
+                return ch
+        return None
+
+    def _save_channel_calibration(
+        self, channel: int, measured_at_0c: float, measured_at_100c: float
+    ) -> None:
+        """Persist per-channel calibration points into config.yaml."""
+        tc_cfg = self.config.setdefault("thermocouples", {})
+        calibration_cfg = tc_cfg.setdefault("calibration", {})
+        channels_cfg = calibration_cfg.setdefault("channels", {})
+        channels_cfg[int(channel)] = {
+            "measured_at_0c": float(measured_at_0c),
+            "measured_at_100c": float(measured_at_100c),
+        }
+        with self.config_path.open("w", encoding="utf-8") as config_file:
+            yaml.safe_dump(self.config, config_file, sort_keys=False)
+
     # ------------------------------------------------------------------
     # Run
     # ------------------------------------------------------------------
@@ -524,6 +599,7 @@ class SensorMonitorApp(QObject):
         ui.on_stepper_continuous_toggle_callback = self.on_stepper_continuous_toggle
         ui.on_compressor_toggle_callback = self.on_compressor_toggle
         ui.on_compressor_speed_change_callback = self.on_compressor_speed_changed
+        ui.on_temperature_calibration_callback = self.on_temperature_calibration_requested
 
 
 def main() -> int:

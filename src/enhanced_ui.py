@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget,
     QLabel, QGridLayout, QGroupBox, QSlider, QComboBox, QStackedWidget, QCheckBox,
-    QSizePolicy, QTabBar,
+    QSizePolicy, QTabBar, QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QColor, QLinearGradient,
@@ -1623,6 +1623,193 @@ class TemperatureGraphTab(QWidget):
             else:
                 checkbox.setText(f"{name}  {value:.1f} \u00b0C")
 
+class CalibrationTab(QWidget):
+    """Advanced tab: two-point calibration controls."""
+
+    def __init__(self, sensor_series_names: list[str]):
+        super().__init__()
+        self.sensor_series_names = list(sensor_series_names)
+        self.on_apply_calibration_callback: Optional[Callable[[str, float, float], tuple[bool, str]]] = None
+        self._create_widgets()
+        self._setup_layout()
+
+    def _create_widgets(self) -> None:
+        self.calibration_table = QTableWidget(len(self.sensor_series_names), 5)
+        self.calibration_table.setHorizontalHeaderLabels(
+            [
+                "Sensor",
+                "Raw (°C)",
+                "Calibrated (°C)",
+                "Measured at 0°C",
+                "Measured at 100°C",
+            ]
+        )
+        self.calibration_table.verticalHeader().setVisible(False)
+        self.calibration_table.setEditTriggers(
+            QTableWidget.EditTrigger.DoubleClicked
+            | QTableWidget.EditTrigger.SelectedClicked
+            | QTableWidget.EditTrigger.EditKeyPressed
+        )
+        self.calibration_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectItems)
+        self.calibration_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.calibration_table.setAlternatingRowColors(True)
+        self.calibration_table.setMinimumHeight(220)
+
+        header = self.calibration_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+
+        for row, sensor_name in enumerate(self.sensor_series_names):
+            sensor_item = QTableWidgetItem(sensor_name)
+            sensor_item.setFlags(sensor_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.calibration_table.setItem(row, 0, sensor_item)
+
+            raw_item = QTableWidgetItem("--")
+            raw_item.setFlags(raw_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.calibration_table.setItem(row, 1, raw_item)
+
+            calibrated_item = QTableWidgetItem("--")
+            calibrated_item.setFlags(calibrated_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.calibration_table.setItem(row, 2, calibrated_item)
+
+            zero_input = QLineEdit()
+            zero_input.setPlaceholderText("e.g. 0.2")
+            self.calibration_table.setCellWidget(row, 3, zero_input)
+
+            hundred_input = QLineEdit()
+            hundred_input.setPlaceholderText("e.g. 99.4")
+            self.calibration_table.setCellWidget(row, 4, hundred_input)
+
+        self.calibration_apply_button = QPushButton("Apply All Calibrations")
+        self.calibration_apply_button.setMinimumHeight(40)
+        self.calibration_apply_button.clicked.connect(self._on_apply_calibration_clicked)
+
+        self.calibration_status_label = QLabel("")
+        self.calibration_status_label.setWordWrap(True)
+        self._set_calibration_status("", is_error=False)
+
+    def _setup_layout(self) -> None:
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(10, 10, 10, 10)
+        root_layout.setSpacing(10)
+
+        calibration_group = QGroupBox("2-Point Calibration")
+        calibration_group.setStyleSheet(ServiceTab._group_box_style("#0ea5e9", "16px"))
+        calibration_layout = QVBoxLayout()
+        calibration_layout.setContentsMargins(12, 14, 12, 12)
+        calibration_layout.setSpacing(8)
+        calibration_layout.addWidget(
+            QLabel("Enter measured values for each sensor (leave blank to skip a row).")
+        )
+        calibration_layout.addWidget(self.calibration_table)
+        calibration_layout.addWidget(self.calibration_apply_button)
+        calibration_layout.addWidget(self.calibration_status_label)
+        calibration_layout.addStretch()
+        calibration_group.setLayout(calibration_layout)
+
+        root_layout.addWidget(calibration_group)
+        root_layout.addStretch()
+
+    def _on_apply_calibration_clicked(self) -> None:
+        if not self.sensor_series_names:
+            self._set_calibration_status("No temperature sensor configured", is_error=True)
+            return
+
+        if self.on_apply_calibration_callback is None:
+            self._set_calibration_status("Calibration callback not connected", is_error=True)
+            return
+
+        applied_count = 0
+        failed_messages: list[str] = []
+
+        for row, sensor_name in enumerate(self.sensor_series_names):
+            zero_widget = self.calibration_table.cellWidget(row, 3)
+            hundred_widget = self.calibration_table.cellWidget(row, 4)
+            if not isinstance(zero_widget, QLineEdit) or not isinstance(hundred_widget, QLineEdit):
+                continue
+
+            zero_text = zero_widget.text().strip()
+            hundred_text = hundred_widget.text().strip()
+            if not zero_text and not hundred_text:
+                continue
+            if not zero_text or not hundred_text:
+                failed_messages.append(f"{sensor_name}: both 0°C and 100°C are required")
+                continue
+
+            try:
+                measured_at_0c = float(zero_text)
+                measured_at_100c = float(hundred_text)
+            except ValueError:
+                failed_messages.append(f"{sensor_name}: values must be numeric")
+                continue
+
+            ok, message = self.on_apply_calibration_callback(
+                sensor_name,
+                measured_at_0c,
+                measured_at_100c,
+            )
+            if ok:
+                applied_count += 1
+            else:
+                failed_messages.append(message)
+
+        if applied_count == 0 and not failed_messages:
+            self._set_calibration_status("No rows filled in", is_error=True)
+            return
+
+        if failed_messages:
+            summary = f"Applied {applied_count} calibration(s). " if applied_count > 0 else ""
+            self._set_calibration_status(summary + " | ".join(failed_messages), is_error=True)
+            return
+
+        self._set_calibration_status(f"Applied {applied_count} calibration(s)", is_error=False)
+
+    def update_current_temperatures(
+        self,
+        raw_temperatures: Optional[dict],
+        calibrated_temperatures: Optional[dict],
+    ) -> None:
+        """Refresh live raw + calibrated values for each sensor row."""
+        raw_temperatures = raw_temperatures or {}
+        calibrated_temperatures = calibrated_temperatures or {}
+
+        for row, sensor_name in enumerate(self.sensor_series_names):
+            raw_value = raw_temperatures.get(sensor_name)
+            calibrated_value = calibrated_temperatures.get(sensor_name)
+
+            raw_item = self.calibration_table.item(row, 1)
+            if raw_item is not None:
+                raw_item.setText(self._format_temperature_value(raw_value))
+
+            calibrated_item = self.calibration_table.item(row, 2)
+            if calibrated_item is not None:
+                calibrated_item.setText(self._format_temperature_value(calibrated_value))
+
+    @staticmethod
+    def _format_temperature_value(value: object) -> str:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return "--"
+        if math.isnan(number):
+            return "--"
+        return f"{number:.1f}"
+
+    def _set_calibration_status(self, message: str, is_error: bool) -> None:
+        color = "#b42318" if is_error else "#166534"
+        self.calibration_status_label.setStyleSheet(f"""
+            QLabel {{
+                color: {color};
+                font-size: 12px;
+                font-weight: 600;
+                padding: 4px 2px;
+            }}
+        """)
+        self.calibration_status_label.setText(message)
+
 
 class MainScreen(QMainWindow):
     """Top-level window: hosts the main view and the advanced settings page."""
@@ -1633,7 +1820,9 @@ class MainScreen(QMainWindow):
         self.config = config
         self.temperature_sensor_names = self._temperature_sensor_names_from_config(config)
         self.primary_temperature_label = (
-            self.temperature_sensor_names[0] if self.temperature_sensor_names else None
+            self.temperature_sensor_names[1]
+            if len(self.temperature_sensor_names) > 1
+            else (self.temperature_sensor_names[0] if self.temperature_sensor_names else None)
         )
         self.secondary_temperature_label = (
             self.temperature_sensor_names[1] if len(self.temperature_sensor_names) > 1 else None
@@ -1649,6 +1838,9 @@ class MainScreen(QMainWindow):
         self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_speed_change_callback: Optional[Callable[[int], None]] = None
+        self.on_temperature_calibration_callback: Optional[
+            Callable[[str, float, float], tuple[bool, str]]
+        ] = None
 
         self._setup_window()
         self._create_widgets()
@@ -1804,18 +1996,24 @@ class MainScreen(QMainWindow):
         self.service2_tab = Service2Tab(self.temperature_sensor_names)
         temp_series_names = ["Set Temp", *self.temperature_sensor_names]
         self.temperature_graph_tab = TemperatureGraphTab(temp_series_names)
+        self.calibration_tab = CalibrationTab(self.temperature_sensor_names)
+        self.calibration_tab.on_apply_calibration_callback = (
+            self._on_temperature_graph_calibration_apply
+        )
 
-        # In-window advanced area (Service / Animal Study / Temp Graph).
+        # In-window advanced area (Service / Animal Study / Temp Graph / Calibration).
         self.advanced_tab_selector = QTabBar()
         self.advanced_tab_selector.addTab("Service")
         self.advanced_tab_selector.addTab("Animal Study")
         self.advanced_tab_selector.addTab("Temp Graph")
+        self.advanced_tab_selector.addTab("Calibration")
         self.advanced_tab_selector.setExpanding(False)
 
         self.advanced_content_stack = QStackedWidget()
         self.advanced_content_stack.addWidget(self.service_tab)
         self.advanced_content_stack.addWidget(self.service2_tab)
         self.advanced_content_stack.addWidget(self.temperature_graph_tab)
+        self.advanced_content_stack.addWidget(self.calibration_tab)
         self.advanced_tab_selector.currentChanged.connect(self.advanced_content_stack.setCurrentIndex)
 
         self.to_main_menu_button = QPushButton("To Main Menu")
@@ -2036,6 +2234,21 @@ class MainScreen(QMainWindow):
         """Forward service-tab compressor speed setpoint change."""
         if self.on_compressor_speed_change_callback:
             self.on_compressor_speed_change_callback(speed_rpm)
+
+    def _on_temperature_graph_calibration_apply(
+        self,
+        sensor_name: str,
+        measured_at_0c: float,
+        measured_at_100c: float,
+    ) -> tuple[bool, str]:
+        """Forward calibration requests from Temp Graph tab to app."""
+        if not self.on_temperature_calibration_callback:
+            return False, "Calibration handler unavailable"
+        return self.on_temperature_calibration_callback(
+            sensor_name,
+            measured_at_0c,
+            measured_at_100c,
+        )
     
     def _on_pumping_toggle_clicked(self):
         """Handle the unified pumping toggle click.
@@ -2160,10 +2373,16 @@ class MainScreen(QMainWindow):
         else:
             self.error_label.setVisible(False)
     
-    def update_sensor_display(self, sensor_states: dict, temperatures: Optional[dict] = None):
+    def update_sensor_display(
+        self,
+        sensor_states: dict,
+        temperatures: Optional[dict] = None,
+        raw_temperatures: Optional[dict] = None,
+    ):
         """Update sensor display"""
         self.service_tab.update_sensors(sensor_states)
         self.service2_tab.update_temperatures(temperatures)
+        self.calibration_tab.update_current_temperatures(raw_temperatures, temperatures)
         
         # Feed first two configured thermocouple channels into the main trend graph.
         temp1 = (
