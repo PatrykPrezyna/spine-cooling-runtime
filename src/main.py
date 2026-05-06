@@ -548,6 +548,9 @@ class SensorMonitorApp(QObject):
             "measured_at_0c": float(measured_at_0c),
             "measured_at_100c": float(measured_at_100c),
         }
+        self._save_config()
+
+    def _save_config(self) -> None:
         with self.config_path.open("w", encoding="utf-8") as config_file:
             yaml.safe_dump(self.config, config_file, sort_keys=False)
 

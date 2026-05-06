@@ -47,8 +47,8 @@ class ThermocoupleReader:
         self.i2c_bus = int(tc_cfg.get("i2c_bus", 1))
         # Hardware input 1 on the HAT is broken; defaults skip it.
         self.channels = tc_cfg.get("channels", [2, 3, 4, 5, 6, 7])
-        configured_type = str(tc_cfg.get("sensor_type", "T")).upper()
-        self.sensor_type_code = self._TYPE_MAP.get(configured_type, self._TYPE_MAP["T"])
+        self._default_sensor_type_name = str(tc_cfg.get("sensor_type", "T")).upper()
+        self._channel_sensor_type_codes = self._build_channel_sensor_type_codes(tc_cfg)
         configured_labels = tc_cfg.get(
             "labels",
             {
@@ -171,7 +171,53 @@ class ThermocoupleReader:
         if not self._device:
             return
         for channel in self.channels:
-            self._device.set_sensor_type(int(channel), self.sensor_type_code)
+            ch = int(channel)
+            type_code = self._channel_sensor_type_codes.get(ch, self._TYPE_MAP["T"])
+            self._device.set_sensor_type(ch, type_code)
+
+    def _build_channel_sensor_type_codes(self, tc_cfg: dict) -> Dict[int, int]:
+        """Build per-channel thermocouple type codes from config."""
+        default_code = self._TYPE_MAP.get(self._default_sensor_type_name, self._TYPE_MAP["T"])
+        configured_map = tc_cfg.get("sensor_types", {})
+        channel_codes: Dict[int, int] = {}
+        for channel in self.channels:
+            try:
+                ch = int(channel)
+            except (TypeError, ValueError):
+                continue
+            type_name = self._default_sensor_type_name
+            if isinstance(configured_map, dict):
+                override = configured_map.get(str(ch), configured_map.get(ch))
+                if override is not None:
+                    type_name = str(override).upper()
+            channel_codes[ch] = self._TYPE_MAP.get(type_name, default_code)
+        return channel_codes
+
+    def set_channel_sensor_type(self, channel: int, sensor_type_name: str) -> tuple[bool, str]:
+        """Set per-channel thermocouple type at runtime."""
+        try:
+            ch = int(channel)
+        except (TypeError, ValueError):
+            return False, f"Invalid channel: {channel}"
+        if ch < 1 or ch > self._IN_CH_COUNT:
+            return False, f"Channel out of range: {ch}"
+
+        type_name = str(sensor_type_name).upper().strip()
+        if type_name not in self._TYPE_MAP:
+            return False, f"Unsupported sensor type: {sensor_type_name}"
+        type_code = self._TYPE_MAP[type_name]
+
+        try:
+            if self._device is not None:
+                self._device.set_sensor_type(ch, type_code)
+        except Exception as exc:
+            msg = f"Failed setting sensor type for channel {ch}: {exc}"
+            self.last_error = msg
+            return False, msg
+
+        self._channel_sensor_type_codes[ch] = type_code
+        self.last_error = None
+        return True, f"Sensor type {type_name} set on channel {ch}"
 
     def read_temperatures(self) -> Dict[str, float]:
         """
