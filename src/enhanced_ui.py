@@ -1338,6 +1338,199 @@ class Service2Tab(QWidget):
             label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color="#8b5cf6"))
 
 
+class CompressorUartTab(QWidget):
+    """Advanced tab showing live UART connection + telemetry diagnostics."""
+
+    _VALUE_STYLE = "font-size: 12px; color: #1f2937; padding: 4px 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;"
+    _VALUE_MONO_STYLE = "font-family: Consolas, 'Courier New', monospace; font-size: 11px; color: #0f172a; padding: 4px 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;"
+    _VALUE_OK_STYLE = "font-size: 12px; color: #166534; font-weight: 600; padding: 4px 6px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px;"
+    _VALUE_WARN_STYLE = "font-size: 12px; color: #9a3412; font-weight: 600; padding: 4px 6px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px;"
+    _VALUE_ERR_STYLE = "font-size: 12px; color: #991b1b; font-weight: 600; padding: 4px 6px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px;"
+
+    _FAULT_FLAG_NAMES = (
+        "software_overcurrent",
+        "overvoltage",
+        "undervoltage",
+        "phase_loss",
+        "stall",
+        "hardware_overcurrent",
+        "abnormal_phase_current",
+    )
+
+    def __init__(self, compressor_config: Optional[dict] = None):
+        super().__init__()
+        cfg = compressor_config or {}
+        self._enabled = bool(cfg.get("enabled", False))
+        self._port = str(cfg.get("port", "/dev/ttyS0"))
+        self._baudrate = int(cfg.get("baudrate", 600))
+        self._timeout_s = float(cfg.get("timeout_s", 0.08))
+        self._max_speed_rpm = int(cfg.get("max_speed_rpm", 6000))
+
+        self._connection_fields: dict[str, QLabel] = {}
+        self._telemetry_fields: dict[str, QLabel] = {}
+        self._fault_flag_labels: dict[str, QLabel] = {}
+
+        self._create_widgets()
+        self._setup_layout()
+
+    def _add_row(self, layout: QGridLayout, row: int, key: str, label_text: str, mono: bool = False):
+        key_label = QLabel(label_text)
+        key_label.setStyleSheet("font-size: 12px; color: #475569;")
+        value_label = QLabel("--")
+        value_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        value_label.setStyleSheet(self._VALUE_MONO_STYLE if mono else self._VALUE_STYLE)
+        layout.addWidget(key_label, row, 0)
+        layout.addWidget(value_label, row, 1)
+        return value_label
+
+    def _create_widgets(self):
+        self.connection_group = QGroupBox("UART Connection")
+        self.connection_group.setStyleSheet(ServiceTab._group_box_style("#16a34a", "12px"))
+        self.telemetry_group = QGroupBox("Compressor Telemetry")
+        self.telemetry_group.setStyleSheet(ServiceTab._group_box_style("#0ea5e9", "12px"))
+        self.faults_group = QGroupBox("Fault Flags")
+        self.faults_group.setStyleSheet(ServiceTab._group_box_style("#f59e0b", "12px"))
+
+    def _setup_layout(self):
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
+
+        conn_layout = QGridLayout()
+        conn_layout.setHorizontalSpacing(12)
+        conn_layout.setVerticalSpacing(6)
+        self._connection_fields["enabled"] = self._add_row(conn_layout, 0, "enabled", "Enabled")
+        self._connection_fields["initialized"] = self._add_row(conn_layout, 1, "initialized", "Initialized")
+        self._connection_fields["port"] = self._add_row(conn_layout, 2, "port", "Port", mono=True)
+        self._connection_fields["baudrate"] = self._add_row(conn_layout, 3, "baudrate", "Baudrate")
+        self._connection_fields["timeout_s"] = self._add_row(conn_layout, 4, "timeout_s", "Timeout (s)")
+        self._connection_fields["max_speed_rpm"] = self._add_row(conn_layout, 5, "max_speed_rpm", "Max Speed (RPM)")
+        self._connection_fields["last_error"] = self._add_row(conn_layout, 6, "last_error", "Last Error", mono=True)
+        self.connection_group.setLayout(conn_layout)
+        main_layout.addWidget(self.connection_group)
+
+        telemetry_layout = QGridLayout()
+        telemetry_layout.setHorizontalSpacing(12)
+        telemetry_layout.setVerticalSpacing(6)
+        self._telemetry_fields["command_on"] = self._add_row(telemetry_layout, 0, "command_on", "Command ON")
+        self._telemetry_fields["set_speed_rpm"] = self._add_row(telemetry_layout, 1, "set_speed_rpm", "Set Speed (RPM)")
+        self._telemetry_fields["actual_rpm"] = self._add_row(telemetry_layout, 2, "actual_rpm", "Actual Speed (RPM)")
+        self._telemetry_fields["current_a"] = self._add_row(telemetry_layout, 3, "current_a", "Motor Current (A)")
+        self._telemetry_fields["bus_voltage_v"] = self._add_row(telemetry_layout, 4, "bus_voltage_v", "Bus Voltage (V)")
+        self._telemetry_fields["fault_manual"] = self._add_row(telemetry_layout, 5, "fault_manual", "Fault Manual (byte)")
+        self._telemetry_fields["fault_auto"] = self._add_row(telemetry_layout, 6, "fault_auto", "Fault Auto (byte)")
+        self._telemetry_fields["fault_status"] = self._add_row(telemetry_layout, 7, "fault_status", "Fault Status")
+        self._telemetry_fields["raw_reply"] = self._add_row(telemetry_layout, 8, "raw_reply", "Raw Reply (hex)", mono=True)
+        self.telemetry_group.setLayout(telemetry_layout)
+        main_layout.addWidget(self.telemetry_group)
+
+        faults_layout = QGridLayout()
+        faults_layout.setHorizontalSpacing(10)
+        faults_layout.setVerticalSpacing(6)
+        for idx, name in enumerate(self._FAULT_FLAG_NAMES):
+            row = idx // 2
+            col = idx % 2
+            label = QLabel(f"{name}: --")
+            label.setStyleSheet("font-size: 12px; color: #5c6b79; padding: 3px;")
+            faults_layout.addWidget(label, row, col)
+            self._fault_flag_labels[name] = label
+        self.faults_group.setLayout(faults_layout)
+        main_layout.addWidget(self.faults_group)
+
+        main_layout.addStretch()
+        self.setLayout(main_layout)
+
+    def update_telemetry(
+        self,
+        telemetry: Optional[object] = None,
+        compressor_command_on: Optional[bool] = None,
+        compressor_set_speed_rpm: Optional[int] = None,
+        compressor_last_error: Optional[str] = None,
+        compressor_initialized: Optional[bool] = None,
+    ):
+        initialized = bool(compressor_initialized) if compressor_initialized is not None else bool(telemetry is not None)
+        self._connection_fields["enabled"].setText("YES" if self._enabled else "NO")
+        self._connection_fields["enabled"].setStyleSheet(self._VALUE_OK_STYLE if self._enabled else self._VALUE_WARN_STYLE)
+        self._connection_fields["initialized"].setText("YES" if initialized else "NO")
+        self._connection_fields["initialized"].setStyleSheet(self._VALUE_OK_STYLE if initialized else self._VALUE_WARN_STYLE)
+        self._connection_fields["port"].setText(self._port)
+        self._connection_fields["baudrate"].setText(str(self._baudrate))
+        self._connection_fields["timeout_s"].setText(f"{self._timeout_s:.3f}")
+        self._connection_fields["max_speed_rpm"].setText(str(self._max_speed_rpm))
+
+        error_text = compressor_last_error if compressor_last_error else "None"
+        self._connection_fields["last_error"].setText(error_text)
+        self._connection_fields["last_error"].setStyleSheet(
+            self._VALUE_ERR_STYLE if compressor_last_error else self._VALUE_STYLE
+        )
+
+        if compressor_command_on is None:
+            self._telemetry_fields["command_on"].setText("--")
+            self._telemetry_fields["command_on"].setStyleSheet(self._VALUE_STYLE)
+        else:
+            self._telemetry_fields["command_on"].setText("ON" if compressor_command_on else "OFF")
+            self._telemetry_fields["command_on"].setStyleSheet(
+                self._VALUE_OK_STYLE if compressor_command_on else self._VALUE_WARN_STYLE
+            )
+        self._telemetry_fields["set_speed_rpm"].setText(
+            "--" if compressor_set_speed_rpm is None else str(int(compressor_set_speed_rpm))
+        )
+
+        if telemetry is None:
+            self._telemetry_fields["actual_rpm"].setText("--")
+            self._telemetry_fields["current_a"].setText("--")
+            self._telemetry_fields["bus_voltage_v"].setText("--")
+            self._telemetry_fields["fault_manual"].setText("--")
+            self._telemetry_fields["fault_auto"].setText("--")
+            self._telemetry_fields["fault_status"].setText("No telemetry")
+            self._telemetry_fields["fault_status"].setStyleSheet(self._VALUE_WARN_STYLE)
+            self._telemetry_fields["raw_reply"].setText("--")
+            for name, label in self._fault_flag_labels.items():
+                label.setText(f"{name}: --")
+                label.setStyleSheet("font-size: 12px; color: #5c6b79; padding: 3px;")
+            return
+
+        actual_rpm = int(getattr(telemetry, "actual_rpm", 0))
+        current_a = float(getattr(telemetry, "current_a", 0.0))
+        bus_voltage_v = float(getattr(telemetry, "bus_voltage_v", 0.0))
+        fault_manual = int(getattr(telemetry, "fault_manual", 0))
+        fault_auto = int(getattr(telemetry, "fault_auto", 0))
+        raw_reply = bytes(getattr(telemetry, "raw_reply", b""))
+
+        self._telemetry_fields["actual_rpm"].setText(str(actual_rpm))
+        self._telemetry_fields["current_a"].setText(f"{current_a:.1f}")
+        self._telemetry_fields["bus_voltage_v"].setText(f"{bus_voltage_v:.1f}")
+        self._telemetry_fields["fault_manual"].setText(f"0x{fault_manual:02X}")
+        self._telemetry_fields["fault_auto"].setText(f"0x{fault_auto:02X}")
+        self._telemetry_fields["raw_reply"].setText(" ".join(f"{b:02X}" for b in raw_reply) if raw_reply else "--")
+
+        has_fault = bool(fault_manual or fault_auto)
+        self._telemetry_fields["fault_status"].setText("FAULT ACTIVE" if has_fault else "OK")
+        self._telemetry_fields["fault_status"].setStyleSheet(
+            self._VALUE_ERR_STYLE if has_fault else self._VALUE_OK_STYLE
+        )
+
+        flags = {}
+        if hasattr(telemetry, "fault_flags"):
+            try:
+                flags = dict(telemetry.fault_flags())
+            except Exception:
+                flags = {}
+
+        for name, label in self._fault_flag_labels.items():
+            state = flags.get(name)
+            if state is None:
+                label.setText(f"{name}: --")
+                label.setStyleSheet("font-size: 12px; color: #5c6b79; padding: 3px;")
+                continue
+            label.setText(f"{name}: {'ON' if state else 'OFF'}")
+            label.setStyleSheet(
+                "font-size: 12px; color: #991b1b; font-weight: 600; padding: 3px;"
+                if state
+                else "font-size: 12px; color: #166534; padding: 3px;"
+            )
+
+
 class MultiTemperatureGraphWidget(QWidget):
     """Custom graph widget for plotting multiple temperature channels."""
 
@@ -2019,6 +2212,7 @@ class MainScreen(QMainWindow):
         temp_series_names = ["Set Temp", *self.temperature_sensor_names]
         self.temperature_graph_tab = TemperatureGraphTab(temp_series_names)
         self.calibration_tab = CalibrationTab(self.temperature_sensor_names)
+        self.compressor_uart_tab = CompressorUartTab(self.config.get("compressor", {}))
         self.calibration_tab.on_apply_calibration_callback = (
             self._on_temperature_graph_calibration_apply
         )
@@ -2029,6 +2223,7 @@ class MainScreen(QMainWindow):
         self.advanced_tab_selector.addTab("Animal Study")
         self.advanced_tab_selector.addTab("Temp Graph")
         self.advanced_tab_selector.addTab("Calibration")
+        self.advanced_tab_selector.addTab("Compressor UART")
         self.advanced_tab_selector.setExpanding(False)
 
         self.advanced_content_stack = QStackedWidget()
@@ -2036,6 +2231,7 @@ class MainScreen(QMainWindow):
         self.advanced_content_stack.addWidget(self.service2_tab)
         self.advanced_content_stack.addWidget(self.temperature_graph_tab)
         self.advanced_content_stack.addWidget(self.calibration_tab)
+        self.advanced_content_stack.addWidget(self.compressor_uart_tab)
         self.advanced_tab_selector.currentChanged.connect(self.advanced_content_stack.setCurrentIndex)
 
         self.to_main_menu_button = QPushButton("To Main Menu")
@@ -2401,12 +2597,24 @@ class MainScreen(QMainWindow):
         temperatures: Optional[dict] = None,
         raw_temperatures: Optional[dict] = None,
         pressures: Optional[dict] = None,
+        telemetry: Optional[object] = None,
+        compressor_command_on: Optional[bool] = None,
+        compressor_set_speed_rpm: Optional[int] = None,
+        compressor_last_error: Optional[str] = None,
+        compressor_initialized: Optional[bool] = None,
     ):
         """Update sensor display"""
         self.service_tab.update_sensors(sensor_states)
         self.service2_tab.update_temperatures(temperatures)
         self.service2_tab.update_pressures(pressures)
         self.calibration_tab.update_current_temperatures(raw_temperatures, temperatures)
+        self.compressor_uart_tab.update_telemetry(
+            telemetry=telemetry,
+            compressor_command_on=compressor_command_on,
+            compressor_set_speed_rpm=compressor_set_speed_rpm,
+            compressor_last_error=compressor_last_error,
+            compressor_initialized=compressor_initialized,
+        )
         
         # Feed first two configured thermocouple channels into the main trend graph.
         temp1 = (

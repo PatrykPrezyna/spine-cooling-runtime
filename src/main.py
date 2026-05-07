@@ -424,6 +424,15 @@ class SensorMonitorApp(QObject):
                     temperatures,
                     raw_temperatures,
                     pressures,
+                    telemetry=(telemetry if telemetry is not None else self.last_compressor_telemetry),
+                    compressor_command_on=self.compressor_command_on,
+                    compressor_set_speed_rpm=self.compressor_speed_rpm,
+                    compressor_last_error=(
+                        self.compressor_driver.last_error if self.compressor_driver else None
+                    ),
+                    compressor_initialized=(
+                        self.compressor_driver.is_initialized if self.compressor_driver else False
+                    ),
                 )
                 if self.stepper_driver:
                     self._update_stepper_ui_status()
