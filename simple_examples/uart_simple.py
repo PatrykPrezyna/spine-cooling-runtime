@@ -69,11 +69,11 @@ with serial.Serial(PORT, BAUDRATE, timeout=0.5) as ser:
     print(f"Opened {PORT} @ {BAUDRATE} baud. Ctrl+C to stop.\n")
 
     while True:
-        tx = build_command(on=True, rpm=2400)
+        tx = build_command(on=True, rpm=3000)
         print("TX:", tx.hex(" ").upper())
 
         rx = send_and_receive(ser, tx)
         print_reply(rx)
         print()
 
-        time.sleep(1.0)
+        time.sleep(3.0)
