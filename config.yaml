@@ -29,7 +29,6 @@ thermocouples:
   enabled: true
   stack: 0
   i2c_bus: 1
-  sensor_type: "K"
   sensor_types:
     1: "T"
     2: "T"
@@ -56,6 +55,26 @@ thermocouples:
       1:
         measured_at_0c: 0.0
         measured_at_100c: 100.0
+
+pressure_sensors:
+  enabled: true
+  i2c_address: 72   # 0x48
+  gain: "1"
+  data_rate: 128
+  channels: [0, 1]
+  channel_configs:
+    0:
+      label: "Pressure 1"
+      voltage_min: 0.5
+      voltage_max: 4.5
+      pressure_min: 0.0
+      pressure_max: 300.0
+    1:
+      label: "Pressure 2"
+      voltage_min: 0.5
+      voltage_max: 4.5
+      pressure_min: 0.0
+      pressure_max: 300.0
 
 compressor:
   enabled: true

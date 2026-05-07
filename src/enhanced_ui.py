@@ -1870,6 +1870,24 @@ class MainScreen(QMainWindow):
                 continue
             names.append(str(labels.get(ch, f"Temp {ch}")))
         return names
+
+    @staticmethod
+    def _pressure_sensor_names_from_config(config: dict) -> list[str]:
+        ps_cfg = config.get("pressure_sensors", {})
+        channels = ps_cfg.get("channels", [])
+        raw_channel_cfg = ps_cfg.get("channel_configs", {})
+        names: list[str] = []
+        for channel in channels:
+            try:
+                ch = int(channel)
+            except (TypeError, ValueError):
+                continue
+            cfg = raw_channel_cfg.get(str(ch), raw_channel_cfg.get(ch, {}))
+            if isinstance(cfg, dict) and cfg.get("label"):
+                names.append(str(cfg.get("label")))
+            else:
+                names.append(f"Pressure {ch + 1}")
+        return names
     
     def _setup_window(self):
         """Setup main window properties.
@@ -1993,7 +2011,11 @@ class MainScreen(QMainWindow):
         self.service_tab.on_compressor_speed_change_callback = self._on_service_compressor_speed_change
 
         # Service 2 tab (temperature channels)
-        self.service2_tab = Service2Tab(self.temperature_sensor_names)
+        pressure_sensor_names = self._pressure_sensor_names_from_config(self.config)
+        self.service2_tab = Service2Tab(
+            self.temperature_sensor_names,
+            pressure_sensor_names=pressure_sensor_names,
+        )
         temp_series_names = ["Set Temp", *self.temperature_sensor_names]
         self.temperature_graph_tab = TemperatureGraphTab(temp_series_names)
         self.calibration_tab = CalibrationTab(self.temperature_sensor_names)
@@ -2378,10 +2400,12 @@ class MainScreen(QMainWindow):
         sensor_states: dict,
         temperatures: Optional[dict] = None,
         raw_temperatures: Optional[dict] = None,
+        pressures: Optional[dict] = None,
     ):
         """Update sensor display"""
         self.service_tab.update_sensors(sensor_states)
         self.service2_tab.update_temperatures(temperatures)
+        self.service2_tab.update_pressures(pressures)
         self.calibration_tab.update_current_temperatures(raw_temperatures, temperatures)
         
         # Feed first two configured thermocouple channels into the main trend graph.

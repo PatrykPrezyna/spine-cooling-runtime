@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import QApplication
 
 from compressor_uart_driver import CompressorTelemetry, CompressorUartDriver
 from csv_logger import CSVLogger
+from ads1115_pressure_reader import ADS1115PressureReader
 from enhanced_ui import MainScreen
 from multi_sensor_reader import MultiSensorReader
 from state_machine import State, StateMachine
@@ -33,19 +34,21 @@ class _BackgroundIOWorker(QObject):
     consumed back on the main thread.
     """
 
-    tick_complete = pyqtSignal(object, object, object, object, object)
-    # payload: (sensor_states, temperatures, raw_temperatures, telemetry, error_message)
+    tick_complete = pyqtSignal(object, object, object, object, object, object)
+    # payload: (sensor_states, temperatures, raw_temperatures, pressures, telemetry, error_message)
 
     def __init__(
         self,
         sensor_reader: MultiSensorReader,
         thermocouple_reader: Optional[ThermocoupleReader],
+        pressure_reader: Optional[ADS1115PressureReader],
         compressor_driver: Optional[CompressorUartDriver],
         csv_logger: Optional[CSVLogger],
     ):
         super().__init__()
         self._sensor_reader = sensor_reader
         self._thermocouple_reader = thermocouple_reader
+        self._pressure_reader = pressure_reader
         self._compressor_driver = compressor_driver
         self._csv_logger = csv_logger
 
@@ -60,6 +63,7 @@ class _BackgroundIOWorker(QObject):
         sensor_states: dict = {}
         temperatures: dict = {}
         raw_temperatures: dict = {}
+        pressures: dict = {}
         telemetry: Optional[CompressorTelemetry] = None
         error_message: Optional[str] = None
         try:
@@ -68,6 +72,8 @@ class _BackgroundIOWorker(QObject):
             if self._thermocouple_reader is not None:
                 temperatures = self._thermocouple_reader.read_temperatures()
                 raw_temperatures = self._thermocouple_reader.get_last_raw_temperatures()
+            if self._pressure_reader is not None:
+                pressures = self._pressure_reader.read_pressures()
             if self._compressor_driver is not None:
                 telemetry = self._compressor_driver.exchange(
                     on=bool(compressor_on),
@@ -86,6 +92,7 @@ class _BackgroundIOWorker(QObject):
             sensor_states,
             temperatures,
             raw_temperatures,
+            pressures,
             telemetry,
             error_message,
         )
@@ -118,6 +125,7 @@ class SensorMonitorApp(QObject):
         self.state_machine: Optional[StateMachine] = None
         self.stepper_driver: Optional[STSPIN220Driver] = None
         self.thermocouple_reader: Optional[ThermocoupleReader] = None
+        self.pressure_reader: Optional[ADS1115PressureReader] = None
         self.compressor_driver: Optional[CompressorUartDriver] = None
         self.last_compressor_telemetry: Optional[CompressorTelemetry] = None
 
@@ -195,6 +203,8 @@ class SensorMonitorApp(QObject):
             # Optional, non-fatal subsystems.
             self.thermocouple_reader = ThermocoupleReader(self.config)
             self._log_optional_status("Thermocouple reader", self.thermocouple_reader)
+            self.pressure_reader = ADS1115PressureReader(self.config)
+            self._log_optional_status("ADS1115 pressure reader", self.pressure_reader)
 
             self.compressor_driver = CompressorUartDriver(self.config)
             self._log_optional_status("Compressor UART driver", self.compressor_driver)
@@ -247,6 +257,11 @@ class SensorMonitorApp(QObject):
                 self.thermocouple_reader.cleanup()
             except Exception:
                 pass
+        if self.pressure_reader is not None:
+            try:
+                self.pressure_reader.cleanup()
+            except Exception:
+                pass
 
         if self.sensor_reader:
             self.sensor_reader.cleanup()
@@ -259,6 +274,7 @@ class SensorMonitorApp(QObject):
             self.compressor_driver.cleanup()
             self.compressor_driver = None
         self.thermocouple_reader = None
+        self.pressure_reader = None
 
         print("Cleanup complete")
 
@@ -272,6 +288,7 @@ class SensorMonitorApp(QObject):
         worker = _BackgroundIOWorker(
             self.sensor_reader,
             self.thermocouple_reader,
+            self.pressure_reader,
             self.compressor_driver,
             self.csv_logger,
         )
@@ -359,12 +376,13 @@ class SensorMonitorApp(QObject):
             set_temperature_c,
         )
 
-    @pyqtSlot(object, object, object, object, object)
+    @pyqtSlot(object, object, object, object, object, object)
     def _on_io_tick_complete(
         self,
         sensor_states,
         temperatures,
         raw_temperatures,
+        pressures,
         telemetry,
         error_message,
     ):
@@ -381,6 +399,7 @@ class SensorMonitorApp(QObject):
             sensor_states = sensor_states or {}
             temperatures = temperatures or {}
             raw_temperatures = raw_temperatures or {}
+            pressures = pressures or {}
 
             if telemetry is not None:
                 self.last_compressor_telemetry = telemetry
@@ -400,7 +419,12 @@ class SensorMonitorApp(QObject):
                 )
 
             if self.ui:
-                self.ui.update_sensor_display(sensor_states, temperatures, raw_temperatures)
+                self.ui.update_sensor_display(
+                    sensor_states,
+                    temperatures,
+                    raw_temperatures,
+                    pressures,
+                )
                 if self.stepper_driver:
                     self._update_stepper_ui_status()
         finally:
