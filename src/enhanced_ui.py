@@ -1442,6 +1442,10 @@ class CompressorUartTab(QWidget):
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
+        overview_page = QWidget()
+        overview_layout = QVBoxLayout()
+        overview_layout.setContentsMargins(0, 0, 0, 0)
+        overview_layout.setSpacing(10)
 
         conn_layout = QGridLayout()
         conn_layout.setHorizontalSpacing(12)
