@@ -911,6 +911,7 @@ class ServiceTab(QWidget):
         self.sensor_states: dict = {}
         self.compressor_on = False
         self.compressor_command_on = False
+        self.compressor_manual_on = False
         self.compressor_speed_rpm = int(compressor_cfg.get("default_speed_rpm", 3000))
         self.compressor_max_speed_rpm = max(100, int(compressor_cfg.get("max_speed_rpm", 6000)))
         self.stepper_speed_rpm = int(stepper_cfg.get("default_speed_rpm", 30))
@@ -919,6 +920,7 @@ class ServiceTab(QWidget):
 
         # Callbacks (set by the host window).
         self.on_compressor_toggle_callback: Optional[Callable[[bool], None]] = None
+        self.on_compressor_manual_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_speed_change_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
@@ -972,6 +974,10 @@ class ServiceTab(QWidget):
         self.compressor_toggle_button.setMinimumHeight(40)
         self.compressor_toggle_button.clicked.connect(self._on_compressor_toggle_clicked)
         self._apply_compressor_button_style(False)
+        self.compressor_manual_button = QPushButton("MANUAL ON (IO6) OFF")
+        self.compressor_manual_button.setMinimumHeight(36)
+        self.compressor_manual_button.clicked.connect(self._on_compressor_manual_toggle_clicked)
+        self._apply_compressor_manual_button_style(False)
         
         self.stepper_speed_label = QLabel(f"{self.stepper_speed_rpm} RPM")
         self.stepper_speed_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
@@ -1049,6 +1055,7 @@ class ServiceTab(QWidget):
         compressor_speed_row.addWidget(self.compressor_speed_label, 0, Qt.AlignmentFlag.AlignVCenter)
         compressor_layout.addLayout(compressor_speed_row)
         compressor_layout.addWidget(self.compressor_toggle_button)
+        compressor_layout.addWidget(self.compressor_manual_button)
         self.compressor_group.setLayout(compressor_layout)
         main_layout.addWidget(self.compressor_group)
 
@@ -1092,6 +1099,7 @@ class ServiceTab(QWidget):
         compressor_on: bool = None,
         compressor_speed_rpm: int = None,
         compressor_command_on: bool = None,
+        compressor_manual_on: bool = None,
         stepper_speed_rpm: int = None,
     ):
         """Update output display"""
@@ -1104,6 +1112,9 @@ class ServiceTab(QWidget):
         if compressor_command_on is not None:
             self.compressor_command_on = bool(compressor_command_on)
             self._apply_compressor_button_style(self.compressor_command_on)
+        if compressor_manual_on is not None:
+            self.compressor_manual_on = bool(compressor_manual_on)
+            self._apply_compressor_manual_button_style(self.compressor_manual_on)
         if stepper_speed_rpm is not None:
             self.stepper_speed_rpm = int(stepper_speed_rpm)
             if self.stepper_speed_slider.value() != self.stepper_speed_rpm:
@@ -1139,6 +1150,12 @@ class ServiceTab(QWidget):
         if self.on_compressor_toggle_callback:
             self.on_compressor_toggle_callback(self.compressor_command_on)
 
+    def _on_compressor_manual_toggle_clicked(self):
+        self.compressor_manual_on = not self.compressor_manual_on
+        self._apply_compressor_manual_button_style(self.compressor_manual_on)
+        if self.on_compressor_manual_toggle_callback:
+            self.on_compressor_manual_toggle_callback(self.compressor_manual_on)
+
     def _apply_compressor_button_style(self, is_on: bool):
         if is_on:
             text = "COMPRESSOR ON"
@@ -1157,6 +1174,31 @@ class ServiceTab(QWidget):
                 font-weight: 700;
                 border-radius: 12px;
                 padding: 8px 12px;
+                border: 1px solid #cfd8e0;
+            }}
+            QPushButton:hover {{
+                background-color: {hover};
+            }}
+        """)
+
+    def _apply_compressor_manual_button_style(self, is_on: bool):
+        if is_on:
+            text = "MANUAL ON (IO6) ON"
+            bg = "#16a34a"
+            hover = "#15803d"
+        else:
+            text = "MANUAL ON (IO6) OFF"
+            bg = "#6b7280"
+            hover = "#4b5563"
+        self.compressor_manual_button.setText(text)
+        self.compressor_manual_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: white;
+                font-size: 12px;
+                font-weight: 700;
+                border-radius: 10px;
+                padding: 6px 10px;
                 border: 1px solid #cfd8e0;
             }}
             QPushButton:hover {{
@@ -2048,6 +2090,7 @@ class MainScreen(QMainWindow):
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_toggle_callback: Optional[Callable[[bool], None]] = None
+        self.on_compressor_manual_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_speed_change_callback: Optional[Callable[[int], None]] = None
         self.on_temperature_calibration_callback: Optional[
             Callable[[str, float, float], tuple[bool, str]]
@@ -2219,6 +2262,7 @@ class MainScreen(QMainWindow):
         self.service_tab.on_stepper_jog_stop_callback = self._on_service_stepper_jog_stop
         self.service_tab.on_stepper_continuous_toggle_callback = self._on_service_stepper_continuous_toggle
         self.service_tab.on_compressor_toggle_callback = self._on_service_compressor_toggle
+        self.service_tab.on_compressor_manual_toggle_callback = self._on_service_compressor_manual_toggle
         self.service_tab.on_compressor_speed_change_callback = self._on_service_compressor_speed_change
 
         # Service 2 tab (temperature channels)
@@ -2465,6 +2509,11 @@ class MainScreen(QMainWindow):
         """Forward service-tab compressor on/off toggle to app callback."""
         if self.on_compressor_toggle_callback:
             self.on_compressor_toggle_callback(enabled)
+
+    def _on_service_compressor_manual_toggle(self, enabled: bool):
+        """Forward service-tab manual compressor relay toggle to app callback."""
+        if self.on_compressor_manual_toggle_callback:
+            self.on_compressor_manual_toggle_callback(enabled)
 
     def _on_service_compressor_speed_change(self, speed_rpm: int):
         """Forward service-tab compressor speed setpoint change."""

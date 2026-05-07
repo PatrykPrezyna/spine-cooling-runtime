@@ -17,6 +17,11 @@ import yaml
 from PyQt6.QtCore import QObject, Qt, QThread, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import QApplication
 
+try:
+    import RPi.GPIO as GPIO  # type: ignore
+except Exception:  # pragma: no cover - non-RPi environments
+    GPIO = None  # type: ignore
+
 from compressor_uart_driver import CompressorTelemetry, CompressorUartDriver
 from csv_logger import CSVLogger
 from ads1115_pressure_reader import ADS1115PressureReader
@@ -136,6 +141,8 @@ class SensorMonitorApp(QObject):
         self.pumping_slow_stepper_speed_rpm: int = int(stepper_cfg.get('pumping_slow_speed_rpm', 20))
         self.compressor_speed_rpm: int = int(compressor_cfg.get('default_speed_rpm', 3000))
         self.compressor_command_on: bool = bool(compressor_cfg.get('start_on', False))
+        self.compressor_manual_output_pin: int = 6
+        self.compressor_manual_on: bool = False
         self.stepper_continuous_forward: bool = False
         _cont_dir = int(stepper_cfg.get("continuous_direction", 1))
         self.stepper_continuous_direction: int = 1 if _cont_dir >= 0 else -1
@@ -208,6 +215,7 @@ class SensorMonitorApp(QObject):
 
             self.compressor_driver = CompressorUartDriver(self.config)
             self._log_optional_status("Compressor UART driver", self.compressor_driver)
+            self._initialize_compressor_manual_output()
 
             self.stepper_driver = STSPIN220Driver(self.config)
             # Keep the driver energised while service jog controls are used.
@@ -242,6 +250,33 @@ class SensorMonitorApp(QObject):
         elif getattr(component, "last_error", None):
             print(f"{label} inactive: {component.last_error}")
 
+    def _initialize_compressor_manual_output(self) -> None:
+        """Configure IO6 as compressor manual relay output (temporary UART workaround)."""
+        if GPIO is None:
+            print("Compressor manual relay unavailable: RPi.GPIO not installed")
+            return
+        try:
+            GPIO.setwarnings(False)
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(self.compressor_manual_output_pin, GPIO.OUT, initial=GPIO.LOW)
+            self.compressor_manual_on = False
+            print(f"Compressor manual relay initialized on IO{self.compressor_manual_output_pin}")
+        except Exception as exc:
+            print(f"Failed to initialize compressor manual relay IO{self.compressor_manual_output_pin}: {exc}")
+
+    def _set_compressor_manual_output(self, enabled: bool) -> None:
+        """Drive IO6 high/low for manual compressor relay control."""
+        self.compressor_manual_on = bool(enabled)
+        if GPIO is None:
+            return
+        try:
+            GPIO.output(
+                self.compressor_manual_output_pin,
+                GPIO.HIGH if self.compressor_manual_on else GPIO.LOW,
+            )
+        except Exception as exc:
+            print(f"Failed to set compressor manual relay IO{self.compressor_manual_output_pin}: {exc}")
+
     def cleanup(self):
         """Release every resource owned by the application."""
         print("Cleaning up...")
@@ -273,6 +308,7 @@ class SensorMonitorApp(QObject):
         if self.compressor_driver:
             self.compressor_driver.cleanup()
             self.compressor_driver = None
+        self._set_compressor_manual_output(False)
         self.thermocouple_reader = None
         self.pressure_reader = None
 
@@ -447,9 +483,10 @@ class SensorMonitorApp(QObject):
             self.last_compressor_telemetry and self.last_compressor_telemetry.actual_rpm > 0
         )
         self.ui.service_tab.update_outputs(
-            compressor_on=compressor_on,
+            compressor_on=(compressor_on or self.compressor_manual_on),
             compressor_speed_rpm=self.compressor_speed_rpm,
             compressor_command_on=self.compressor_command_on,
+            compressor_manual_on=self.compressor_manual_on,
             stepper_speed_rpm=self.stepper_speed_rpm,
         )
 
@@ -487,6 +524,11 @@ class SensorMonitorApp(QObject):
     def on_compressor_speed_changed(self, speed_rpm: int):
         max_speed = int(self.config.get('compressor', {}).get('max_speed_rpm', 6000))
         self.compressor_speed_rpm = max(0, min(int(speed_rpm), max_speed))
+        if self.ui:
+            self._update_stepper_ui_status()
+
+    def on_compressor_manual_toggle(self, enabled: bool):
+        self._set_compressor_manual_output(bool(enabled))
         if self.ui:
             self._update_stepper_ui_status()
 
@@ -634,6 +676,7 @@ class SensorMonitorApp(QObject):
         ui.on_stepper_jog_stop_callback = self.on_stepper_jog_stop
         ui.on_stepper_continuous_toggle_callback = self.on_stepper_continuous_toggle
         ui.on_compressor_toggle_callback = self.on_compressor_toggle
+        ui.on_compressor_manual_toggle_callback = self.on_compressor_manual_toggle
         ui.on_compressor_speed_change_callback = self.on_compressor_speed_changed
         ui.on_temperature_calibration_callback = self.on_temperature_calibration_requested
 
