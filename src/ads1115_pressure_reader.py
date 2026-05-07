@@ -6,8 +6,15 @@ from typing import Dict, Optional
 
 import board  # type: ignore
 import busio  # type: ignore
-from adafruit_ads1x15.ads1115 import ADS1115, Mode, P0, P1, P2, P3  # type: ignore
+from adafruit_ads1x15.ads1115 import ADS1115, P0, P1, P2, P3  # type: ignore
 from adafruit_ads1x15.analog_in import AnalogIn  # type: ignore
+
+try:
+    # Newer releases expose Mode from ads1x15.
+    from adafruit_ads1x15.ads1x15 import Mode  # type: ignore
+except Exception:  # pragma: no cover - depends on installed library version
+    # Older releases expose Mode from ads1115.
+    from adafruit_ads1x15.ads1115 import Mode  # type: ignore
 
 
 class ADS1115PressureReader:
