@@ -1139,11 +1139,19 @@ class ServiceTab(QWidget):
             self._apply_compressor_manual_button_style(self.compressor_manual_on)
         if compressor_manual_on_time_s is not None:
             self.compressor_manual_on_time_s = max(1, int(compressor_manual_on_time_s))
-            if self.compressor_manual_on_time_edit.text() != str(self.compressor_manual_on_time_s):
+            if (
+                not self.compressor_manual_on_time_edit.hasFocus()
+                and self.compressor_manual_on_time_edit.text()
+                != str(self.compressor_manual_on_time_s)
+            ):
                 self.compressor_manual_on_time_edit.setText(str(self.compressor_manual_on_time_s))
         if compressor_manual_off_time_s is not None:
             self.compressor_manual_off_time_s = max(1, int(compressor_manual_off_time_s))
-            if self.compressor_manual_off_time_edit.text() != str(self.compressor_manual_off_time_s):
+            if (
+                not self.compressor_manual_off_time_edit.hasFocus()
+                and self.compressor_manual_off_time_edit.text()
+                != str(self.compressor_manual_off_time_s)
+            ):
                 self.compressor_manual_off_time_edit.setText(str(self.compressor_manual_off_time_s))
         if stepper_speed_rpm is not None:
             self.stepper_speed_rpm = int(stepper_speed_rpm)
@@ -2124,13 +2132,12 @@ class MainScreen(QMainWindow):
 
         self.config = config
         self.temperature_sensor_names = self._temperature_sensor_names_from_config(config)
-        self.primary_temperature_label = (
-            self.temperature_sensor_names[1]
-            if len(self.temperature_sensor_names) > 1
-            else (self.temperature_sensor_names[0] if self.temperature_sensor_names else None)
+        self.primary_temperature_label = self._pick_primary_temperature_label(
+            self.temperature_sensor_names
         )
-        self.secondary_temperature_label = (
-            self.temperature_sensor_names[1] if len(self.temperature_sensor_names) > 1 else None
+        self.secondary_temperature_label = self._pick_secondary_temperature_label(
+            self.temperature_sensor_names,
+            self.primary_temperature_label,
         )
 
         # Callbacks (set by the host application).
@@ -2177,6 +2184,24 @@ class MainScreen(QMainWindow):
                 continue
             names.append(str(labels.get(ch, f"Temp {ch}")))
         return names
+
+    @staticmethod
+    def _pick_primary_temperature_label(sensor_names: list[str]) -> Optional[str]:
+        """Prefer CSF for the main graph; fallback to first configured sensor."""
+        for name in sensor_names:
+            if "csf" in str(name).lower():
+                return name
+        return sensor_names[0] if sensor_names else None
+
+    @staticmethod
+    def _pick_secondary_temperature_label(
+        sensor_names: list[str], primary_label: Optional[str]
+    ) -> Optional[str]:
+        """Choose a different sensor label for optional secondary usage."""
+        for name in sensor_names:
+            if name != primary_label:
+                return name
+        return None
 
     @staticmethod
     def _pressure_sensor_names_from_config(config: dict) -> list[str]:

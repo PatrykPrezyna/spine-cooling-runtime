@@ -506,11 +506,13 @@ class SensorMonitorApp(QObject):
         """Push latest compressor + stepper values into the service tab."""
         if not self.ui or not self.stepper_driver:
             return
-        compressor_on = bool(
+        compressor_on_from_uart = bool(
             self.last_compressor_telemetry and self.last_compressor_telemetry.actual_rpm > 0
         )
+        # Manual relay output is active-low: IO6 LOW means compressor ON.
+        compressor_on_from_manual_io6 = not self.compressor_manual_relay_on
         self.ui.service_tab.update_outputs(
-            compressor_on=(compressor_on or self.compressor_manual_relay_on),
+            compressor_on=(compressor_on_from_uart or compressor_on_from_manual_io6),
             compressor_speed_rpm=self.compressor_speed_rpm,
             compressor_command_on=self.compressor_command_on,
             compressor_manual_on=self.compressor_manual_on,
