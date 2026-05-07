@@ -39,11 +39,11 @@ thermocouples:
   channels: [1, 2, 3, 4, 5, 6]
   labels:
     1: "Heat Ex"
-    2: "CSF"
-    3: "Input"
-    4: "Output"
+    2: "Output"
+    3: "CSF"
+    4: "Input"
     5: "Temp 5"
-    6: "Temp 6"
+    6: "No Sensor"
   # Optional two-point calibration at fixed references 0C and 100C.
   # corrected = (raw - measured_at_0c) * 100 / (measured_at_100c - measured_at_0c)
   # Use "default" to apply to all channels, then override individual channels if needed.
