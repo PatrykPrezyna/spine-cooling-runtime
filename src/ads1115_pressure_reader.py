@@ -6,8 +6,10 @@ from typing import Dict, Optional
 
 import board  # type: ignore
 import busio  # type: ignore
-from adafruit_ads1x15.ads1115 import ADS1115, P0, P1, P2, P3  # type: ignore
+import adafruit_ads1x15.ads1115 as ADS  # type: ignore
 from adafruit_ads1x15.analog_in import AnalogIn  # type: ignore
+
+ADS1115 = ADS.ADS1115
 
 try:
     # Newer releases expose Mode from ads1x15.
@@ -28,7 +30,13 @@ class ADS1115PressureReader:
         "8": 8,
         "16": 16,
     }
-    _PIN_MAP = {0: P0, 1: P1, 2: P2, 3: P3}
+    _PIN_MAP = {
+        # Some library versions expose P0..P3 constants; others accept raw channel ints.
+        0: getattr(ADS, "P0", 0),
+        1: getattr(ADS, "P1", 1),
+        2: getattr(ADS, "P2", 2),
+        3: getattr(ADS, "P3", 3),
+    }
 
     def __init__(self, config: dict):
         ps_cfg = config.get("pressure_sensors", {})
