@@ -10,6 +10,7 @@ starved by GIL contention.
 """
 
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -143,6 +144,10 @@ class SensorMonitorApp(QObject):
         self.compressor_command_on: bool = bool(compressor_cfg.get('start_on', False))
         self.compressor_manual_output_pin: int = 6
         self.compressor_manual_on: bool = False
+        self.compressor_manual_relay_on: bool = False
+        self.compressor_manual_on_time_s: int = 20
+        self.compressor_manual_off_time_s: int = 40
+        self._compressor_manual_phase_started_at: Optional[float] = None
         self.stepper_continuous_forward: bool = False
         _cont_dir = int(stepper_cfg.get("continuous_direction", 1))
         self.stepper_continuous_direction: int = 1 if _cont_dir >= 0 else -1
@@ -266,16 +271,35 @@ class SensorMonitorApp(QObject):
 
     def _set_compressor_manual_output(self, enabled: bool) -> None:
         """Drive IO6 high/low for manual compressor relay control."""
-        self.compressor_manual_on = bool(enabled)
+        self.compressor_manual_relay_on = bool(enabled)
         if GPIO is None:
             return
         try:
             GPIO.output(
                 self.compressor_manual_output_pin,
-                GPIO.HIGH if self.compressor_manual_on else GPIO.LOW,
+                GPIO.HIGH if self.compressor_manual_relay_on else GPIO.LOW,
             )
         except Exception as exc:
             print(f"Failed to set compressor manual relay IO{self.compressor_manual_output_pin}: {exc}")
+
+    def _update_compressor_manual_cycle(self) -> None:
+        """When manual mode is enabled, alternate IO6 ON/OFF by configured seconds."""
+        if not self.compressor_manual_on:
+            return
+        now = time.monotonic()
+        if self._compressor_manual_phase_started_at is None:
+            self._compressor_manual_phase_started_at = now
+            self._set_compressor_manual_output(True)
+            return
+        elapsed = now - self._compressor_manual_phase_started_at
+        if self.compressor_manual_relay_on:
+            if elapsed >= float(self.compressor_manual_on_time_s):
+                self._set_compressor_manual_output(False)
+                self._compressor_manual_phase_started_at = now
+        else:
+            if elapsed >= float(self.compressor_manual_off_time_s):
+                self._set_compressor_manual_output(True)
+                self._compressor_manual_phase_started_at = now
 
     def cleanup(self):
         """Release every resource owned by the application."""
@@ -309,6 +333,8 @@ class SensorMonitorApp(QObject):
             self.compressor_driver.cleanup()
             self.compressor_driver = None
         self._set_compressor_manual_output(False)
+        self.compressor_manual_on = False
+        self._compressor_manual_phase_started_at = None
         self.thermocouple_reader = None
         self.pressure_reader = None
 
@@ -400,6 +426,7 @@ class SensorMonitorApp(QObject):
         if self._io_worker is None:
             # Worker not started yet (e.g. UI flushing during startup).
             return
+        self._update_compressor_manual_cycle()
         set_temperature_c = (
             float(self.ui.main_graph_widget.set_temperature)
             if self.ui else float("nan")
@@ -483,10 +510,12 @@ class SensorMonitorApp(QObject):
             self.last_compressor_telemetry and self.last_compressor_telemetry.actual_rpm > 0
         )
         self.ui.service_tab.update_outputs(
-            compressor_on=(compressor_on or self.compressor_manual_on),
+            compressor_on=(compressor_on or self.compressor_manual_relay_on),
             compressor_speed_rpm=self.compressor_speed_rpm,
             compressor_command_on=self.compressor_command_on,
             compressor_manual_on=self.compressor_manual_on,
+            compressor_manual_on_time_s=self.compressor_manual_on_time_s,
+            compressor_manual_off_time_s=self.compressor_manual_off_time_s,
             stepper_speed_rpm=self.stepper_speed_rpm,
         )
 
@@ -528,7 +557,22 @@ class SensorMonitorApp(QObject):
             self._update_stepper_ui_status()
 
     def on_compressor_manual_toggle(self, enabled: bool):
-        self._set_compressor_manual_output(bool(enabled))
+        self.compressor_manual_on = bool(enabled)
+        if self.compressor_manual_on:
+            self._compressor_manual_phase_started_at = time.monotonic()
+            self._set_compressor_manual_output(True)
+        else:
+            self._set_compressor_manual_output(False)
+            self._compressor_manual_phase_started_at = None
+        if self.ui:
+            self._update_stepper_ui_status()
+
+    def on_compressor_manual_timing_changed(self, on_time_s: int, off_time_s: int):
+        self.compressor_manual_on_time_s = max(1, int(on_time_s))
+        self.compressor_manual_off_time_s = max(1, int(off_time_s))
+        # Restart phase timing so new values apply immediately and predictably.
+        if self.compressor_manual_on:
+            self._compressor_manual_phase_started_at = time.monotonic()
         if self.ui:
             self._update_stepper_ui_status()
 
@@ -677,6 +721,7 @@ class SensorMonitorApp(QObject):
         ui.on_stepper_continuous_toggle_callback = self.on_stepper_continuous_toggle
         ui.on_compressor_toggle_callback = self.on_compressor_toggle
         ui.on_compressor_manual_toggle_callback = self.on_compressor_manual_toggle
+        ui.on_compressor_manual_timing_change_callback = self.on_compressor_manual_timing_changed
         ui.on_compressor_speed_change_callback = self.on_compressor_speed_changed
         ui.on_temperature_calibration_callback = self.on_temperature_calibration_requested
 
