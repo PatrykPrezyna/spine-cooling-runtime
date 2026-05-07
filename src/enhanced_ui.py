@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget,
     QLabel, QGridLayout, QGroupBox, QSlider, QComboBox, QStackedWidget, QCheckBox,
-    QSizePolicy, QTabBar, QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
+    QSizePolicy, QTabBar, QTabWidget, QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QColor, QLinearGradient,
@@ -1280,6 +1280,11 @@ class Service2Tab(QWidget):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
 
+        overview_page = QWidget()
+        overview_layout = QVBoxLayout()
+        overview_layout.setContentsMargins(0, 0, 0, 0)
+        overview_layout.setSpacing(10)
+
         temp_layout = QGridLayout()
         for index, name in enumerate(self.sensor_names):
             row = index // 2
@@ -1407,7 +1412,7 @@ class CompressorUartTab(QWidget):
         self._connection_fields["max_speed_rpm"] = self._add_row(conn_layout, 5, "max_speed_rpm", "Max Speed (RPM)")
         self._connection_fields["last_error"] = self._add_row(conn_layout, 6, "last_error", "Last Error", mono=True)
         self.connection_group.setLayout(conn_layout)
-        main_layout.addWidget(self.connection_group)
+        overview_layout.addWidget(self.connection_group)
 
         telemetry_layout = QGridLayout()
         telemetry_layout.setHorizontalSpacing(12)
@@ -1422,7 +1427,14 @@ class CompressorUartTab(QWidget):
         self._telemetry_fields["fault_status"] = self._add_row(telemetry_layout, 7, "fault_status", "Fault Status")
         self._telemetry_fields["raw_reply"] = self._add_row(telemetry_layout, 8, "raw_reply", "Raw Reply (hex)", mono=True)
         self.telemetry_group.setLayout(telemetry_layout)
-        main_layout.addWidget(self.telemetry_group)
+        overview_layout.addWidget(self.telemetry_group)
+        overview_layout.addStretch()
+        overview_page.setLayout(overview_layout)
+
+        faults_page = QWidget()
+        faults_page_layout = QVBoxLayout()
+        faults_page_layout.setContentsMargins(0, 0, 0, 0)
+        faults_page_layout.setSpacing(10)
 
         faults_layout = QGridLayout()
         faults_layout.setHorizontalSpacing(10)
@@ -1435,8 +1447,14 @@ class CompressorUartTab(QWidget):
             faults_layout.addWidget(label, row, col)
             self._fault_flag_labels[name] = label
         self.faults_group.setLayout(faults_layout)
-        main_layout.addWidget(self.faults_group)
+        faults_page_layout.addWidget(self.faults_group)
+        faults_page_layout.addStretch()
+        faults_page.setLayout(faults_page_layout)
 
+        self.details_tabs = QTabWidget()
+        self.details_tabs.addTab(overview_page, "Overview")
+        self.details_tabs.addTab(faults_page, "Fault Flags")
+        main_layout.addWidget(self.details_tabs)
         main_layout.addStretch()
         self.setLayout(main_layout)
 
