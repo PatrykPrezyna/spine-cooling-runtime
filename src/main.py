@@ -58,11 +58,12 @@ class _BackgroundIOWorker(QObject):
         self._compressor_driver = compressor_driver
         self._csv_logger = csv_logger
 
-    @pyqtSlot(bool, int, int, float)
+    @pyqtSlot(bool, int, bool, int, float)
     def tick(
         self,
         compressor_on: bool,
         compressor_speed_rpm: int,
+        stepper_motor_running: bool,
         peristaltic_pump_set_speed_rpm: int,
         set_temperature_c: float,
     ) -> None:
@@ -86,10 +87,13 @@ class _BackgroundIOWorker(QObject):
                     set_speed_rpm=int(compressor_speed_rpm),
                 )
             if self._csv_logger is not None:
+                logged_stepper_speed_rpm = (
+                    int(peristaltic_pump_set_speed_rpm) if bool(stepper_motor_running) else 0
+                )
                 self._csv_logger.log(
                     sensor_states,
                     temperatures,
-                    peristaltic_pump_set_speed_rpm=int(peristaltic_pump_set_speed_rpm),
+                    peristaltic_pump_set_speed_rpm=logged_stepper_speed_rpm,
                     set_temperature_c=float(set_temperature_c),
                 )
         except Exception as exc:
@@ -110,9 +114,9 @@ class SensorMonitorApp(QObject):
     UPDATE_INTERVAL_MS = 1000
 
     # Emitted on every UI tick to ask the IO worker thread to do its work.
-    # Payload: (compressor_on, compressor_speed_rpm,
+    # Payload: (compressor_on, compressor_speed_rpm, stepper_motor_running,
     #           peristaltic_pump_set_speed_rpm, set_temperature_c).
-    request_io_tick = pyqtSignal(bool, int, int, float)
+    request_io_tick = pyqtSignal(bool, int, bool, int, float)
 
     def __init__(self, config_path: str = "config.yaml"):
         super().__init__()
@@ -149,6 +153,7 @@ class SensorMonitorApp(QObject):
         self.compressor_manual_off_time_s: int = 40
         self._compressor_manual_phase_started_at: Optional[float] = None
         self.stepper_continuous_forward: bool = False
+        self.stepper_motor_running: bool = False
         _cont_dir = int(stepper_cfg.get("continuous_direction", 1))
         self.stepper_continuous_direction: int = 1 if _cont_dir >= 0 else -1
 
@@ -435,6 +440,7 @@ class SensorMonitorApp(QObject):
         self.request_io_tick.emit(
             bool(self.compressor_command_on),
             int(self.compressor_speed_rpm),
+            bool(self.stepper_motor_running),
             int(self.stepper_speed_rpm),
             set_temperature_c,
         )
@@ -589,6 +595,7 @@ class SensorMonitorApp(QObject):
         self.stepper_driver.start_continuous(
             direction=jog_direction, speed_rpm=self.stepper_speed_rpm
         )
+        self.stepper_motor_running = True
         self._update_stepper_ui_status()
 
     def on_stepper_jog_stop(self):
@@ -596,6 +603,7 @@ class SensorMonitorApp(QObject):
         self.stepper_continuous_forward = False
         if self.stepper_driver:
             self.stepper_driver.stop_continuous()
+        self.stepper_motor_running = False
         self._update_stepper_ui_status()
 
     def on_stepper_continuous_toggle(self, enabled: bool):
@@ -614,6 +622,7 @@ class SensorMonitorApp(QObject):
             )
         else:
             self.stepper_driver.stop_continuous()
+        self.stepper_motor_running = self.stepper_continuous_forward
         self._update_stepper_ui_status()
 
     def on_temperature_calibration_requested(
