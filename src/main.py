@@ -11,6 +11,7 @@ starved by GIL contention.
 
 import sys
 import time
+import math
 from pathlib import Path
 from typing import Optional
 
@@ -315,6 +316,19 @@ class SensorMonitorApp(QObject):
                 self._set_compressor_manual_output(False)
                 self._compressor_manual_phase_started_at = now
 
+    def _manual_off_countdown_seconds(self) -> Optional[int]:
+        """Return remaining OFF-phase seconds for IO6 HIGH, else None."""
+        if not self.compressor_manual_on:
+            return None
+        if not self.compressor_manual_relay_on:
+            # IO6 LOW (compressor ON phase), so no OFF countdown is active.
+            return None
+        if self._compressor_manual_phase_started_at is None:
+            return int(self.compressor_manual_off_time_s)
+        elapsed = time.monotonic() - self._compressor_manual_phase_started_at
+        remaining = max(0.0, float(self.compressor_manual_off_time_s) - elapsed)
+        return int(math.ceil(remaining))
+
     def cleanup(self):
         """Release every resource owned by the application."""
         print("Cleaning up...")
@@ -532,6 +546,7 @@ class SensorMonitorApp(QObject):
             compressor_command_on=self.compressor_command_on,
             compressor_manual_on=self.compressor_manual_on,
             compressor_manual_io6_high=self.compressor_manual_relay_on,
+            compressor_manual_off_countdown_s=self._manual_off_countdown_seconds(),
             compressor_manual_on_time_s=self.compressor_manual_on_time_s,
             compressor_manual_off_time_s=self.compressor_manual_off_time_s,
             stepper_speed_rpm=self.stepper_speed_rpm,
