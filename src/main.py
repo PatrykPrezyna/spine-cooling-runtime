@@ -317,16 +317,22 @@ class SensorMonitorApp(QObject):
                 self._compressor_manual_phase_started_at = now
 
     def _manual_off_countdown_seconds(self) -> Optional[int]:
-        """Return remaining OFF-phase seconds for IO6 HIGH, else None."""
+        """Return remaining seconds in the current manual compressor phase."""
         if not self.compressor_manual_on:
             return None
-        if not self.compressor_manual_relay_on:
-            # IO6 LOW (compressor ON phase), so no OFF countdown is active.
-            return None
         if self._compressor_manual_phase_started_at is None:
-            return int(self.compressor_manual_off_time_s)
+            return int(
+                self.compressor_manual_off_time_s
+                if self.compressor_manual_relay_on
+                else self.compressor_manual_on_time_s
+            )
+        phase_duration_s = (
+            float(self.compressor_manual_off_time_s)
+            if self.compressor_manual_relay_on
+            else float(self.compressor_manual_on_time_s)
+        )
         elapsed = time.monotonic() - self._compressor_manual_phase_started_at
-        remaining = max(0.0, float(self.compressor_manual_off_time_s) - elapsed)
+        remaining = max(0.0, phase_duration_s - elapsed)
         return int(math.ceil(remaining))
 
     def cleanup(self):

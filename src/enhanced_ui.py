@@ -967,38 +967,52 @@ class ServiceTab(QWidget):
         self.compressor_manual_on_time_spin.setRange(1, 9999)
         self.compressor_manual_on_time_spin.setSingleStep(5)
         self.compressor_manual_on_time_spin.setValue(self.compressor_manual_on_time_s)
-        self.compressor_manual_on_time_spin.setFixedWidth(120)
+        self.compressor_manual_on_time_spin.setFixedWidth(80)
         self.compressor_manual_on_time_spin.setFixedHeight(48)
         self.compressor_manual_on_time_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.compressor_manual_on_time_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         self.compressor_manual_on_time_spin.setStyleSheet("""
             QSpinBox {
                 font-size: 18px;
                 font-weight: 700;
-                padding-right: 28px;
-            }
-            QSpinBox::up-button, QSpinBox::down-button {
-                width: 28px;
             }
         """)
         self.compressor_manual_on_time_spin.valueChanged.connect(self._on_manual_timing_changed)
+        self.compressor_manual_on_down_button = QPushButton("-")
+        self.compressor_manual_on_down_button.setFixedSize(48, 48)
+        self.compressor_manual_on_down_button.clicked.connect(
+            lambda: self.compressor_manual_on_time_spin.stepBy(-1)
+        )
+        self.compressor_manual_on_up_button = QPushButton("+")
+        self.compressor_manual_on_up_button.setFixedSize(48, 48)
+        self.compressor_manual_on_up_button.clicked.connect(
+            lambda: self.compressor_manual_on_time_spin.stepBy(1)
+        )
         self.compressor_manual_off_time_spin = QSpinBox()
         self.compressor_manual_off_time_spin.setRange(1, 9999)
         self.compressor_manual_off_time_spin.setSingleStep(5)
         self.compressor_manual_off_time_spin.setValue(self.compressor_manual_off_time_s)
-        self.compressor_manual_off_time_spin.setFixedWidth(120)
+        self.compressor_manual_off_time_spin.setFixedWidth(80)
         self.compressor_manual_off_time_spin.setFixedHeight(48)
         self.compressor_manual_off_time_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.compressor_manual_off_time_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         self.compressor_manual_off_time_spin.setStyleSheet("""
             QSpinBox {
                 font-size: 18px;
                 font-weight: 700;
-                padding-right: 28px;
-            }
-            QSpinBox::up-button, QSpinBox::down-button {
-                width: 28px;
             }
         """)
         self.compressor_manual_off_time_spin.valueChanged.connect(self._on_manual_timing_changed)
+        self.compressor_manual_off_down_button = QPushButton("-")
+        self.compressor_manual_off_down_button.setFixedSize(48, 48)
+        self.compressor_manual_off_down_button.clicked.connect(
+            lambda: self.compressor_manual_off_time_spin.stepBy(-1)
+        )
+        self.compressor_manual_off_up_button = QPushButton("+")
+        self.compressor_manual_off_up_button.setFixedSize(48, 48)
+        self.compressor_manual_off_up_button.clicked.connect(
+            lambda: self.compressor_manual_off_time_spin.stepBy(1)
+        )
         self.compressor_manual_off_countdown_label = QLabel("--")
         self.compressor_manual_off_countdown_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
         
@@ -1077,8 +1091,12 @@ class ServiceTab(QWidget):
         manual_timing_row.setSpacing(6)
         manual_timing_row.addWidget(QLabel("On time (s):"))
         manual_timing_row.addWidget(self.compressor_manual_on_time_spin)
+        manual_timing_row.addWidget(self.compressor_manual_on_down_button)
+        manual_timing_row.addWidget(self.compressor_manual_on_up_button)
         manual_timing_row.addWidget(QLabel("Off time (s):"))
         manual_timing_row.addWidget(self.compressor_manual_off_time_spin)
+        manual_timing_row.addWidget(self.compressor_manual_off_down_button)
+        manual_timing_row.addWidget(self.compressor_manual_off_up_button)
         manual_timing_row.addWidget(self.compressor_manual_off_countdown_label)
         manual_timing_row.addStretch()
         compressor_layout.addLayout(manual_timing_row)
@@ -1153,10 +1171,11 @@ class ServiceTab(QWidget):
             if self.compressor_manual_off_time_spin.value() != self.compressor_manual_off_time_s:
                 self.compressor_manual_off_time_spin.setValue(self.compressor_manual_off_time_s)
         if compressor_manual_off_countdown_s is not None:
+            phase_name = "OFF" if self.compressor_manual_io6_high else "ON"
             self.compressor_manual_off_countdown_label.setText(
-                f"{max(0, int(compressor_manual_off_countdown_s))}s left"
+                f"{phase_name}: {max(0, int(compressor_manual_off_countdown_s))}s"
             )
-        else:
+        elif compressor_manual_on is False:
             self.compressor_manual_off_countdown_label.setText("--")
         if stepper_speed_rpm is not None:
             self.stepper_speed_rpm = int(stepper_speed_rpm)
@@ -2357,6 +2376,28 @@ class MainScreen(QMainWindow):
         """)
         self.to_main_menu_button.setVisible(False)
 
+        # Corner control for toggling fullscreen/windowed mode.
+        self.window_mode_toggle_button = QPushButton("X")
+        self.window_mode_toggle_button.setFixedSize(34, 34)
+        self.window_mode_toggle_button.setToolTip("Toggle fullscreen / windowed")
+        self.window_mode_toggle_button.clicked.connect(self._toggle_window_mode)
+        self.window_mode_toggle_button.setStyleSheet("""
+            QPushButton {
+                background: #f8fafb;
+                color: #51606c;
+                border: 1px solid #d5dce3;
+                border-radius: 10px;
+                font-size: 14px;
+                font-weight: 700;
+            }
+            QPushButton:hover {
+                background: #eef3f7;
+            }
+            QPushButton:pressed {
+                background: #e5ebf0;
+            }
+        """)
+
         self.advanced_page = QWidget()
         advanced_layout = QVBoxLayout(self.advanced_page)
         advanced_layout.setContentsMargins(0, 0, 0, 0)
@@ -2490,6 +2531,7 @@ class MainScreen(QMainWindow):
         header_row.setSpacing(10)
         header_row.addWidget(self.state_label, 1)
         header_row.addWidget(self.to_main_menu_button)
+        header_row.addWidget(self.window_mode_toggle_button, 0, Qt.AlignmentFlag.AlignRight)
         main_layout.addLayout(header_row)
 
         # Main content area
@@ -2566,6 +2608,17 @@ class MainScreen(QMainWindow):
         """Forward service-tab compressor speed setpoint change."""
         if self.on_compressor_speed_change_callback:
             self.on_compressor_speed_change_callback(speed_rpm)
+
+    def _toggle_window_mode(self) -> None:
+        """Toggle between fullscreen and fixed-size windowed mode."""
+        if self.isFullScreen():
+            self.setWindowFlags(Qt.WindowType.Window)
+            self.showNormal()
+            self.setFixedSize(SCREEN_WIDTH, SCREEN_HEIGHT)
+            self._center_on_screen()
+        else:
+            self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+            self.showFullScreen()
 
     def _on_temperature_graph_calibration_apply(
         self,
