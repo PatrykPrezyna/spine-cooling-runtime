@@ -268,14 +268,21 @@ class SensorMonitorApp(QObject):
         try:
             GPIO.setwarnings(False)
             GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self.compressor_manual_output_pin, GPIO.OUT, initial=GPIO.LOW)
+            # Active-low relay: IO6 LOW -> compressor ON, IO6 HIGH -> compressor OFF.
+            GPIO.setup(self.compressor_manual_output_pin, GPIO.OUT, initial=GPIO.HIGH)
+            self.compressor_manual_relay_on = True  # tracks IO6 electrical state (HIGH=True)
             self.compressor_manual_on = False
             print(f"Compressor manual relay initialized on IO{self.compressor_manual_output_pin}")
         except Exception as exc:
             print(f"Failed to initialize compressor manual relay IO{self.compressor_manual_output_pin}: {exc}")
 
     def _set_compressor_manual_output(self, enabled: bool) -> None:
-        """Drive IO6 high/low for manual compressor relay control."""
+        """Drive IO6 high/low for manual compressor relay control.
+
+        ``enabled`` represents IO6 electrical HIGH/LOW state:
+        - True  => IO6 HIGH => compressor OFF
+        - False => IO6 LOW  => compressor ON
+        """
         self.compressor_manual_relay_on = bool(enabled)
         if GPIO is None:
             return
@@ -288,22 +295,24 @@ class SensorMonitorApp(QObject):
             print(f"Failed to set compressor manual relay IO{self.compressor_manual_output_pin}: {exc}")
 
     def _update_compressor_manual_cycle(self) -> None:
-        """When manual mode is enabled, alternate IO6 ON/OFF by configured seconds."""
+        """When manual mode is enabled, alternate IO6 LOW/HIGH by configured seconds."""
         if not self.compressor_manual_on:
             return
         now = time.monotonic()
         if self._compressor_manual_phase_started_at is None:
             self._compressor_manual_phase_started_at = now
-            self._set_compressor_manual_output(True)
+            # Start with compressor ON phase: IO6 LOW.
+            self._set_compressor_manual_output(False)
             return
         elapsed = now - self._compressor_manual_phase_started_at
-        if self.compressor_manual_relay_on:
+        # IO6 LOW (False) => compressor ON phase.
+        if not self.compressor_manual_relay_on:
             if elapsed >= float(self.compressor_manual_on_time_s):
-                self._set_compressor_manual_output(False)
+                self._set_compressor_manual_output(True)
                 self._compressor_manual_phase_started_at = now
         else:
             if elapsed >= float(self.compressor_manual_off_time_s):
-                self._set_compressor_manual_output(True)
+                self._set_compressor_manual_output(False)
                 self._compressor_manual_phase_started_at = now
 
     def cleanup(self):
@@ -337,7 +346,7 @@ class SensorMonitorApp(QObject):
         if self.compressor_driver:
             self.compressor_driver.cleanup()
             self.compressor_driver = None
-        self._set_compressor_manual_output(False)
+        self._set_compressor_manual_output(True)
         self.compressor_manual_on = False
         self._compressor_manual_phase_started_at = None
         self.thermocouple_reader = None
@@ -569,9 +578,11 @@ class SensorMonitorApp(QObject):
         self.compressor_manual_on = bool(enabled)
         if self.compressor_manual_on:
             self._compressor_manual_phase_started_at = time.monotonic()
-            self._set_compressor_manual_output(True)
-        else:
+            # Enter ON phase immediately: IO6 LOW.
             self._set_compressor_manual_output(False)
+        else:
+            # Manual mode disabled -> default compressor OFF: IO6 HIGH.
+            self._set_compressor_manual_output(True)
             self._compressor_manual_phase_started_at = None
         if self.ui:
             self._update_stepper_ui_status()

@@ -912,7 +912,7 @@ class ServiceTab(QWidget):
         self.compressor_on = False
         self.compressor_command_on = False
         self.compressor_manual_on = False
-        self.compressor_manual_io6_high = False
+        self.compressor_manual_io6_high = True
         self.compressor_manual_on_time_s = 20
         self.compressor_manual_off_time_s = 40
         self.compressor_speed_rpm = int(compressor_cfg.get("default_speed_rpm", 3000))
@@ -957,7 +957,7 @@ class ServiceTab(QWidget):
         self.outputs_group.setStyleSheet(self._group_box_style("#0e6a76", "12px"))
         
         # Output labels
-        self.compressor_label = QLabel("Compressor: OFF (IO6: LOW)")
+        self.compressor_label = QLabel("Compressor: OFF (IO6: HIGH)")
         self.compressor_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
         self.compressor_speed_label = QLabel(f"{self.compressor_speed_rpm} RPM")
         self.compressor_speed_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
