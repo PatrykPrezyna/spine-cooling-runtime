@@ -912,6 +912,7 @@ class ServiceTab(QWidget):
         self.compressor_on = False
         self.compressor_command_on = False
         self.compressor_manual_on = False
+        self.compressor_manual_io6_high = False
         self.compressor_manual_on_time_s = 20
         self.compressor_manual_off_time_s = 40
         self.compressor_speed_rpm = int(compressor_cfg.get("default_speed_rpm", 3000))
@@ -956,7 +957,7 @@ class ServiceTab(QWidget):
         self.outputs_group.setStyleSheet(self._group_box_style("#0e6a76", "12px"))
         
         # Output labels
-        self.compressor_label = QLabel("Compressor: OFF")
+        self.compressor_label = QLabel("Compressor: OFF (IO6: LOW)")
         self.compressor_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
         self.compressor_speed_label = QLabel(f"{self.compressor_speed_rpm} RPM")
         self.compressor_speed_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
@@ -977,7 +978,7 @@ class ServiceTab(QWidget):
         self.compressor_toggle_button.setMinimumHeight(40)
         self.compressor_toggle_button.clicked.connect(self._on_compressor_toggle_clicked)
         self._apply_compressor_button_style(False)
-        self.compressor_manual_button = QPushButton("MANUAL ON (IO6) OFF")
+        self.compressor_manual_button = QPushButton("MANUAL MODE OFF (IO6 LOW = COMP ON)")
         self.compressor_manual_button.setMinimumHeight(36)
         self.compressor_manual_button.clicked.connect(self._on_compressor_manual_toggle_clicked)
         self._apply_compressor_manual_button_style(False)
@@ -1120,6 +1121,7 @@ class ServiceTab(QWidget):
         compressor_speed_rpm: int = None,
         compressor_command_on: bool = None,
         compressor_manual_on: bool = None,
+        compressor_manual_io6_high: bool = None,
         compressor_manual_on_time_s: int = None,
         compressor_manual_off_time_s: int = None,
         stepper_speed_rpm: int = None,
@@ -1137,6 +1139,8 @@ class ServiceTab(QWidget):
         if compressor_manual_on is not None:
             self.compressor_manual_on = bool(compressor_manual_on)
             self._apply_compressor_manual_button_style(self.compressor_manual_on)
+        if compressor_manual_io6_high is not None:
+            self.compressor_manual_io6_high = bool(compressor_manual_io6_high)
         if compressor_manual_on_time_s is not None:
             self.compressor_manual_on_time_s = max(1, int(compressor_manual_on_time_s))
             if (
@@ -1161,7 +1165,8 @@ class ServiceTab(QWidget):
         # Update compressor label
         comp_status = "ON" if self.compressor_on else "OFF"
         comp_color = "#16a34a" if self.compressor_on else "#6b7280"
-        self.compressor_label.setText(f"Compressor: {comp_status}")
+        io6_state = "HIGH" if self.compressor_manual_io6_high else "LOW"
+        self.compressor_label.setText(f"Compressor: {comp_status} (IO6: {io6_state})")
         self.compressor_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=comp_color))
         self.compressor_speed_label.setText(f"{self.compressor_speed_rpm} RPM")
         
@@ -1237,12 +1242,12 @@ class ServiceTab(QWidget):
 
     def _apply_compressor_manual_button_style(self, is_on: bool):
         if is_on:
-            text = "MANUAL ON (IO6)"
+            text = "MANUAL MODE ON (IO6 LOW = COMP ON)"
             bg = "#22c55e"
             hover = "#16a34a"
             border = "#15803d"
         else:
-            text = "MANUAL OFF (IO6)"
+            text = "MANUAL MODE OFF (IO6 LOW = COMP ON)"
             bg = "#6b7280"
             hover = "#4b5563"
             border = "#4b5563"

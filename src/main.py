@@ -522,6 +522,7 @@ class SensorMonitorApp(QObject):
             compressor_speed_rpm=self.compressor_speed_rpm,
             compressor_command_on=self.compressor_command_on,
             compressor_manual_on=self.compressor_manual_on,
+            compressor_manual_io6_high=self.compressor_manual_relay_on,
             compressor_manual_on_time_s=self.compressor_manual_on_time_s,
             compressor_manual_off_time_s=self.compressor_manual_off_time_s,
             stepper_speed_rpm=self.stepper_speed_rpm,
