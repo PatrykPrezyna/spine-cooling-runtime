@@ -1,28 +1,47 @@
-"""Minimal UART slave: answers the master from uart_simple.py.
+"""Minimal UART slave: fixed-length ping / pong for uart_simple.py.
 
 Wire two USB–serial adapters: TX of each side to RX of the other, GND common.
+
+Uses exact byte reads so 600 baud (slow bytes) does not break readline().
 
 Usage:
     python uart_slave.py [PORT]
 """
 
 import sys
+import time
 
 import serial  # pyright: ignore[reportMissingModuleSource]
 
-PORT = "/dev/serial0"
+PORT = sys.argv[1] if len(sys.argv) > 1 else "COM5"
 BAUDRATE = 600
+
+RX_LEN = 5   # b"ping\n"
+REPLY = b"pong\n"
+
+
+def read_exact(ser: serial.Serial, n: int, total_timeout: float) -> bytes:
+    buf = b""
+    deadline = time.monotonic() + total_timeout
+    while len(buf) < n and time.monotonic() < deadline:
+        chunk = ser.read(n - len(buf))
+        if chunk:
+            buf += chunk
+        else:
+            time.sleep(0.001)
+    return buf
 
 
 def main() -> None:
-    with serial.Serial(PORT, BAUDRATE, timeout=1.0) as ser:
+    with serial.Serial(PORT, BAUDRATE, timeout=0.05) as ser:
         print(f"Slave on {PORT} @ {BAUDRATE} baud. Ctrl+C to stop.\n")
         while True:
-            line = ser.readline()
-            if not line:
+            line = read_exact(ser, RX_LEN, total_timeout=2.0)
+            if len(line) < RX_LEN:
+                time.sleep(0.05)
                 continue
-            if line.strip() == b"ping":
-                ser.write(b"pong\n")
+            if line == b"ping\n":
+                ser.write(REPLY)
             else:
                 ser.write(line)
             ser.flush()
