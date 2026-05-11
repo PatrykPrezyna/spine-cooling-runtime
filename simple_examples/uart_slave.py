@@ -11,7 +11,7 @@ import sys
 import serial  # pyright: ignore[reportMissingModuleSource]
 
 PORT = "/dev/serial0"
-BAUDRATE = 2400
+BAUDRATE = 1200
 
 
 def main() -> None:

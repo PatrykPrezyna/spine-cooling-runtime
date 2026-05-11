@@ -12,7 +12,7 @@ import time
 import serial  # pyright: ignore[reportMissingModuleSource]
 
 PORT = sys.argv[1] if len(sys.argv) > 1 else "COM4"
-BAUDRATE = 2400
+BAUDRATE = 1200
 LINE = b"ping\n"
 
 
