@@ -6,10 +6,12 @@ Usage:
     python3 uart_master.py
 """
 
-import serial
+# UART: use PyPI "pyserial" (import serial). PyPI "serial" is a different library.
+import serial  # pyright: ignore[reportMissingModuleSource]
 import time
 
 PORT     = "/dev/serial0"
+#PORT     = "COM4"
 BAUDRATE = 600
 
 
@@ -32,7 +34,7 @@ def build_command(on: bool, rpm: int) -> bytes:
 def send_and_receive(ser: serial.Serial, frame: bytes) -> bytes:
     ser.write(frame)
     ser.flush()
-    time.sleep(0.05)        # give slave 50 ms to respond
+    time.sleep(0.1)
     return ser.read(16)
 
 

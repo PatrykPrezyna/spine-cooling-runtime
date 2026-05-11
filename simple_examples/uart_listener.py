@@ -12,7 +12,7 @@ import sys
 import time
 import serial
 
-PORT = sys.argv[1] if len(sys.argv) > 1 else "/dev/serial0"
+PORT = sys.argv[1] if len(sys.argv) > 1 else "COM4"
 
 BAUD_RATES = [300, 600, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200]
 

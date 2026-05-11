@@ -2377,9 +2377,8 @@ class MainScreen(QMainWindow):
         self.to_main_menu_button.setVisible(False)
 
         # Corner control for toggling fullscreen/windowed mode.
-        self.window_mode_toggle_button = QPushButton("X")
+        self.window_mode_toggle_button = QPushButton("")
         self.window_mode_toggle_button.setFixedSize(34, 34)
-        self.window_mode_toggle_button.setToolTip("Toggle fullscreen / windowed")
         self.window_mode_toggle_button.clicked.connect(self._toggle_window_mode)
         self.window_mode_toggle_button.setStyleSheet("""
             QPushButton {
@@ -2397,6 +2396,7 @@ class MainScreen(QMainWindow):
                 background: #e5ebf0;
             }
         """)
+        self._update_window_mode_toggle_button()
 
         self.advanced_page = QWidget()
         advanced_layout = QVBoxLayout(self.advanced_page)
@@ -2619,6 +2619,18 @@ class MainScreen(QMainWindow):
         else:
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
             self.showFullScreen()
+        self._update_window_mode_toggle_button()
+
+    def _update_window_mode_toggle_button(self) -> None:
+        """Show an intuitive icon for the next window mode action."""
+        if self.isFullScreen():
+            # Restore down icon when currently fullscreen.
+            self.window_mode_toggle_button.setText("❐")
+            self.window_mode_toggle_button.setToolTip("Exit fullscreen")
+        else:
+            # Maximize icon when currently windowed.
+            self.window_mode_toggle_button.setText("□")
+            self.window_mode_toggle_button.setToolTip("Enter fullscreen")
 
     def _on_temperature_graph_calibration_apply(
         self,
@@ -2845,6 +2857,7 @@ class MainScreen(QMainWindow):
             self.setFixedSize(SCREEN_WIDTH, SCREEN_HEIGHT)
             self.showNormal()
             self._center_on_screen()
+        self._update_window_mode_toggle_button()
     
     def closeEvent(self, event):
         """Handle window close event."""
