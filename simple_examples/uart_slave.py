@@ -10,7 +10,7 @@ import sys
 
 import serial  # pyright: ignore[reportMissingModuleSource]
 
-PORT = sys.argv[1] if len(sys.argv) > 1 else "COM5"
+PORT = "/dev/serial0"
 BAUDRATE = 9600
 
 
