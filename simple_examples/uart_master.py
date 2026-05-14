@@ -8,7 +8,7 @@ import time
 
 import serial  # pyright: ignore[reportMissingModuleSource]
 
-PORT = sys.argv[1] if len(sys.argv) > 1 else "COM4"
+PORT = sys.argv[1] if len(sys.argv) > 1 else "/dev/ttyUSB0"
 BAUD = int(sys.argv[2]) if len(sys.argv) > 2 else 600
 N = 16
 
