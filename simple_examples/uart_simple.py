@@ -1,138 +1,101 @@
-"""UART master ? compressor command frame.
+"""UART master: 16-byte compressor command and decode of slave reply.
 
-Command frame (master ? slave):
-  Byte  0    : 0xAA  (start)
-  Byte  1    : 0x00
-  Byte  2    : instructions  bit0: 1=on, 0=off
-  Byte  3    : set speed low  byte
-  Byte  4    : set speed high byte
-  Byte  5-13 : 0x00
-  Byte  14   : checksum = (-sum(bytes[1:14])) & 0xFF
-  Byte  15   : 0x55  (end)
-
-Reply frame (slave ? master):
-  Byte  0    : 0xAA
-  Byte  1    : 0x01
-  Byte  2-3  : actual speed (low, high)
-  Byte  4-5  : current x0.1 A (low, high)
-  Byte  6-7  : busbar voltage x0.1 V (low, high)
-  Byte  8    : 0x00
-  Byte  9    : persistent error code (bits 0-6)
-  Byte 10    : ambient temperature (reserved)
-  Byte 11    : ventilate (reserved)
-  Byte 12    : 0x00
-  Byte 13    : auto-clear fault bits (cleared in 120 s)
-  Byte 14    : checksum
-  Byte 15    : 0x55
-
-Example command (on, 3000 rpm):
-  AA 00 01 B8 0B 00 00 00 00 00 00 00 00 00 3C 55
-
-Usage:
-    python uart_simple.py [PORT [BAUDRATE]]
+  python uart_simple.py [PORT [BAUDRATE]]
 """
-
-from __future__ import annotations
 
 import sys
 import time
 
 import serial  # pyright: ignore[reportMissingModuleSource]
 
-PORT     = sys.argv[1] if len(sys.argv) > 1 else "COM4"
-BAUDRATE = 9600
-FRAME    = 16
+PORT = sys.argv[1] if len(sys.argv) > 1 else "COM4"
+BAUD = int(sys.argv[2]) if len(sys.argv) > 2 else 600
+N = 16
 
 
-def checksum(frame: bytearray) -> int:
-    return (-sum(frame[1:14])) & 0xFF
+def chk(b: bytearray) -> int:
+    return (-sum(b[1:14])) & 0xFF
 
 
-def build_frame(on: bool, rpm: int) -> bytes:
-    f = bytearray(FRAME)
-    f[0]  = 0xAA
-    f[1]  = 0x00
-    f[2]  = 0x01 if on else 0x00
-    f[3]  = rpm & 0xFF
-    f[4]  = (rpm >> 8) & 0xFF
-    # bytes 5-13 remain 0x00
-    f[14] = checksum(f)
-    f[15] = 0x55
+def cmd(on: bool, rpm: int) -> bytes:
+    f = bytearray(N)
+    f[0], f[1], f[2] = 0xAA, 0x00, 1 if on else 0
+    f[3], f[4] = rpm & 0xFF, (rpm >> 8) & 0xFF
+    f[14], f[15] = chk(f), 0x55
     return bytes(f)
 
 
-def read_exact(ser: serial.Serial, n: int, total_timeout: float) -> bytes:
-    buf = b""
-    deadline = time.monotonic() + total_timeout
-    while len(buf) < n and time.monotonic() < deadline:
-        chunk = ser.read(n - len(buf))
-        if chunk:
-            buf += chunk
+def read_n(ser: serial.Serial, n: int, t: float) -> bytes:
+    out, end = b"", time.monotonic() + t
+    while len(out) < n and time.monotonic() < end:
+        c = ser.read(n - len(out))
+        if c:
+            out += c
         else:
             time.sleep(0.001)
-    return buf
+    return out
+
+
+def u16(b: bytes, i: int) -> int:
+    return b[i] | (b[i + 1] << 8)
+
+
+def faults(mask: int) -> str:
+    names = (
+        "SW overcurrent",
+        "overvoltage",
+        "undervoltage",
+        "phase loss",
+        "stall",
+        "HW overcurrent",
+        "bad phase",
+    )
+    return ", ".join(names[i] for i in range(7) if mask & (1 << i))
 
 
 def main() -> None:
-    char_time      = 10.0 / BAUDRATE          # seconds per byte at 8N1
-    post_tx_pause  = char_time * (FRAME * 2 + 4)   # TX + reply + margin
+    pause = (10.0 / BAUD) * (2 * N + 4)  # TX + RX time + margin
 
-    with serial.Serial(
-        PORT, BAUDRATE, timeout=0.05,
-        bytesize=serial.EIGHTBITS,
-        parity=serial.PARITY_NONE,
-        stopbits=serial.STOPBITS_ONE,
-    ) as ser:
-        print(f"Master on {PORT} @ {BAUDRATE} baud. Ctrl+C to stop.\n")
+    with serial.Serial(PORT, BAUD, timeout=0.05) as ser:
+        print(f"{PORT} @ {BAUD} baud  Ctrl+C stop\n")
 
         while True:
             ser.reset_input_buffer()
-            tx = build_frame(on=True, rpm=3000)
+            tx = cmd(True, 3000)
             ser.write(tx)
             ser.flush()
-            print(f"TX: {tx.hex(' ').upper()}")
+            print("TX:", tx.hex(" ").upper())
 
-            time.sleep(post_tx_pause)
-            rx = read_exact(ser, FRAME, total_timeout=2.0)
+            time.sleep(pause)
+            rx = read_n(ser, N, 2.0)
 
-            if len(rx) == FRAME and rx[0] == 0xAA and rx[1] == 0x01 and rx[15] == 0x55:
-                rpm_fb   = rx[2] | (rx[3] << 8)
-                amps     = (rx[4] | (rx[5] << 8)) * 0.1
-                volts    = (rx[6] | (rx[7] << 8)) * 0.1
-                err      = rx[9]
-                autocl   = rx[13]
-
-                FAULT_NAMES = {
-                    0: "software overcurrent", 1: "overvoltage",
-                    2: "undervoltage",         3: "phase loss",
-                    4: "stall",                5: "HW overcurrent",
-                    6: "abnormal phase",
-                }
-                faults = [FAULT_NAMES[b] for b in range(7) if err & (1 << b)]
-
-                print(f"RX: {rx.hex(' ').upper()}")
-                print(f"  Speed:   {rpm_fb} RPM")
-                print(f"  Current: {amps:.1f} A")
-                print(f"  Voltage: {volts:.1f} V")
-                if faults:
-                    print(f"  FAULTS:  {', '.join(faults)}")
-                if autocl:
-                    acl = [FAULT_NAMES[b] for b in range(7) if autocl & (1 << b)]
-                    print(f"  AutoClr: {', '.join(acl)}")
+            ok = (
+                len(rx) == N
+                and rx[0] == 0xAA
+                and rx[1] == 0x01
+                and rx[15] == 0x55
+            )
+            if ok:
+                print("RX:", rx.hex(" ").upper())
+                print(f"  {u16(rx, 2)} RPM  {u16(rx, 4) * 0.1:.1f} A  {u16(rx, 6) * 0.1:.1f} V")
+                if rx[9]:
+                    print("  faults:", faults(rx[9]))
+                if rx[13]:
+                    print("  autoclr:", faults(rx[13]))
             elif rx:
-                print(f"RX (bad frame): {rx.hex(' ').upper()}")
+                print("RX bad:", rx.hex(" ").upper())
             else:
-                print("RX: <no reply>")
+                print("RX: (nothing)")
 
             print()
-            time.sleep(1.0)
+            time.sleep(1)
 
 
 if __name__ == "__main__":
     try:
         main()
-    except serial.SerialException as e:
-        print(f"Serial error: {e}", file=sys.stderr)
-        sys.exit(1)
-    except KeyboardInterrupt:
+    except (serial.SerialException, KeyboardInterrupt) as e:
+        if isinstance(e, serial.SerialException):
+            print(e, file=sys.stderr)
+            sys.exit(1)
         print("\nStopped.")
