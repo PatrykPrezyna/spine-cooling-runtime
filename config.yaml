@@ -36,14 +36,18 @@ thermocouples:
     4: "K"
     5: "K"
     6: "K"
-  channels: [1, 2, 3, 4, 5, 6]
+    7: "K"
+    8: "K"
+  channels: [1, 2, 3, 4, 5, 6, 7, 8]   # SMtc board supports up to 8 inputs
   labels:
-    1: "Heat Ex"
-    2: "Output"
-    3: "CSF"
-    4: "Input"
-    5: "Temp 5"
-    6: "No Sensor"
+    1: "Hot Side"
+    2: "CSF"
+    3: "Plate oposite"
+    4: "Heat Ex"
+    5: "Output"
+    6: "Input"
+    7: "Temp 7"
+    8: "Temp 8"
   # Optional two-point calibration at fixed references 0C and 100C.
   # corrected = (raw - measured_at_0c) * 100 / (measured_at_100c - measured_at_0c)
   # Use "default" to apply to all channels, then override individual channels if needed.
