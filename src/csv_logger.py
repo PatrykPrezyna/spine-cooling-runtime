@@ -55,6 +55,7 @@ class CSVLogger:
             header.append(f"{self._csv_slug(name)}_c")
         header.append('set_temperature_c')
         header.append('peristaltic_pump_set_speed_rpm')
+        header.append('compressor_cooling')
         return header
 
     def start_logging(self) -> bool:
@@ -86,6 +87,7 @@ class CSVLogger:
         temperatures: Optional[dict] = None,
         peristaltic_pump_set_speed_rpm: Optional[float] = None,
         set_temperature_c: Optional[float] = None,
+        compressor_cooling: Optional[int] = None,
     ):
         """Append a single row with the current temperature + actuator state.
 
@@ -95,6 +97,8 @@ class CSVLogger:
         ``peristaltic_pump_set_speed_rpm`` is the latest stepper setpoint
         (the peristaltic pump is driven by the stepper).
         ``set_temperature_c`` is the user-selected target temperature.
+        ``compressor_cooling`` is 1 when the compressor relay is on (cooling),
+        0 when off (idle).
         """
         del sensor_states  # not logged anymore; kept for API compatibility
         if not self.is_logging:
@@ -115,6 +119,11 @@ class CSVLogger:
             row.append(
                 f"{float(peristaltic_pump_set_speed_rpm):.2f}"
                 if peristaltic_pump_set_speed_rpm is not None
+                else ""
+            )
+            row.append(
+                int(compressor_cooling)
+                if compressor_cooling is not None
                 else ""
             )
 
@@ -176,6 +185,7 @@ if __name__ == "__main__":
             temperatures=sample_temps,
             peristaltic_pump_set_speed_rpm=30 + i,
             set_temperature_c=33.0,
+            compressor_cooling=i % 2,
         )
         time.sleep(0.5)
 

@@ -54,12 +54,13 @@ class _BackgroundIOWorker(QObject):
         self._pressure_reader = pressure_reader
         self._csv_logger = csv_logger
 
-    @pyqtSlot(bool, int, float)
+    @pyqtSlot(bool, int, float, int)
     def tick(
         self,
         stepper_motor_running: bool,
         peristaltic_pump_set_speed_rpm: int,
         set_temperature_c: float,
+        compressor_cooling: int,
     ) -> None:
         sensor_states: dict = {}
         temperatures: dict = {}
@@ -83,6 +84,7 @@ class _BackgroundIOWorker(QObject):
                     temperatures,
                     peristaltic_pump_set_speed_rpm=logged_stepper_speed_rpm,
                     set_temperature_c=float(set_temperature_c),
+                    compressor_cooling=int(compressor_cooling),
                 )
         except Exception as exc:
             error_message = f"Error during update: {exc}"
@@ -102,7 +104,7 @@ class SensorMonitorApp(QObject):
 
     # Emitted on every UI tick to ask the IO worker thread to do its work.
     # Payload: (stepper_motor_running, peristaltic_pump_set_speed_rpm, set_temperature_c).
-    request_io_tick = pyqtSignal(bool, int, float)
+    request_io_tick = pyqtSignal(bool, int, float, int)
 
     def __init__(self, config_path: str = "config.yaml"):
         super().__init__()
@@ -439,6 +441,7 @@ class SensorMonitorApp(QObject):
             bool(self.stepper_motor_running),
             int(self.stepper_speed_rpm),
             set_temperature_c,
+            1 if self.compressor_on else 0,
         )
 
     @pyqtSlot(object, object, object, object, object)
@@ -500,7 +503,7 @@ class SensorMonitorApp(QObject):
             compressor_on=self.compressor_on,
             compressor_control_enabled=self.compressor_control_enabled,
             compressor_off_temp_c=int(self.compressor_off_temp_c),
-            compressor_on_temp_c=int(self.compressor_on_temp_c),
+            compressor_on_temp_c=float(self.compressor_on_temp_c),
             heat_ex_temp_c=heat_ex_c,
             refresh_heat_ex=True,
             stepper_speed_rpm=self.stepper_speed_rpm,
@@ -546,16 +549,16 @@ class SensorMonitorApp(QObject):
         if self.ui:
             self._update_stepper_ui_status()
 
-    def on_compressor_thresholds_changed(self, off_temp_c: int, on_temp_c: int) -> None:
+    def on_compressor_thresholds_changed(self, off_temp_c: int, on_temp_c: float) -> None:
         off_c = float(off_temp_c)
-        on_c = float(on_temp_c)
+        on_c = round(float(on_temp_c), 1)
         if on_c <= off_c:
-            on_c = off_c + 1.0
+            on_c = round(off_c + 0.1, 1)
         self.compressor_off_temp_c = off_c
         self.compressor_on_temp_c = on_c
         compressor_cfg = self.config.setdefault('compressor', {})
         compressor_cfg['off_below_temp_c'] = int(off_c)
-        compressor_cfg['on_above_temp_c'] = int(on_c)
+        compressor_cfg['on_above_temp_c'] = on_c
         self._save_config()
         if self.compressor_control_enabled:
             self._apply_compressor_heat_ex_control(self._last_temperatures)

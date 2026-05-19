@@ -17,7 +17,8 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget,
     QLabel, QGridLayout, QGroupBox, QSlider, QComboBox, QStackedWidget, QCheckBox,
-    QSizePolicy, QTabBar, QTabWidget, QLineEdit, QSpinBox, QTableWidget, QTableWidgetItem, QHeaderView,
+    QSizePolicy, QTabBar, QTabWidget, QLineEdit, QSpinBox, QDoubleSpinBox,
+    QTableWidget, QTableWidgetItem, QHeaderView,
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QColor, QLinearGradient,
@@ -912,7 +913,7 @@ class ServiceTab(QWidget):
         self.compressor_on = False
         self.compressor_control_enabled = False
         self.compressor_off_temp_c = int(compressor_cfg.get("off_below_temp_c", 5))
-        self.compressor_on_temp_c = int(compressor_cfg.get("on_above_temp_c", 10))
+        self.compressor_on_temp_c = float(compressor_cfg.get("on_above_temp_c", 10))
         self.heat_ex_temp_c: Optional[float] = None
         self.stepper_speed_rpm = int(stepper_cfg.get("default_speed_rpm", 30))
         self.stepper_max_speed_rpm = max(5, int(stepper_cfg.get("max_speed_rpm", 60)))
@@ -920,7 +921,7 @@ class ServiceTab(QWidget):
 
         # Callbacks (set by the host window).
         self.on_compressor_control_toggle_callback: Optional[Callable[[bool], None]] = None
-        self.on_compressor_thresholds_change_callback: Optional[Callable[[int, int], None]] = None
+        self.on_compressor_thresholds_change_callback: Optional[Callable[[int, float], None]] = None
         self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
@@ -981,13 +982,15 @@ class ServiceTab(QWidget):
         self.compressor_off_temp_up.setFixedSize(48, 48)
         self.compressor_off_temp_up.clicked.connect(lambda: self.compressor_off_temp_spin.stepBy(1))
 
-        self.compressor_on_temp_spin = QSpinBox()
-        self.compressor_on_temp_spin.setRange(-20, 80)
+        self.compressor_on_temp_spin = QDoubleSpinBox()
+        self.compressor_on_temp_spin.setRange(-20.0, 80.0)
+        self.compressor_on_temp_spin.setDecimals(1)
+        self.compressor_on_temp_spin.setSingleStep(0.1)
         self.compressor_on_temp_spin.setValue(self.compressor_on_temp_c)
-        self.compressor_on_temp_spin.setFixedWidth(72)
+        self.compressor_on_temp_spin.setFixedWidth(80)
         self.compressor_on_temp_spin.setFixedHeight(48)
         self.compressor_on_temp_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.compressor_on_temp_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        self.compressor_on_temp_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         self.compressor_on_temp_spin.setStyleSheet(spin_style)
         self.compressor_on_temp_spin.valueChanged.connect(self._on_compressor_thresholds_changed)
         self.compressor_on_temp_down = QPushButton("-")
@@ -1126,7 +1129,7 @@ class ServiceTab(QWidget):
         compressor_on: bool = None,
         compressor_control_enabled: bool = None,
         compressor_off_temp_c: int = None,
-        compressor_on_temp_c: int = None,
+        compressor_on_temp_c: float = None,
         heat_ex_temp_c: Optional[float] = None,
         refresh_heat_ex: bool = False,
         stepper_speed_rpm: int = None,
@@ -1142,8 +1145,8 @@ class ServiceTab(QWidget):
             if self.compressor_off_temp_spin.value() != self.compressor_off_temp_c:
                 self.compressor_off_temp_spin.setValue(self.compressor_off_temp_c)
         if compressor_on_temp_c is not None:
-            self.compressor_on_temp_c = int(compressor_on_temp_c)
-            if self.compressor_on_temp_spin.value() != self.compressor_on_temp_c:
+            self.compressor_on_temp_c = float(compressor_on_temp_c)
+            if abs(self.compressor_on_temp_spin.value() - self.compressor_on_temp_c) > 0.05:
                 self.compressor_on_temp_spin.setValue(self.compressor_on_temp_c)
         if refresh_heat_ex:
             self.heat_ex_temp_c = float(heat_ex_temp_c) if heat_ex_temp_c is not None else None
@@ -1158,7 +1161,7 @@ class ServiceTab(QWidget):
             heat_text = f"Heat Ex {self.heat_ex_temp_c:.1f}°C"
         else:
             heat_text = "Heat Ex --"
-        control = "armed" if self.compressor_control_enabled else "idle"
+        control = "cooling" if self.compressor_control_enabled else "idle"
         self.compressor_label.setText(f"Compressor: {comp_status} ({heat_text}, {control})")
         self.compressor_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=comp_color))
         self.stepper_speed_label.setText(f"{self.stepper_speed_rpm} RPM")
@@ -1178,12 +1181,12 @@ class ServiceTab(QWidget):
         if self.on_compressor_control_toggle_callback:
             self.on_compressor_control_toggle_callback(self.compressor_control_enabled)
 
-    def _on_compressor_thresholds_changed(self, _value: Optional[int] = None):
+    def _on_compressor_thresholds_changed(self, _value: Optional[float] = None):
         off_c = int(self.compressor_off_temp_spin.value())
-        on_c = int(self.compressor_on_temp_spin.value())
+        on_c = round(float(self.compressor_on_temp_spin.value()), 1)
         if on_c <= off_c:
-            on_c = off_c + 1
-            if self.compressor_on_temp_spin.value() != on_c:
+            on_c = round(off_c + 0.1, 1)
+            if abs(self.compressor_on_temp_spin.value() - on_c) > 0.05:
                 self.compressor_on_temp_spin.setValue(on_c)
         self.compressor_off_temp_c = off_c
         self.compressor_on_temp_c = on_c
@@ -1894,7 +1897,7 @@ class MainScreen(QMainWindow):
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_control_toggle_callback: Optional[Callable[[bool], None]] = None
-        self.on_compressor_thresholds_change_callback: Optional[Callable[[int, int], None]] = None
+        self.on_compressor_thresholds_change_callback: Optional[Callable[[int, float], None]] = None
         self.on_temperature_calibration_callback: Optional[
             Callable[[str, float, float], tuple[bool, str]]
         ] = None
@@ -2349,7 +2352,7 @@ class MainScreen(QMainWindow):
         if self.on_compressor_control_toggle_callback:
             self.on_compressor_control_toggle_callback(enabled)
 
-    def _on_service_compressor_thresholds_change(self, off_temp_c: int, on_temp_c: int):
+    def _on_service_compressor_thresholds_change(self, off_temp_c: int, on_temp_c: float):
         if self.on_compressor_thresholds_change_callback:
             self.on_compressor_thresholds_change_callback(off_temp_c, on_temp_c)
 

@@ -84,7 +84,7 @@ compressor:
   relay_pin: 6           # BCM GPIO, active-low relay (LOW = compressor on)
   heat_ex_label: "Heat Ex"
   off_below_temp_c: 5      # turn off when Heat Ex drops below this (°C)
-  on_above_temp_c: 10      # turn on when Heat Ex rises above this (°C)
+  on_above_temp_c: 10.0    # turn on when Heat Ex rises above this (°C)
 
 logging:
   csv_directory: "data/csv"
