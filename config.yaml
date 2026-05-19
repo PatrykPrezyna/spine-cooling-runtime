@@ -100,7 +100,7 @@ stepper_motor:
 
   # Motor specification
   steps_per_revolution: 200    # Full steps per revolution (1.8° motor)
-  microstepping: 16           # set on the driver manually
+  microstepping: 16           # set on the driver manually (DIP switches must match)
 
   # Motion
   default_speed_rpm: 30

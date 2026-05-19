@@ -5,7 +5,7 @@ Wires together the sensor reader, CSV logger, state machine, drivers
 
 The slow per-tick I/O (sensor reads, thermocouple I2C reads, compressor
 UART exchange, CSV append) runs on a dedicated ``QThread`` worker so the
-main GUI thread stays free to repaint and the stepper PWM thread is not
+main GUI thread stays free to repaint and the stepper DMA wave thread is not
 starved by GIL contention.
 """
 
@@ -30,7 +30,7 @@ from ads1115_pressure_reader import ADS1115PressureReader
 from enhanced_ui import MainScreen
 from multi_sensor_reader import MultiSensorReader
 from state_machine import State, StateMachine
-from stepper_driver import STSPIN220Driver
+from stepper_driver import PigpioUnavailableError, STSPIN220Driver
 from thermocouple_reader import ThermocoupleReader
 
 
@@ -247,6 +247,12 @@ class SensorMonitorApp(QObject):
             self.state_machine.handle_init_complete(True)
             return True
 
+        except PigpioUnavailableError as e:
+            error_msg = str(e)
+            print(f"Error: {error_msg}")
+            if self.state_machine:
+                self.state_machine.handle_init_complete(False, error_msg)
+            return False
         except Exception as e:
             error_msg = f"Initialization error: {e}"
             print(error_msg)
