@@ -910,22 +910,17 @@ class ServiceTab(QWidget):
         # Sensor + output state
         self.sensor_states: dict = {}
         self.compressor_on = False
-        self.compressor_command_on = False
-        self.compressor_manual_on = False
-        self.compressor_manual_io6_high = True
-        self.compressor_manual_on_time_s = 20
-        self.compressor_manual_off_time_s = 40
-        self.compressor_speed_rpm = int(compressor_cfg.get("default_speed_rpm", 3000))
-        self.compressor_max_speed_rpm = max(100, int(compressor_cfg.get("max_speed_rpm", 6000)))
+        self.compressor_control_enabled = False
+        self.compressor_off_temp_c = int(compressor_cfg.get("off_below_temp_c", 5))
+        self.compressor_on_temp_c = int(compressor_cfg.get("on_above_temp_c", 10))
+        self.heat_ex_temp_c: Optional[float] = None
         self.stepper_speed_rpm = int(stepper_cfg.get("default_speed_rpm", 30))
         self.stepper_max_speed_rpm = max(5, int(stepper_cfg.get("max_speed_rpm", 60)))
         self.stepper_continuous_on: bool = False
 
         # Callbacks (set by the host window).
-        self.on_compressor_toggle_callback: Optional[Callable[[bool], None]] = None
-        self.on_compressor_manual_toggle_callback: Optional[Callable[[bool], None]] = None
-        self.on_compressor_manual_timing_change_callback: Optional[Callable[[int, int], None]] = None
-        self.on_compressor_speed_change_callback: Optional[Callable[[int], None]] = None
+        self.on_compressor_control_toggle_callback: Optional[Callable[[bool], None]] = None
+        self.on_compressor_thresholds_change_callback: Optional[Callable[[int, int], None]] = None
         self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
@@ -957,64 +952,50 @@ class ServiceTab(QWidget):
         self.outputs_group.setStyleSheet(self._group_box_style("#0e6a76", "12px"))
         
         # Output labels
-        self.compressor_label = QLabel("Compressor: OFF (IO6: HIGH)")
+        self.compressor_label = QLabel("Compressor: OFF")
         self.compressor_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-        self.compressor_manual_button = QPushButton("OFF")
-        self.compressor_manual_button.setMinimumHeight(36)
-        self.compressor_manual_button.clicked.connect(self._on_compressor_manual_toggle_clicked)
-        self._apply_compressor_manual_button_style(False)
-        self.compressor_manual_on_time_spin = QSpinBox()
-        self.compressor_manual_on_time_spin.setRange(1, 9999)
-        self.compressor_manual_on_time_spin.setSingleStep(5)
-        self.compressor_manual_on_time_spin.setValue(self.compressor_manual_on_time_s)
-        self.compressor_manual_on_time_spin.setFixedWidth(80)
-        self.compressor_manual_on_time_spin.setFixedHeight(48)
-        self.compressor_manual_on_time_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.compressor_manual_on_time_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
-        self.compressor_manual_on_time_spin.setStyleSheet("""
+        self.compressor_control_button = QPushButton("Control OFF")
+        self.compressor_control_button.setMinimumHeight(36)
+        self.compressor_control_button.clicked.connect(self._on_compressor_control_toggle_clicked)
+        self._apply_compressor_control_button_style(False)
+
+        spin_style = """
             QSpinBox {
                 font-size: 18px;
                 font-weight: 700;
             }
-        """)
-        self.compressor_manual_on_time_spin.valueChanged.connect(self._on_manual_timing_changed)
-        self.compressor_manual_on_down_button = QPushButton("-")
-        self.compressor_manual_on_down_button.setFixedSize(48, 48)
-        self.compressor_manual_on_down_button.clicked.connect(
-            lambda: self.compressor_manual_on_time_spin.stepBy(-1)
-        )
-        self.compressor_manual_on_up_button = QPushButton("+")
-        self.compressor_manual_on_up_button.setFixedSize(48, 48)
-        self.compressor_manual_on_up_button.clicked.connect(
-            lambda: self.compressor_manual_on_time_spin.stepBy(1)
-        )
-        self.compressor_manual_off_time_spin = QSpinBox()
-        self.compressor_manual_off_time_spin.setRange(1, 9999)
-        self.compressor_manual_off_time_spin.setSingleStep(5)
-        self.compressor_manual_off_time_spin.setValue(self.compressor_manual_off_time_s)
-        self.compressor_manual_off_time_spin.setFixedWidth(80)
-        self.compressor_manual_off_time_spin.setFixedHeight(48)
-        self.compressor_manual_off_time_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.compressor_manual_off_time_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
-        self.compressor_manual_off_time_spin.setStyleSheet("""
-            QSpinBox {
-                font-size: 18px;
-                font-weight: 700;
-            }
-        """)
-        self.compressor_manual_off_time_spin.valueChanged.connect(self._on_manual_timing_changed)
-        self.compressor_manual_off_down_button = QPushButton("-")
-        self.compressor_manual_off_down_button.setFixedSize(48, 48)
-        self.compressor_manual_off_down_button.clicked.connect(
-            lambda: self.compressor_manual_off_time_spin.stepBy(-1)
-        )
-        self.compressor_manual_off_up_button = QPushButton("+")
-        self.compressor_manual_off_up_button.setFixedSize(48, 48)
-        self.compressor_manual_off_up_button.clicked.connect(
-            lambda: self.compressor_manual_off_time_spin.stepBy(1)
-        )
-        self.compressor_manual_off_countdown_label = QLabel("--")
-        self.compressor_manual_off_countdown_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
+        """
+        self.compressor_off_temp_spin = QSpinBox()
+        self.compressor_off_temp_spin.setRange(-20, 80)
+        self.compressor_off_temp_spin.setValue(self.compressor_off_temp_c)
+        self.compressor_off_temp_spin.setFixedWidth(72)
+        self.compressor_off_temp_spin.setFixedHeight(48)
+        self.compressor_off_temp_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.compressor_off_temp_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        self.compressor_off_temp_spin.setStyleSheet(spin_style)
+        self.compressor_off_temp_spin.valueChanged.connect(self._on_compressor_thresholds_changed)
+        self.compressor_off_temp_down = QPushButton("-")
+        self.compressor_off_temp_down.setFixedSize(48, 48)
+        self.compressor_off_temp_down.clicked.connect(lambda: self.compressor_off_temp_spin.stepBy(-1))
+        self.compressor_off_temp_up = QPushButton("+")
+        self.compressor_off_temp_up.setFixedSize(48, 48)
+        self.compressor_off_temp_up.clicked.connect(lambda: self.compressor_off_temp_spin.stepBy(1))
+
+        self.compressor_on_temp_spin = QSpinBox()
+        self.compressor_on_temp_spin.setRange(-20, 80)
+        self.compressor_on_temp_spin.setValue(self.compressor_on_temp_c)
+        self.compressor_on_temp_spin.setFixedWidth(72)
+        self.compressor_on_temp_spin.setFixedHeight(48)
+        self.compressor_on_temp_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.compressor_on_temp_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        self.compressor_on_temp_spin.setStyleSheet(spin_style)
+        self.compressor_on_temp_spin.valueChanged.connect(self._on_compressor_thresholds_changed)
+        self.compressor_on_temp_down = QPushButton("-")
+        self.compressor_on_temp_down.setFixedSize(48, 48)
+        self.compressor_on_temp_down.clicked.connect(lambda: self.compressor_on_temp_spin.stepBy(-1))
+        self.compressor_on_temp_up = QPushButton("+")
+        self.compressor_on_temp_up.setFixedSize(48, 48)
+        self.compressor_on_temp_up.clicked.connect(lambda: self.compressor_on_temp_spin.stepBy(1))
         
         self.stepper_speed_label = QLabel(f"{self.stepper_speed_rpm} RPM")
         self.stepper_speed_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
@@ -1085,21 +1066,23 @@ class ServiceTab(QWidget):
         compressor_layout.setContentsMargins(2, 1, 2, 1)
         compressor_layout.setSpacing(1)
         compressor_layout.addWidget(self.compressor_label)
-        compressor_layout.addWidget(self.compressor_manual_button)
-        manual_timing_row = QHBoxLayout()
-        manual_timing_row.setContentsMargins(0, 0, 0, 0)
-        manual_timing_row.setSpacing(6)
-        manual_timing_row.addWidget(QLabel("On time (s):"))
-        manual_timing_row.addWidget(self.compressor_manual_on_time_spin)
-        manual_timing_row.addWidget(self.compressor_manual_on_down_button)
-        manual_timing_row.addWidget(self.compressor_manual_on_up_button)
-        manual_timing_row.addWidget(QLabel("Off time (s):"))
-        manual_timing_row.addWidget(self.compressor_manual_off_time_spin)
-        manual_timing_row.addWidget(self.compressor_manual_off_down_button)
-        manual_timing_row.addWidget(self.compressor_manual_off_up_button)
-        manual_timing_row.addWidget(self.compressor_manual_off_countdown_label)
-        manual_timing_row.addStretch()
-        compressor_layout.addLayout(manual_timing_row)
+        compressor_layout.addWidget(self.compressor_control_button)
+        off_row = QHBoxLayout()
+        off_row.setSpacing(6)
+        off_row.addWidget(QLabel("Off below (°C):"))
+        off_row.addWidget(self.compressor_off_temp_spin)
+        off_row.addWidget(self.compressor_off_temp_down)
+        off_row.addWidget(self.compressor_off_temp_up)
+        off_row.addStretch()
+        compressor_layout.addLayout(off_row)
+        on_row = QHBoxLayout()
+        on_row.setSpacing(6)
+        on_row.addWidget(QLabel("On above (°C):"))
+        on_row.addWidget(self.compressor_on_temp_spin)
+        on_row.addWidget(self.compressor_on_temp_down)
+        on_row.addWidget(self.compressor_on_temp_up)
+        on_row.addStretch()
+        compressor_layout.addLayout(on_row)
         self.compressor_group.setLayout(compressor_layout)
         main_layout.addWidget(self.compressor_group)
 
@@ -1141,52 +1124,42 @@ class ServiceTab(QWidget):
     def update_outputs(
         self,
         compressor_on: bool = None,
-        compressor_speed_rpm: int = None,
-        compressor_command_on: bool = None,
-        compressor_manual_on: bool = None,
-        compressor_manual_io6_high: bool = None,
-        compressor_manual_off_countdown_s: int = None,
-        compressor_manual_on_time_s: int = None,
-        compressor_manual_off_time_s: int = None,
+        compressor_control_enabled: bool = None,
+        compressor_off_temp_c: int = None,
+        compressor_on_temp_c: int = None,
+        heat_ex_temp_c: Optional[float] = None,
+        refresh_heat_ex: bool = False,
         stepper_speed_rpm: int = None,
     ):
         """Update output display"""
         if compressor_on is not None:
             self.compressor_on = compressor_on
-        if compressor_speed_rpm is not None:
-            self.compressor_speed_rpm = int(compressor_speed_rpm)
-        if compressor_command_on is not None:
-            self.compressor_command_on = bool(compressor_command_on)
-        if compressor_manual_on is not None:
-            self.compressor_manual_on = bool(compressor_manual_on)
-            self._apply_compressor_manual_button_style(self.compressor_manual_on)
-        if compressor_manual_io6_high is not None:
-            self.compressor_manual_io6_high = bool(compressor_manual_io6_high)
-        if compressor_manual_on_time_s is not None:
-            self.compressor_manual_on_time_s = max(1, int(compressor_manual_on_time_s))
-            if self.compressor_manual_on_time_spin.value() != self.compressor_manual_on_time_s:
-                self.compressor_manual_on_time_spin.setValue(self.compressor_manual_on_time_s)
-        if compressor_manual_off_time_s is not None:
-            self.compressor_manual_off_time_s = max(1, int(compressor_manual_off_time_s))
-            if self.compressor_manual_off_time_spin.value() != self.compressor_manual_off_time_s:
-                self.compressor_manual_off_time_spin.setValue(self.compressor_manual_off_time_s)
-        if compressor_manual_off_countdown_s is not None:
-            phase_name = "OFF" if self.compressor_manual_io6_high else "ON"
-            self.compressor_manual_off_countdown_label.setText(
-                f"{phase_name}: {max(0, int(compressor_manual_off_countdown_s))}s"
-            )
-        elif compressor_manual_on is False:
-            self.compressor_manual_off_countdown_label.setText("--")
+        if compressor_control_enabled is not None:
+            self.compressor_control_enabled = bool(compressor_control_enabled)
+            self._apply_compressor_control_button_style(self.compressor_control_enabled)
+        if compressor_off_temp_c is not None:
+            self.compressor_off_temp_c = int(compressor_off_temp_c)
+            if self.compressor_off_temp_spin.value() != self.compressor_off_temp_c:
+                self.compressor_off_temp_spin.setValue(self.compressor_off_temp_c)
+        if compressor_on_temp_c is not None:
+            self.compressor_on_temp_c = int(compressor_on_temp_c)
+            if self.compressor_on_temp_spin.value() != self.compressor_on_temp_c:
+                self.compressor_on_temp_spin.setValue(self.compressor_on_temp_c)
+        if refresh_heat_ex:
+            self.heat_ex_temp_c = float(heat_ex_temp_c) if heat_ex_temp_c is not None else None
         if stepper_speed_rpm is not None:
             self.stepper_speed_rpm = int(stepper_speed_rpm)
             if self.stepper_speed_slider.value() != self.stepper_speed_rpm:
                 self.stepper_speed_slider.setValue(self.stepper_speed_rpm)
-        
-        # Update compressor label
+
         comp_status = "ON" if self.compressor_on else "OFF"
         comp_color = "#16a34a" if self.compressor_on else "#6b7280"
-        io6_state = "HIGH" if self.compressor_manual_io6_high else "LOW"
-        self.compressor_label.setText(f"Compressor: {comp_status} (IO6: {io6_state})")
+        if self.heat_ex_temp_c is not None:
+            heat_text = f"Heat Ex {self.heat_ex_temp_c:.1f}°C"
+        else:
+            heat_text = "Heat Ex --"
+        control = "armed" if self.compressor_control_enabled else "idle"
+        self.compressor_label.setText(f"Compressor: {comp_status} ({heat_text}, {control})")
         self.compressor_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=comp_color))
         self.stepper_speed_label.setText(f"{self.stepper_speed_rpm} RPM")
         self._update_stepper_control_enabled_state()
@@ -1199,37 +1172,37 @@ class ServiceTab(QWidget):
         if self.on_stepper_speed_change_callback:
             self.on_stepper_speed_change_callback(self.stepper_speed_rpm)
 
-    def _on_compressor_manual_toggle_clicked(self):
-        self.compressor_manual_on = not self.compressor_manual_on
-        self._apply_compressor_manual_button_style(self.compressor_manual_on)
-        if self.on_compressor_manual_toggle_callback:
-            self.on_compressor_manual_toggle_callback(self.compressor_manual_on)
+    def _on_compressor_control_toggle_clicked(self):
+        self.compressor_control_enabled = not self.compressor_control_enabled
+        self._apply_compressor_control_button_style(self.compressor_control_enabled)
+        if self.on_compressor_control_toggle_callback:
+            self.on_compressor_control_toggle_callback(self.compressor_control_enabled)
 
-    def _on_manual_timing_changed(self, _value: Optional[int] = None):
-        on_time_s = max(1, int(self.compressor_manual_on_time_spin.value()))
-        off_time_s = max(1, int(self.compressor_manual_off_time_spin.value()))
-        self.compressor_manual_on_time_s = on_time_s
-        self.compressor_manual_off_time_s = off_time_s
-        if self.compressor_manual_on_time_spin.value() != on_time_s:
-            self.compressor_manual_on_time_spin.setValue(on_time_s)
-        if self.compressor_manual_off_time_spin.value() != off_time_s:
-            self.compressor_manual_off_time_spin.setValue(off_time_s)
-        if self.on_compressor_manual_timing_change_callback:
-            self.on_compressor_manual_timing_change_callback(on_time_s, off_time_s)
+    def _on_compressor_thresholds_changed(self, _value: Optional[int] = None):
+        off_c = int(self.compressor_off_temp_spin.value())
+        on_c = int(self.compressor_on_temp_spin.value())
+        if on_c <= off_c:
+            on_c = off_c + 1
+            if self.compressor_on_temp_spin.value() != on_c:
+                self.compressor_on_temp_spin.setValue(on_c)
+        self.compressor_off_temp_c = off_c
+        self.compressor_on_temp_c = on_c
+        if self.on_compressor_thresholds_change_callback:
+            self.on_compressor_thresholds_change_callback(off_c, on_c)
 
-    def _apply_compressor_manual_button_style(self, is_on: bool):
-        if is_on:
-            text = "ON"
+    def _apply_compressor_control_button_style(self, control_enabled: bool):
+        if control_enabled:
+            text = "Control ON"
             bg = "#22c55e"
             hover = "#16a34a"
             border = "#15803d"
         else:
-            text = "OFF"
+            text = "Control OFF"
             bg = "#6b7280"
             hover = "#4b5563"
             border = "#4b5563"
-        self.compressor_manual_button.setText(text)
-        self.compressor_manual_button.setStyleSheet(f"""
+        self.compressor_control_button.setText(text)
+        self.compressor_control_button.setStyleSheet(f"""
             QPushButton {{
                 background-color: {bg};
                 color: white;
@@ -1421,216 +1394,6 @@ class Service2Tab(QWidget):
                 continue
             label.setText(f"{name}: {value:.1f} mmHg")
             label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color="#8b5cf6"))
-
-
-class CompressorUartTab(QWidget):
-    """Advanced tab showing live UART connection + telemetry diagnostics."""
-
-    _VALUE_STYLE = "font-size: 12px; color: #1f2937; padding: 4px 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;"
-    _VALUE_MONO_STYLE = "font-family: Consolas, 'Courier New', monospace; font-size: 11px; color: #0f172a; padding: 4px 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;"
-    _VALUE_OK_STYLE = "font-size: 12px; color: #166534; font-weight: 600; padding: 4px 6px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px;"
-    _VALUE_WARN_STYLE = "font-size: 12px; color: #9a3412; font-weight: 600; padding: 4px 6px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px;"
-    _VALUE_ERR_STYLE = "font-size: 12px; color: #991b1b; font-weight: 600; padding: 4px 6px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px;"
-
-    _FAULT_FLAG_NAMES = (
-        "software_overcurrent",
-        "overvoltage",
-        "undervoltage",
-        "phase_loss",
-        "stall",
-        "hardware_overcurrent",
-        "abnormal_phase_current",
-    )
-
-    def __init__(self, compressor_config: Optional[dict] = None):
-        super().__init__()
-        cfg = compressor_config or {}
-        self._enabled = bool(cfg.get("enabled", False))
-        self._port = str(cfg.get("port", "/dev/ttyS0"))
-        self._baudrate = int(cfg.get("baudrate", 600))
-        self._timeout_s = float(cfg.get("timeout_s", 0.08))
-        self._max_speed_rpm = int(cfg.get("max_speed_rpm", 6000))
-
-        self._connection_fields: dict[str, QLabel] = {}
-        self._telemetry_fields: dict[str, QLabel] = {}
-        self._fault_flag_labels: dict[str, QLabel] = {}
-
-        self._create_widgets()
-        self._setup_layout()
-
-    def _add_row(self, layout: QGridLayout, row: int, key: str, label_text: str, mono: bool = False):
-        key_label = QLabel(label_text)
-        key_label.setStyleSheet("font-size: 12px; color: #475569;")
-        value_label = QLabel("--")
-        value_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        value_label.setStyleSheet(self._VALUE_MONO_STYLE if mono else self._VALUE_STYLE)
-        layout.addWidget(key_label, row, 0)
-        layout.addWidget(value_label, row, 1)
-        return value_label
-
-    def _create_widgets(self):
-        self.connection_group = QGroupBox("UART Connection")
-        self.connection_group.setStyleSheet(ServiceTab._group_box_style("#16a34a", "12px"))
-        self.telemetry_group = QGroupBox("Compressor Telemetry")
-        self.telemetry_group.setStyleSheet(ServiceTab._group_box_style("#0ea5e9", "12px"))
-        self.faults_group = QGroupBox("Fault Flags")
-        self.faults_group.setStyleSheet(ServiceTab._group_box_style("#f59e0b", "12px"))
-
-    def _setup_layout(self):
-        main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
-        overview_page = QWidget()
-        overview_layout = QVBoxLayout()
-        overview_layout.setContentsMargins(0, 0, 0, 0)
-        overview_layout.setSpacing(10)
-
-        conn_layout = QGridLayout()
-        conn_layout.setHorizontalSpacing(12)
-        conn_layout.setVerticalSpacing(6)
-        self._connection_fields["enabled"] = self._add_row(conn_layout, 0, "enabled", "Enabled")
-        self._connection_fields["initialized"] = self._add_row(conn_layout, 1, "initialized", "Initialized")
-        self._connection_fields["port"] = self._add_row(conn_layout, 2, "port", "Port", mono=True)
-        self._connection_fields["baudrate"] = self._add_row(conn_layout, 3, "baudrate", "Baudrate")
-        self._connection_fields["timeout_s"] = self._add_row(conn_layout, 4, "timeout_s", "Timeout (s)")
-        self._connection_fields["max_speed_rpm"] = self._add_row(conn_layout, 5, "max_speed_rpm", "Max Speed (RPM)")
-        self._connection_fields["last_error"] = self._add_row(conn_layout, 6, "last_error", "Last Error", mono=True)
-        self.connection_group.setLayout(conn_layout)
-        overview_layout.addWidget(self.connection_group)
-
-        telemetry_layout = QGridLayout()
-        telemetry_layout.setHorizontalSpacing(12)
-        telemetry_layout.setVerticalSpacing(6)
-        self._telemetry_fields["command_on"] = self._add_row(telemetry_layout, 0, "command_on", "Command ON")
-        self._telemetry_fields["set_speed_rpm"] = self._add_row(telemetry_layout, 1, "set_speed_rpm", "Set Speed (RPM)")
-        self._telemetry_fields["actual_rpm"] = self._add_row(telemetry_layout, 2, "actual_rpm", "Actual Speed (RPM)")
-        self._telemetry_fields["current_a"] = self._add_row(telemetry_layout, 3, "current_a", "Motor Current (A)")
-        self._telemetry_fields["bus_voltage_v"] = self._add_row(telemetry_layout, 4, "bus_voltage_v", "Bus Voltage (V)")
-        self._telemetry_fields["fault_manual"] = self._add_row(telemetry_layout, 5, "fault_manual", "Fault Manual (byte)")
-        self._telemetry_fields["fault_auto"] = self._add_row(telemetry_layout, 6, "fault_auto", "Fault Auto (byte)")
-        self._telemetry_fields["fault_status"] = self._add_row(telemetry_layout, 7, "fault_status", "Fault Status")
-        self._telemetry_fields["raw_reply"] = self._add_row(telemetry_layout, 8, "raw_reply", "Raw Reply (hex)", mono=True)
-        self.telemetry_group.setLayout(telemetry_layout)
-        overview_layout.addWidget(self.telemetry_group)
-        overview_layout.addStretch()
-        overview_page.setLayout(overview_layout)
-
-        faults_page = QWidget()
-        faults_page_layout = QVBoxLayout()
-        faults_page_layout.setContentsMargins(0, 0, 0, 0)
-        faults_page_layout.setSpacing(10)
-
-        faults_layout = QGridLayout()
-        faults_layout.setHorizontalSpacing(10)
-        faults_layout.setVerticalSpacing(6)
-        for idx, name in enumerate(self._FAULT_FLAG_NAMES):
-            row = idx // 2
-            col = idx % 2
-            label = QLabel(f"{name}: --")
-            label.setStyleSheet("font-size: 12px; color: #5c6b79; padding: 3px;")
-            faults_layout.addWidget(label, row, col)
-            self._fault_flag_labels[name] = label
-        self.faults_group.setLayout(faults_layout)
-        faults_page_layout.addWidget(self.faults_group)
-        faults_page_layout.addStretch()
-        faults_page.setLayout(faults_page_layout)
-
-        self.details_tabs = QTabWidget()
-        self.details_tabs.addTab(overview_page, "Overview")
-        self.details_tabs.addTab(faults_page, "Fault Flags")
-        main_layout.addWidget(self.details_tabs)
-        main_layout.addStretch()
-        self.setLayout(main_layout)
-
-    def update_telemetry(
-        self,
-        telemetry: Optional[object] = None,
-        compressor_command_on: Optional[bool] = None,
-        compressor_set_speed_rpm: Optional[int] = None,
-        compressor_last_error: Optional[str] = None,
-        compressor_initialized: Optional[bool] = None,
-    ):
-        initialized = bool(compressor_initialized) if compressor_initialized is not None else bool(telemetry is not None)
-        self._connection_fields["enabled"].setText("YES" if self._enabled else "NO")
-        self._connection_fields["enabled"].setStyleSheet(self._VALUE_OK_STYLE if self._enabled else self._VALUE_WARN_STYLE)
-        self._connection_fields["initialized"].setText("YES" if initialized else "NO")
-        self._connection_fields["initialized"].setStyleSheet(self._VALUE_OK_STYLE if initialized else self._VALUE_WARN_STYLE)
-        self._connection_fields["port"].setText(self._port)
-        self._connection_fields["baudrate"].setText(str(self._baudrate))
-        self._connection_fields["timeout_s"].setText(f"{self._timeout_s:.3f}")
-        self._connection_fields["max_speed_rpm"].setText(str(self._max_speed_rpm))
-
-        error_text = compressor_last_error if compressor_last_error else "None"
-        self._connection_fields["last_error"].setText(error_text)
-        self._connection_fields["last_error"].setStyleSheet(
-            self._VALUE_ERR_STYLE if compressor_last_error else self._VALUE_STYLE
-        )
-
-        if compressor_command_on is None:
-            self._telemetry_fields["command_on"].setText("--")
-            self._telemetry_fields["command_on"].setStyleSheet(self._VALUE_STYLE)
-        else:
-            self._telemetry_fields["command_on"].setText("ON" if compressor_command_on else "OFF")
-            self._telemetry_fields["command_on"].setStyleSheet(
-                self._VALUE_OK_STYLE if compressor_command_on else self._VALUE_WARN_STYLE
-            )
-        self._telemetry_fields["set_speed_rpm"].setText(
-            "--" if compressor_set_speed_rpm is None else str(int(compressor_set_speed_rpm))
-        )
-
-        if telemetry is None:
-            self._telemetry_fields["actual_rpm"].setText("--")
-            self._telemetry_fields["current_a"].setText("--")
-            self._telemetry_fields["bus_voltage_v"].setText("--")
-            self._telemetry_fields["fault_manual"].setText("--")
-            self._telemetry_fields["fault_auto"].setText("--")
-            self._telemetry_fields["fault_status"].setText("No telemetry")
-            self._telemetry_fields["fault_status"].setStyleSheet(self._VALUE_WARN_STYLE)
-            self._telemetry_fields["raw_reply"].setText("--")
-            for name, label in self._fault_flag_labels.items():
-                label.setText(f"{name}: --")
-                label.setStyleSheet("font-size: 12px; color: #5c6b79; padding: 3px;")
-            return
-
-        actual_rpm = int(getattr(telemetry, "actual_rpm", 0))
-        current_a = float(getattr(telemetry, "current_a", 0.0))
-        bus_voltage_v = float(getattr(telemetry, "bus_voltage_v", 0.0))
-        fault_manual = int(getattr(telemetry, "fault_manual", 0))
-        fault_auto = int(getattr(telemetry, "fault_auto", 0))
-        raw_reply = bytes(getattr(telemetry, "raw_reply", b""))
-
-        self._telemetry_fields["actual_rpm"].setText(str(actual_rpm))
-        self._telemetry_fields["current_a"].setText(f"{current_a:.1f}")
-        self._telemetry_fields["bus_voltage_v"].setText(f"{bus_voltage_v:.1f}")
-        self._telemetry_fields["fault_manual"].setText(f"0x{fault_manual:02X}")
-        self._telemetry_fields["fault_auto"].setText(f"0x{fault_auto:02X}")
-        self._telemetry_fields["raw_reply"].setText(" ".join(f"{b:02X}" for b in raw_reply) if raw_reply else "--")
-
-        has_fault = bool(fault_manual or fault_auto)
-        self._telemetry_fields["fault_status"].setText("FAULT ACTIVE" if has_fault else "OK")
-        self._telemetry_fields["fault_status"].setStyleSheet(
-            self._VALUE_ERR_STYLE if has_fault else self._VALUE_OK_STYLE
-        )
-
-        flags = {}
-        if hasattr(telemetry, "fault_flags"):
-            try:
-                flags = dict(telemetry.fault_flags())
-            except Exception:
-                flags = {}
-
-        for name, label in self._fault_flag_labels.items():
-            state = flags.get(name)
-            if state is None:
-                label.setText(f"{name}: --")
-                label.setStyleSheet("font-size: 12px; color: #5c6b79; padding: 3px;")
-                continue
-            label.setText(f"{name}: {'ON' if state else 'OFF'}")
-            label.setStyleSheet(
-                "font-size: 12px; color: #991b1b; font-weight: 600; padding: 3px;"
-                if state
-                else "font-size: 12px; color: #166534; padding: 3px;"
-            )
 
 
 class MultiTemperatureGraphWidget(QWidget):
@@ -2130,10 +1893,8 @@ class MainScreen(QMainWindow):
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
-        self.on_compressor_toggle_callback: Optional[Callable[[bool], None]] = None
-        self.on_compressor_manual_toggle_callback: Optional[Callable[[bool], None]] = None
-        self.on_compressor_manual_timing_change_callback: Optional[Callable[[int, int], None]] = None
-        self.on_compressor_speed_change_callback: Optional[Callable[[int], None]] = None
+        self.on_compressor_control_toggle_callback: Optional[Callable[[bool], None]] = None
+        self.on_compressor_thresholds_change_callback: Optional[Callable[[int, int], None]] = None
         self.on_temperature_calibration_callback: Optional[
             Callable[[str, float, float], tuple[bool, str]]
         ] = None
@@ -2321,10 +2082,8 @@ class MainScreen(QMainWindow):
         self.service_tab.on_stepper_jog_start_callback = self._on_service_stepper_jog_start
         self.service_tab.on_stepper_jog_stop_callback = self._on_service_stepper_jog_stop
         self.service_tab.on_stepper_continuous_toggle_callback = self._on_service_stepper_continuous_toggle
-        self.service_tab.on_compressor_toggle_callback = self._on_service_compressor_toggle
-        self.service_tab.on_compressor_manual_toggle_callback = self._on_service_compressor_manual_toggle
-        self.service_tab.on_compressor_manual_timing_change_callback = self._on_service_compressor_manual_timing_change
-        self.service_tab.on_compressor_speed_change_callback = self._on_service_compressor_speed_change
+        self.service_tab.on_compressor_control_toggle_callback = self._on_service_compressor_control_toggle
+        self.service_tab.on_compressor_thresholds_change_callback = self._on_service_compressor_thresholds_change
 
         # Service 2 tab (temperature channels)
         pressure_sensor_names = self._pressure_sensor_names_from_config(self.config)
@@ -2335,7 +2094,6 @@ class MainScreen(QMainWindow):
         temp_series_names = ["Set Temp", *self.temperature_sensor_names]
         self.temperature_graph_tab = TemperatureGraphTab(temp_series_names)
         self.calibration_tab = CalibrationTab(self.temperature_sensor_names)
-        self.compressor_uart_tab = CompressorUartTab(self.config.get("compressor", {}))
         self.calibration_tab.on_apply_calibration_callback = (
             self._on_temperature_graph_calibration_apply
         )
@@ -2346,7 +2104,6 @@ class MainScreen(QMainWindow):
         self.advanced_tab_selector.addTab("Animal Study")
         self.advanced_tab_selector.addTab("Temp Graph")
         self.advanced_tab_selector.addTab("Calibration")
-        self.advanced_tab_selector.addTab("Compressor UART")
         self.advanced_tab_selector.setExpanding(False)
 
         self.advanced_content_stack = QStackedWidget()
@@ -2354,7 +2111,6 @@ class MainScreen(QMainWindow):
         self.advanced_content_stack.addWidget(self.service2_tab)
         self.advanced_content_stack.addWidget(self.temperature_graph_tab)
         self.advanced_content_stack.addWidget(self.calibration_tab)
-        self.advanced_content_stack.addWidget(self.compressor_uart_tab)
         self.advanced_tab_selector.currentChanged.connect(self.advanced_content_stack.setCurrentIndex)
 
         self.to_main_menu_button = QPushButton("To Main Menu")
@@ -2589,25 +2345,13 @@ class MainScreen(QMainWindow):
         if self.on_stepper_continuous_toggle_callback:
             self.on_stepper_continuous_toggle_callback(enabled)
 
-    def _on_service_compressor_toggle(self, enabled: bool):
-        """Forward service-tab compressor on/off toggle to app callback."""
-        if self.on_compressor_toggle_callback:
-            self.on_compressor_toggle_callback(enabled)
+    def _on_service_compressor_control_toggle(self, enabled: bool):
+        if self.on_compressor_control_toggle_callback:
+            self.on_compressor_control_toggle_callback(enabled)
 
-    def _on_service_compressor_manual_toggle(self, enabled: bool):
-        """Forward service-tab manual compressor relay toggle to app callback."""
-        if self.on_compressor_manual_toggle_callback:
-            self.on_compressor_manual_toggle_callback(enabled)
-
-    def _on_service_compressor_manual_timing_change(self, on_time_s: int, off_time_s: int):
-        """Forward service-tab manual compressor cycle timing updates."""
-        if self.on_compressor_manual_timing_change_callback:
-            self.on_compressor_manual_timing_change_callback(on_time_s, off_time_s)
-
-    def _on_service_compressor_speed_change(self, speed_rpm: int):
-        """Forward service-tab compressor speed setpoint change."""
-        if self.on_compressor_speed_change_callback:
-            self.on_compressor_speed_change_callback(speed_rpm)
+    def _on_service_compressor_thresholds_change(self, off_temp_c: int, on_temp_c: int):
+        if self.on_compressor_thresholds_change_callback:
+            self.on_compressor_thresholds_change_callback(off_temp_c, on_temp_c)
 
     def _toggle_window_mode(self) -> None:
         """Toggle between fullscreen and fixed-size windowed mode."""
@@ -2776,24 +2520,12 @@ class MainScreen(QMainWindow):
         temperatures: Optional[dict] = None,
         raw_temperatures: Optional[dict] = None,
         pressures: Optional[dict] = None,
-        telemetry: Optional[object] = None,
-        compressor_command_on: Optional[bool] = None,
-        compressor_set_speed_rpm: Optional[int] = None,
-        compressor_last_error: Optional[str] = None,
-        compressor_initialized: Optional[bool] = None,
     ):
         """Update sensor display"""
         self.service_tab.update_sensors(sensor_states)
         self.service2_tab.update_temperatures(temperatures)
         self.service2_tab.update_pressures(pressures)
         self.calibration_tab.update_current_temperatures(raw_temperatures, temperatures)
-        self.compressor_uart_tab.update_telemetry(
-            telemetry=telemetry,
-            compressor_command_on=compressor_command_on,
-            compressor_set_speed_rpm=compressor_set_speed_rpm,
-            compressor_last_error=compressor_last_error,
-            compressor_initialized=compressor_initialized,
-        )
         
         # Feed first two configured thermocouple channels into the main trend graph.
         temp1 = (

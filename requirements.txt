@@ -25,9 +25,6 @@ adafruit-circuitpython-ads1x15>=2.4.0
 spidev>=3.5
 SMtc
 
-# Phase 3+ : Compressor Control (UART)
-pyserial>=3.5
-
 # Phase 4+ : Service/Daemon Support
 python-daemon>=2.3.0
 
