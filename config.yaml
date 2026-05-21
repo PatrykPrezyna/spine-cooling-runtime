@@ -40,12 +40,12 @@ thermocouples:
     8: "K"
   channels: [1, 2, 3, 4, 5, 6, 7, 8]   # SMtc board supports up to 8 inputs
   labels:
-    1: "Hot Side"
+    1: "CSF 2"
     2: "CSF"
-    3: "Plate oposite"
-    4: "Heat Ex"
-    5: "Output"
-    6: "Input"
+    3: "Cartrige Inut"
+    4: "Cartrige Output"
+    5: "Heat Ex"
+    6: "Temp 6"
     7: "Temp 7"
     8: "Temp 8"
   # Optional two-point calibration at fixed references 0C and 100C.
