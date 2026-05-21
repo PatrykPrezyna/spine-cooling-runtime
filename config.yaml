@@ -42,10 +42,10 @@ thermocouples:
   labels:
     1: "CSF 2"
     2: "CSF"
-    3: "Cartrige Inut"
-    4: "Cartrige Output"
+    3: "Cart In"
+    4: "Cart Out"
     5: "Heat Ex"
-    6: "Temp 6"
+    6: "Heat Ex 2"
     7: "Temp 7"
     8: "Temp 8"
   # Optional two-point calibration at fixed references 0C and 100C.
