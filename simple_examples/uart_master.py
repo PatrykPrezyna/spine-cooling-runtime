@@ -12,6 +12,24 @@ PORT = sys.argv[1] if len(sys.argv) > 1 else "/dev/serial0"
 BAUD = int(sys.argv[2]) if len(sys.argv) > 2 else 9600
 N = 16
 
+# Invert every byte on the wire (XOR 0xFF). Try True if 0 = high / inverted logic.
+INVERT_BITS = False
+
+# UART parity: "none", "even", or "odd"
+PARITY = "none"
+
+_PARITY = {
+    "none": serial.PARITY_NONE,
+    "even": serial.PARITY_EVEN,
+    "odd": serial.PARITY_ODD,
+}
+
+
+def wire_bytes(data: bytes) -> bytes:
+    if not INVERT_BITS:
+        return data
+    return bytes(b ^ 0xFF for b in data)
+
 
 def chk(b: bytearray) -> int:
     return (-sum(b[1:14])) & 0xFF
@@ -54,20 +72,30 @@ def faults(mask: int) -> str:
 
 
 def main() -> None:
+    parity = PARITY.lower()
+    if parity not in _PARITY:
+        print(f"Invalid PARITY: {PARITY!r} (use none, even, odd)", file=sys.stderr)
+        sys.exit(1)
+
     pause = (10.0 / BAUD) * (2 * N + 4)  # TX + RX time + margin
 
-    with serial.Serial(PORT, BAUD, timeout=0.05) as ser:
-        print(f"{PORT} @ {BAUD} baud  Ctrl+C stop\n")
+    with serial.Serial(
+        PORT, BAUD, parity=_PARITY[parity], timeout=0.05
+    ) as ser:
+        print(
+            f"{PORT} @ {BAUD} baud  parity={parity}  "
+            f"invert={INVERT_BITS}  Ctrl+C stop\n"
+        )
 
         while True:
             ser.reset_input_buffer()
-            tx = cmd(True, 3000)
+            tx = wire_bytes(cmd(True, 3000))
             ser.write(tx)
             ser.flush()
             print("TX:", tx.hex(" ").upper())
 
             time.sleep(pause)
-            rx = read_n(ser, N, 2.0)
+            rx = wire_bytes(read_n(ser, N, 2.0))
 
             ok = (
                 len(rx) == N
