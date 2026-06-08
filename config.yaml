@@ -1,127 +1,127 @@
-# Phase 1 Configuration - Multiple Sensor Monitor
-# Medical Device Prototype - Spine Cooling Runtime
-
-# SIMULATION MODE:
-# Run with: python src/main.py --sim
-# This enables manual sensor control via the Simulation tab in the UI
-# Without --sim flag, the application uses real GPIO sensors
-
-bussser:  16
-
-
+simulation:
+  csf_label: "CSF 2"
+  csf_initial_c: 37.0
+  csf_max_c: 37.0
+  csf_min_c: 25.0
+  csf_rate_c_per_s: 0.1
+  csf_cart_out_scale: 0.05
+  heat_ex_label: "Heat Ex"
+  heat_ex_initial_c: 22.0
+  heat_ex_max_c: 22.0
+  heat_ex_cool_rate_c_per_s: 0.5
+  heat_ex_warm_rate_c_per_s: 0.02
+  cart_in_label: "Cart In"
+  cart_out_label: "Cart Out"
+  cart_initial_c: 22.0
+  cart_in_rise_rate_c_per_s: 0.1
+  sensors:
+    Cartridge In Place: true
+    Level Low: true
+    Level Critical: true
+  pressures:
+    Pressure 1: 120.0
+    Pressure 2: 95.0
+acustic_signal_gpio_pin: 16
 sensors:
-  - name: "Level Low"
-    gpio_pin: 12
-    active_high: true
-    pull_up: true
-  - name: "Level Critical"
-    gpio_pin: 20
-    active_high: true
-    pull_up: true
-  - name: "Cartridge In Place"
-    gpio_pin: 19
-    active_high: true
-    pull_up: true
-
-sample_rate_hz: 1.0         # Read sensors once per second
-
+- name: Level Low
+  gpio_pin: 12
+  active_high: true
+  pull_up: true
+- name: Level Critical
+  gpio_pin: 20
+  active_high: true
+  pull_up: true
+- name: Cartridge In Place
+  gpio_pin: 19
+  active_high: true
+  pull_up: true
+sample_rate_hz: 1.0
 thermocouples:
   enabled: true
   stack: 0
   i2c_bus: 1
   sensor_types:
-    1: "T"
-    2: "T"
-    3: "K"
-    4: "K"
-    5: "K"
-    6: "K"
-    7: "K"
-    8: "K"
-  channels: [1, 2, 3, 4, 5, 6, 7, 8]   # SMtc board supports up to 8 inputs
+    1: T
+    2: T
+    3: K
+    4: K
+    5: K
+    6: K
+    7: K
+    8: K
+  channels:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
   labels:
-    1: "CSF 2"
-    2: "CSF"
-    3: "Cart In"
-    4: "Cart Out"
-    5: "Heat Ex"
-    6: "Heat Ex 2"
-    7: "Temp 7"
-    8: "Temp 8"
-  # Optional two-point calibration at fixed references 0C and 100C.
-  # corrected = (raw - measured_at_0c) * 100 / (measured_at_100c - measured_at_0c)
-  # Use "default" to apply to all channels, then override individual channels if needed.
+    1: CSF 2
+    2: CSF
+    3: Cart In
+    4: Cart Out
+    5: Heat Ex
+    6: Heat Ex 2
+    7: Temp 7
+    8: Temp 8
   calibration:
     default:
       measured_at_0c: 0.0
       measured_at_100c: 100.0
     channels:
       1:
-        measured_at_0c: 0.0
-        measured_at_100c: 100.0
-
+        measured_at_0c: 1.0
+        measured_at_100c: 99.0
 pressure_sensors:
   enabled: true
-  i2c_address: 72   # 0x48
-  gain: "1"
+  i2c_address: 72
+  gain: '1'
   data_rate: 128
-  channels: [0, 1]
+  channels:
+  - 0
+  - 1
   channel_configs:
     0:
-      label: "Pressure 1"
+      label: Pressure 1
       voltage_min: 0.5
       voltage_max: 4.5
       pressure_min: 0.0
       pressure_max: 300.0
     1:
-      label: "Pressure 2"
+      label: Pressure 2
       voltage_min: 0.5
       voltage_max: 4.5
       pressure_min: 0.0
       pressure_max: 300.0
-
 compressor:
-  relay_pin: 6           # BCM GPIO, active-low relay (LOW = compressor on)
-  heat_ex_label: "Heat Ex"
-  off_below_temp_c: 0      # turn off when Heat Ex drops below this (°C)
-  on_above_temp_c: 0.1    # turn on when Heat Ex rises above this (°C)
-
+  relay_pin: 6
+  heat_ex_label: Heat Ex
+  off_below_temp_c: -1
+  on_above_temp_c: 0.3
 logging:
-  csv_directory: "data/csv"
-  filename_format: "sensor_log_%Y%m%d_%H%M%S.csv"
-
+  csv_directory: data/csv
+  filename_format: sensor_log_%Y%m%d_%H%M%S.csv
 ui:
   window_width: 500
   window_height: 450
-  update_interval_ms: 100   # Update UI every 100ms
+  update_interval_ms: 100
   fullscreen: true
-
-# Stepper motor driver configuration (STMicroelectronics STSPIN220)
 stepper_motor:
-  driver: "TB6600"         # Low-voltage stepper driver (1.8 V - 10 V, 1.3 A RMS)
-
-  # Motor specification
-  steps_per_revolution: 200    # Full steps per revolution (1.8° motor)
-  microstepping: 16           # set on the driver manually
-
-  # Motion
+  driver: TB6600
+  steps_per_revolution: 200
+  microstepping: 16
   default_speed_rpm: 30
   pumping_speed_rpm: 120
   pumping_slow_speed_rpm: 20
   max_speed_rpm: 240
-  # Continuous RUN + state-machine pumping: +1 (same as JOG FORWARD) or -1 (same as JOG REVERSE)
   continuous_direction: -1
-
-  # Safety / power
-  enable_on_startup: false    # Leave motor de-energised at boot
-  disable_on_idle: true       # Release EN/FAULT between moves
-  en_active_high: false       # Set false if ON/OFF behavior is inverted
-
-  # BCM GPIO pin assignment for the STSPIN220 control lines (simplified)
+  enable_on_startup: false
+  disable_on_idle: true
+  en_active_high: false
   pins:
-    en_fault: 24              # EN/FAULT   (active-high enable, open-drain fault out)
-    step: 5                  # STCK       (step clock, rising edge)
-    dir: 25                   # DIR        (direction)
-
-
-
+    en_fault: 24
+    step: 5
+    dir: 25

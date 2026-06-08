@@ -11,10 +11,11 @@ Slow I/O runs on the worker so the GUI stays responsive and the stepper
 thread is not delayed by Python's  Global Interpreter Lock.
 """
 
+import argparse
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import yaml
 from PyQt6.QtCore import QObject, Qt, QThread, pyqtSignal, pyqtSlot
@@ -26,12 +27,9 @@ except Exception:  # pragma: no cover - non-RPi environments
     GPIO = None  # type: ignore
 
 from csv_logger import CSVLogger
-from ads1115_pressure_reader import ADS1115PressureReader
 from gui import MainScreen
-from multi_sensor_reader import MultiSensorReader
+from hardware_factory import build_hardware
 from state_machine import State, StateMachine
-from stepper_driver import PigpioUnavailableError, STSPIN220Driver
-from thermocouple_reader import ThermocoupleReader
 
 
 class _BackgroundIOWorker(QObject):
@@ -46,9 +44,9 @@ class _BackgroundIOWorker(QObject):
 
     def __init__(
         self,
-        sensor_reader: MultiSensorReader,
-        thermocouple_reader: Optional[ThermocoupleReader],
-        pressure_reader: Optional[ADS1115PressureReader],
+        sensor_reader: Any,
+        thermocouple_reader: Any,
+        pressure_reader: Any,
         csv_logger: Optional[CSVLogger],
     ):
         super().__init__()
@@ -74,6 +72,13 @@ class _BackgroundIOWorker(QObject):
             if self._sensor_reader is not None:
                 sensor_states = self._sensor_reader.read_all()
             if self._thermocouple_reader is not None:
+                notify_setpoint = getattr(self._thermocouple_reader, "notify_setpoint", None)
+                if notify_setpoint is not None:
+                    notify_setpoint(
+                        set_temperature_c,
+                        compressor_cooling,
+                        stepper_motor_running,
+                    )
                 temperatures = self._thermocouple_reader.read_temperatures()
                 raw_temperatures = self._thermocouple_reader.get_last_raw_temperatures()
             if self._pressure_reader is not None:
@@ -109,9 +114,10 @@ class SensorMonitorApp(QObject):
     # Payload: (stepper_motor_running, peristaltic_pump_set_speed_rpm, set_temperature_c).
     request_io_tick = pyqtSignal(bool, int, float, int)
 
-    def __init__(self, config_path: str = "config.yaml"):
+    def __init__(self, config_path: str = "config.yaml", *, simulation: bool = False):
         super().__init__()
         self.config_path = Path(config_path)
+        self.simulation = bool(simulation)
         self.config = self._load_config(config_path)
         self.temperature_sensor_names = self._temperature_sensor_names_from_config(self.config)
         self.primary_temperature_label = (
@@ -120,13 +126,13 @@ class SensorMonitorApp(QObject):
             else (self.temperature_sensor_names[0] if self.temperature_sensor_names else None)
         )
 
-        self.sensor_reader: Optional[MultiSensorReader] = None
+        self.sensor_reader: Any = None
         self.csv_logger: Optional[CSVLogger] = None
         self.ui: Optional[MainScreen] = None
         self.state_machine: Optional[StateMachine] = None
-        self.stepper_driver: Optional[STSPIN220Driver] = None
-        self.thermocouple_reader: Optional[ThermocoupleReader] = None
-        self.pressure_reader: Optional[ADS1115PressureReader] = None
+        self.stepper_driver: Any = None
+        self.thermocouple_reader: Any = None
+        self.pressure_reader: Any = None
         stepper_cfg = self.config.get('stepper_motor', {})
         compressor_cfg = self.config.get('compressor', {})
         self.stepper_speed_rpm: int = int(stepper_cfg.get('default_speed_rpm', 30))
@@ -197,7 +203,12 @@ class SensorMonitorApp(QObject):
             self.state_machine = StateMachine()
             self.state_machine.on_state_change = self._on_state_changed
 
-            self.sensor_reader = MultiSensorReader(self.config)
+            bundle = build_hardware(self.config, simulation=self.simulation)
+            self.sensor_reader = bundle.sensor_reader
+            self.thermocouple_reader = bundle.thermocouple_reader
+            self.pressure_reader = bundle.pressure_reader
+            self.stepper_driver = bundle.stepper_driver
+
             if not self.sensor_reader.is_initialized:
                 error_msg = "Sensor reader initialization failed"
                 print(f"Error: {error_msg}")
@@ -205,16 +216,12 @@ class SensorMonitorApp(QObject):
                 return False
 
             self.csv_logger = CSVLogger(self.config)
-
-            # Optional, non-fatal subsystems.
-            self.thermocouple_reader = ThermocoupleReader(self.config)
             self._log_optional_status("Thermocouple reader", self.thermocouple_reader)
-            self.pressure_reader = ADS1115PressureReader(self.config)
             self._log_optional_status("ADS1115 pressure reader", self.pressure_reader)
 
-            self._initialize_compressor_relay()
+            if not self.simulation:
+                self._initialize_compressor_relay()
 
-            self.stepper_driver = STSPIN220Driver(self.config)
             # Keep the driver energised while service jog controls are used.
             self.stepper_driver.disable_on_idle = False
             self.stepper_driver.enable()
@@ -233,13 +240,16 @@ class SensorMonitorApp(QObject):
             self.state_machine.handle_init_complete(True)
             return True
 
-        except PigpioUnavailableError as e:
-            error_msg = str(e)
-            print(f"Error: {error_msg}")
-            if self.state_machine:
-                self.state_machine.handle_init_complete(False, error_msg)
-            return False
         except Exception as e:
+            if not self.simulation:
+                from stepper_driver import PigpioUnavailableError
+
+                if isinstance(e, PigpioUnavailableError):
+                    error_msg = str(e)
+                    print(f"Error: {error_msg}")
+                    if self.state_machine:
+                        self.state_machine.handle_init_complete(False, error_msg)
+                    return False
             error_msg = f"Initialization error: {e}"
             print(error_msg)
             if self.state_machine:
@@ -720,13 +730,28 @@ class SensorMonitorApp(QObject):
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Spine Cooling Runtime")
+    parser.add_argument(
+        "--sim",
+        action="store_true",
+        help="Use in-memory hardware fakes (no Raspberry Pi required)",
+    )
+    parser.add_argument(
+        "--config",
+        default="config.yaml",
+        help="Path to config.yaml (default: config.yaml)",
+    )
+    args = parser.parse_args()
+
     print("=" * 50)
     print("Spine Cooling Runtime")
     print("Medical Device Prototype")
+    if args.sim:
+        print("Mode: SIMULATION")
     print("=" * 50)
     print()
 
-    app = SensorMonitorApp()
+    app = SensorMonitorApp(config_path=args.config, simulation=args.sim)
     exit_code = app.run()
 
     print()
