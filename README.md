@@ -42,13 +42,29 @@ Raspberry Pi 4B application for medical device with visual UI, sensor reading, a
    ```bash
    pip install -r requirements.txt
    ```
-4. Configure sensors in `config.yaml`:
+4. Edit `config.yaml` — sensor names, GPIO pins, stepper speeds, temperature thresholds
 5. Run the application: `python src/main.py`
+6. Run unit tests: `python -m unittest discover tests -v`
 
-## Project info:
 
-1. Use the scripts from *simple example* folder to test each function
-2. 
+## Project structure
+
+**Entry point:** `src/main.py` — wires sensors, drivers, state machine, and GUI together.
+
+| Module | Role |
+|--------|------|
+| `src/gui.py` | PyQt6 touchscreen UI (the main piece you can work on without a Pi) |
+| `src/state_machine.py` | Operating flow: Init → Ready → Cooling → Pumping |
+| `src/multi_sensor_reader.py` | Digital GPIO sensors (cartridge, level) |
+| `src/thermocouple_reader.py` | I2C thermocouple readings |
+| `src/ads1115_pressure_reader.py` | Pressure sensors via ADS1115 |
+| `src/stepper_driver.py` | Peristaltic pump stepper motor |
+| `src/csv_logger.py` | CSV session logging |
+| `config.yaml` | Hardware mapping and runtime settings |
+
+**`simple_examples/`** — small standalone scripts to test one subsystem at a time (GPIO, stepper, thermocouples, UART).
+
+**`tests/`** — unit tests (state machine, temperature calibration, etc.).
 
 ## Additional info
 Stepper Motor:
