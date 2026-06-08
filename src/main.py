@@ -3,9 +3,12 @@
 Wires together the sensor reader, CSV logger, state machine, drivers
 (stepper, compressor, thermocouple) and the Qt UI.
 
-The slow per-tick I/O (sensor reads, thermocouple I2C reads, CSV append)
-runs on a dedicated ``QThread`` worker so the main GUI thread stays free
-to repaint and the stepper pulse thread is not starved by GIL contention.
+- **GUI thread** — Qt UI and screen updates
+- **IO worker thread** — sensor reads, thermocouple I2C, CSV logging
+- **Stepper thread** — motor pulse timing
+
+Slow I/O runs on the worker so the GUI stays responsive and the stepper
+thread is not delayed by Python's  Global Interpreter Lock.
 """
 
 import sys
@@ -24,7 +27,7 @@ except Exception:  # pragma: no cover - non-RPi environments
 
 from csv_logger import CSVLogger
 from ads1115_pressure_reader import ADS1115PressureReader
-from enhanced_ui import MainScreen
+from gui import MainScreen
 from multi_sensor_reader import MultiSensorReader
 from state_machine import State, StateMachine
 from stepper_driver import PigpioUnavailableError, STSPIN220Driver
@@ -718,7 +721,7 @@ class SensorMonitorApp(QObject):
 
 def main() -> int:
     print("=" * 50)
-    print("Spine Cooling Runtime - Phase 1")
+    print("Spine Cooling Runtime")
     print("Medical Device Prototype")
     print("=" * 50)
     print()

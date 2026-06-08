@@ -1,4 +1,12 @@
-"""GPIO multi-channel digital sensor reader (Raspberry Pi only)."""
+"""GPIO multi-channel digital sensor reader (Raspberry Pi only).
+
+Digital sensor I/O is isolated in this module so the rest of the app
+(main, state machine, UI) only sees named boolean readings.
+
+Each sensor is defined in ``config.yaml`` under ``sensors``: a ``name``
+(e.g. "Level Low") and ``gpio_pin`` (BCM pin number), plus optional
+``active_high`` and ``pull_up`` settings.
+"""
 
 import time
 from typing import Dict, List, Optional
