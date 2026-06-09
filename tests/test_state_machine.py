@@ -2,7 +2,9 @@
 
 import sys
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -23,7 +25,7 @@ _ALL_SENSORS_OK = {
 
 class StateMachineTests(unittest.TestCase):
     def test_normal_session(self) -> None:
-        sm = StateMachine()
+        sm = StateMachine(ready_hold_after_startup_s=0)
 
         sm.handle_init_complete(True)
         self.assertEqual(sm.get_current_state(), State.READY)
@@ -63,6 +65,45 @@ class StateMachineTests(unittest.TestCase):
         sm.acknowledge_error()
         self.assertEqual(sm.get_current_state(), State.READY)
         self.assertIsNone(sm.get_error_message())
+
+    def test_ready_hold_after_startup(self) -> None:
+        sm = StateMachine(ready_hold_after_startup_s=10.0)
+        start = datetime(2026, 6, 9, 12, 0, 0)
+
+        with patch("state_machine.datetime") as mock_dt:
+            mock_dt.now.return_value = start
+            sm.handle_init_complete(True)
+            self.assertEqual(sm.get_current_state(), State.READY)
+
+            mock_dt.now.return_value = start + timedelta(seconds=5)
+            sm.update(_ALL_SENSORS_OK)
+            self.assertEqual(sm.get_current_state(), State.READY)
+
+            mock_dt.now.return_value = start + timedelta(seconds=10)
+            sm.update(_ALL_SENSORS_OK)
+            self.assertEqual(sm.get_current_state(), State.COOLING)
+
+    def test_ready_hold_skipped_after_error_ack(self) -> None:
+        sm = StateMachine(ready_hold_after_startup_s=10.0)
+        start = datetime(2026, 6, 9, 12, 0, 0)
+
+        with patch("state_machine.datetime") as mock_dt:
+            mock_dt.now.return_value = start
+            sm.handle_init_complete(True)
+            sm.update(_ALL_SENSORS_OK)
+            self.assertEqual(sm.get_current_state(), State.READY)
+
+            mock_dt.now.return_value = start + timedelta(seconds=15)
+            sm.update(_ALL_SENSORS_OK)
+            self.assertEqual(sm.get_current_state(), State.COOLING)
+
+            sm.apply_fault(FaultCode.CARTRIDGE_REMOVED)
+            sm.acknowledge_error()
+            self.assertEqual(sm.get_current_state(), State.READY)
+
+            mock_dt.now.return_value = start + timedelta(seconds=16)
+            sm.update(_ALL_SENSORS_OK)
+            self.assertEqual(sm.get_current_state(), State.COOLING)
 
 
 if __name__ == "__main__":

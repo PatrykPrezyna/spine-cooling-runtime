@@ -522,22 +522,28 @@ class SensorMonitorApp(QObject):
     # ------------------------------------------------------------------
     # State machine bridge
     # ------------------------------------------------------------------
+    def _refresh_ui_state_display(self) -> None:
+        """Sync the top bar with the current state machine state."""
+        if not self.ui or not self.state_machine:
+            return
+        state = self.state_machine.get_current_state()
+        error_msg = None
+        workflow_state_name = None
+        if state == State.ERROR:
+            error_msg = self.state_machine.get_error_message()
+            fault_context = self.state_machine.get_fault_context_state()
+            if fault_context is not None:
+                workflow_state_name = fault_context.value
+        self.ui.update_state_display(
+            state.value,
+            error_msg,
+            workflow_state_name=workflow_state_name,
+        )
+        if state == State.ERROR:
+            self.ui.set_acknowledge_enabled(False)
+
     def _on_state_changed(self, old_state: State, new_state: State):
-        if self.ui:
-            error_msg = None
-            workflow_state_name = None
-            if new_state == State.ERROR:
-                error_msg = self.state_machine.get_error_message()
-                fault_context = self.state_machine.get_fault_context_state()
-                if fault_context is not None:
-                    workflow_state_name = fault_context.value
-            self.ui.update_state_display(
-                new_state.value,
-                error_msg,
-                workflow_state_name=workflow_state_name,
-            )
-            if new_state == State.ERROR:
-                self.ui.set_acknowledge_enabled(False)
+        self._refresh_ui_state_display()
         self._apply_state_driven_stepper_control(new_state)
         self._apply_state_driven_compressor_control(new_state)
         if self.ui:
@@ -846,6 +852,7 @@ class SensorMonitorApp(QObject):
 
             self.ui = MainScreen(self.config)
             self._wire_ui_callbacks()
+            self._refresh_ui_state_display()
             self.ui.set_update_callback(self.update_display)
 
             # Background IO must be started before the timer kicks off so

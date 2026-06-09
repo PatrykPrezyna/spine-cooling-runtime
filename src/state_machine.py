@@ -13,7 +13,7 @@ temperatures. Button handlers call ``start_pumping()``, ``stop_pumping()``,
 and ``acknowledge_error()``.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Callable, Optional
 
@@ -34,14 +34,17 @@ class StateMachine:
 
     # Fast/slow pump toggle uses a band around the setpoint (degrees C).
     PUMPING_HYSTERESIS_C = 2.0
+    READY_HOLD_AFTER_STARTUP_S = 10.0
 
-    def __init__(self):
+    def __init__(self, ready_hold_after_startup_s: float = READY_HOLD_AFTER_STARTUP_S):
         self.current_state = State.INIT
         self.error_message: Optional[str] = None
         self.latched_fault_code: Optional[FaultCode] = None
         self.fault_context_state: Optional[State] = None
         self.state_entry_time = datetime.now()
         self.on_state_change: Optional[Callable[[State, State], None]] = None
+        self._ready_hold_after_startup_s = max(0.0, float(ready_hold_after_startup_s))
+        self._startup_ready_hold_until: Optional[datetime] = None
         print(f"State Machine initialized in {self.current_state.value} state")
 
     # --- things main.py and the UI call ---------------------------------
@@ -64,6 +67,10 @@ class StateMachine:
     def handle_init_complete(self, success: bool, error_msg: str = "") -> bool:
         """Called once hardware init finishes."""
         if success:
+            if self._ready_hold_after_startup_s > 0:
+                self._startup_ready_hold_until = (
+                    datetime.now() + timedelta(seconds=self._ready_hold_after_startup_s)
+                )
             return self._change_state(State.READY, "Initialization complete")
         self.error_message = error_msg or "Initialization failed"
         return self._change_state(State.ERROR, self.error_message)
@@ -119,6 +126,10 @@ class StateMachine:
 
         # --- auto-start cooling when idle and all sensors are HIGH ------
         if self.current_state == State.READY:
+            if self._startup_ready_hold_until is not None:
+                if datetime.now() < self._startup_ready_hold_until:
+                    return
+                self._startup_ready_hold_until = None
             if cartridge and level_low and level_critical:
                 self._change_state(State.COOLING, "All conditions met")
             return
