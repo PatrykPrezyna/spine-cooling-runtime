@@ -45,6 +45,7 @@ Raspberry Pi 4B application for medical device with visual UI, sensor reading, a
 4. Edit `config.yaml` — sensor names, GPIO pins, stepper speeds, temperature thresholds
 5. Run on a Raspberry Pi: `python src/main.py`
 6. Run without hardware (PC dev): `python src/main.py --sim`
+6. Run with sensor simulation: `python src/main.py --sim --test-ui`
 7. Run unit tests: `python -m unittest discover tests -v`
 
 Off-Pi mode uses fakes in `src/sim/`; tweak default sensor/temp values under `simulation:` in `config.yaml`.
