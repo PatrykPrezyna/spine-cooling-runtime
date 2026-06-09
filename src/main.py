@@ -26,9 +26,12 @@ try:
 except Exception:  # pragma: no cover - non-RPi environments
     GPIO = None  # type: ignore
 
+from cooling_tracker import CoolingEffectivenessTracker
 from csv_logger import CSVLogger
+from fault_catalog import FaultCode, Severity, get_fault, stop_priority
 from gui import MainScreen
 from hardware_factory import build_hardware
+from safety_rules import RuleContext, TelemetrySnapshot, evaluate, is_fault_still_active
 from state_machine import State, StateMachine
 
 
@@ -147,6 +150,8 @@ class SensorMonitorApp(QObject):
         self.compressor_off_temp_c: float = float(compressor_cfg.get('off_below_temp_c', 5))
         self.compressor_on_temp_c: float = float(compressor_cfg.get('on_above_temp_c', 10))
         self._last_temperatures: dict = {}
+        self._last_sensor_states: dict = {}
+        self._last_pressures: dict = {}
         self.stepper_continuous_forward: bool = False
         self.stepper_motor_running: bool = False
         _cont_dir = int(stepper_cfg.get("continuous_direction", 1))
@@ -158,6 +163,7 @@ class SensorMonitorApp(QObject):
         self._io_worker: Optional[_BackgroundIOWorker] = None
         # Skip a tick if the worker hasn't finished the previous one yet.
         self._tick_in_progress: bool = False
+        self._cooling_tracker = CoolingEffectivenessTracker()
 
     # ------------------------------------------------------------------
     # Configuration
@@ -410,13 +416,110 @@ class SensorMonitorApp(QObject):
         self._io_thread = None
         self._io_worker = None
 
+    def _build_rule_context(
+        self,
+        sensor_states: dict,
+        temperatures: dict,
+        pressures: dict,
+    ) -> RuleContext:
+        alarms = self.config.get("alarms", {})
+        csf_label = str(alarms.get("csf_label", "CSF"))
+        csf_temp = temperatures.get(csf_label)
+        now = time.monotonic()
+        self._cooling_tracker.tick(
+            pump=self.stepper_motor_running,
+            compressor=self.compressor_on,
+            csf_temp=float(csf_temp) if csf_temp is not None else None,
+            now=now,
+        )
+        return RuleContext(
+            current_state=self.state_machine.get_current_state(),
+            seconds_in_state=self.state_machine.get_time_in_state(),
+            sensor_states=sensor_states,
+            temperatures=temperatures,
+            pressures=pressures,
+            pump_running=self.stepper_motor_running,
+            compressor_on=self.compressor_on,
+            telemetry=TelemetrySnapshot(),
+            config=self.config,
+            cooling_tracker=self._cooling_tracker,
+            now=now,
+        )
+
+    def _evaluate_and_dispatch_safety(
+        self,
+        sensor_states: dict,
+        temperatures: dict,
+        pressures: dict,
+    ) -> bool:
+        """Evaluate safety rules. Returns True if workflow update should run."""
+        ctx = self._build_rule_context(sensor_states, temperatures, pressures)
+        active = evaluate(ctx)
+
+        stop_codes = [c for c in active if get_fault(c).severity == Severity.STOP]
+        if stop_codes:
+            primary = min(stop_codes, key=stop_priority)
+            self.state_machine.apply_fault(primary)
+            if self.ui:
+                self.ui.update_warnings([])
+            return False
+
+        if self.ui:
+            message_codes = [c for c in active if get_fault(c).severity == Severity.MESSAGE]
+            self.ui.update_warnings([get_fault(c).message for c in message_codes])
+
+        return True
+
+    def _can_acknowledge_error(
+        self,
+        sensor_states: dict,
+        temperatures: dict,
+        pressures: dict,
+    ) -> bool:
+        latched = self.state_machine.get_latched_fault_code()
+        if latched is None:
+            return True
+        if latched == FaultCode.IO_READ_FAILURE:
+            return True
+        ctx = self._build_rule_context(sensor_states, temperatures, pressures)
+        fault_state = self.state_machine.get_fault_context_state()
+        if fault_state is not None:
+            ctx.current_state = fault_state
+        return not is_fault_still_active(latched, ctx)
+
+    def _refresh_acknowledge_button(
+        self,
+        sensor_states: dict,
+        temperatures: dict,
+        pressures: dict,
+    ) -> None:
+        if not self.ui or not self.state_machine:
+            return
+        if self.state_machine.get_current_state() != State.ERROR:
+            return
+        self.ui.set_acknowledge_enabled(
+            self._can_acknowledge_error(sensor_states, temperatures, pressures)
+        )
+
     # ------------------------------------------------------------------
     # State machine bridge
     # ------------------------------------------------------------------
     def _on_state_changed(self, old_state: State, new_state: State):
         if self.ui:
-            error_msg = self.state_machine.get_error_message() if new_state == State.ERROR else None
-            self.ui.update_state_display(new_state.value, error_msg)
+            error_msg = None
+            workflow_state_name = None
+            if new_state == State.ERROR:
+                error_msg = self.state_machine.get_error_message()
+                fault_context = self.state_machine.get_fault_context_state()
+                if fault_context is not None:
+                    workflow_state_name = fault_context.value
+            self.ui.update_state_display(
+                new_state.value,
+                error_msg,
+                workflow_state_name=workflow_state_name,
+            )
+            if new_state == State.ERROR:
+                self.ui.set_acknowledge_enabled(False)
         self._apply_state_driven_stepper_control(new_state)
 
     def _apply_state_driven_stepper_control(self, state: State):
@@ -481,6 +584,8 @@ class SensorMonitorApp(QObject):
             raw_temperatures = raw_temperatures or {}
             pressures = pressures or {}
             self._last_temperatures = temperatures
+            self._last_sensor_states = sensor_states
+            self._last_pressures = pressures
             self._apply_compressor_heat_ex_control(temperatures)
 
             body_temp = (
@@ -491,9 +596,13 @@ class SensorMonitorApp(QObject):
             set_temp = self.ui.main_graph_widget.set_temperature if self.ui else None
 
             if self.state_machine:
-                self.state_machine.update(
-                    sensor_states, body_temp=body_temp, set_temp=set_temp
+                run_workflow = self._evaluate_and_dispatch_safety(
+                    sensor_states, temperatures, pressures
                 )
+                if run_workflow:
+                    self.state_machine.update(
+                        sensor_states, body_temp=body_temp, set_temp=set_temp
+                    )
 
             if self.ui:
                 self.ui.update_sensor_display(
@@ -502,6 +611,7 @@ class SensorMonitorApp(QObject):
                     raw_temperatures,
                     pressures,
                 )
+                self._refresh_acknowledge_button(sensor_states, temperatures, pressures)
                 if self.stepper_driver:
                     self._update_stepper_ui_status()
         finally:
@@ -534,8 +644,17 @@ class SensorMonitorApp(QObject):
             self.state_machine.stop_pumping()
 
     def on_acknowledge_error(self):
-        if self.state_machine:
-            self.state_machine.acknowledge_error()
+        if not self.state_machine:
+            return
+        if self.state_machine.get_current_state() != State.ERROR:
+            return
+        if not self._can_acknowledge_error(
+            self._last_sensor_states,
+            self._last_temperatures,
+            self._last_pressures,
+        ):
+            return
+        self.state_machine.acknowledge_error()
 
     def on_stepper_speed_changed(self, speed_rpm: int):
         requested_speed = int(speed_rpm)

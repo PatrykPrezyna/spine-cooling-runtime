@@ -5,11 +5,8 @@ Tracks where the device is in its workflow and which moves are legal next.
 Typical happy path:
 
   INIT -> READY -> COOLING -> PUMPING <-> PUMPING SLOWLY
-           ^         ^          ^              ^
-           |         |          |              |
-           +---------+----------+--------------+   cartridge removed
-           |
-           ERROR   (init/sensor fault; operator ack returns to READY)
+           ^                                    |
+           +-------- ERROR (fault; ack) <-------+
 
 ``main.py`` calls ``update()`` every tick with sensor readings and
 temperatures. Button handlers call ``start_pumping()``, ``stop_pumping()``,
@@ -19,6 +16,8 @@ and ``acknowledge_error()``.
 from datetime import datetime
 from enum import Enum
 from typing import Callable, Optional
+
+from fault_catalog import FaultCode, get_fault
 
 
 class State(Enum):
@@ -39,6 +38,8 @@ class StateMachine:
     def __init__(self):
         self.current_state = State.INIT
         self.error_message: Optional[str] = None
+        self.latched_fault_code: Optional[FaultCode] = None
+        self.fault_context_state: Optional[State] = None
         self.state_entry_time = datetime.now()
         self.on_state_change: Optional[Callable[[State, State], None]] = None
         print(f"State Machine initialized in {self.current_state.value} state")
@@ -50,6 +51,15 @@ class StateMachine:
 
     def get_error_message(self) -> Optional[str]:
         return self.error_message
+
+    def get_latched_fault_code(self) -> Optional[FaultCode]:
+        return self.latched_fault_code
+
+    def get_fault_context_state(self) -> Optional[State]:
+        return self.fault_context_state
+
+    def get_time_in_state(self) -> float:
+        return (datetime.now() - self.state_entry_time).total_seconds()
 
     def handle_init_complete(self, success: bool, error_msg: str = "") -> bool:
         """Called once hardware init finishes."""
@@ -72,12 +82,19 @@ class StateMachine:
             return False
         return self._change_state(State.COOLING, "User stopped pumping")
 
-    def handle_sensor_error(self, error_msg: str) -> bool:
-        """IO worker or sensor read failed."""
+    def apply_fault(self, code: FaultCode, message_override: Optional[str] = None) -> bool:
+        """Enter ERROR from a catalog fault (STOP severity)."""
         if self.current_state == State.ERROR:
             return False
-        self.error_message = error_msg
-        return self._change_state(State.ERROR, error_msg)
+        fault = get_fault(code)
+        self.latched_fault_code = code
+        self.fault_context_state = self.current_state
+        self.error_message = message_override or fault.message
+        return self._change_state(State.ERROR, self.error_message)
+
+    def handle_sensor_error(self, error_msg: str) -> bool:
+        """IO worker or sensor read failed."""
+        return self.apply_fault(FaultCode.IO_READ_FAILURE, error_msg)
 
     def acknowledge_error(self) -> bool:
         """Operator cleared the error screen."""
@@ -100,19 +117,6 @@ class StateMachine:
         level_low = sensor_states.get("Level Low", False)
         level_critical = sensor_states.get("Level Critical", False)
 
-        ## ERROR HANDLING
-        # --- safety checks while cooling or pumping ---------------------
-        if self.current_state in (State.COOLING, State.PUMPING, State.PUMPING_SLOWLY):
-            if not cartridge:
-                self._change_state(State.READY, "Cartridge removed")
-                return
-            if not level_low or not level_critical:
-                self.error_message = "Level sensor failure detected"
-                self._change_state(State.ERROR, self.error_message)
-                return
-
-
-        ## AUTOMATIC STATE TRANSITIONS
         # --- auto-start cooling when idle and all sensors are HIGH ------
         if self.current_state == State.READY:
             if cartridge and level_low and level_critical:
@@ -159,6 +163,8 @@ class StateMachine:
 
         if old_state == State.ERROR:
             self.error_message = None
+            self.latched_fault_code = None
+            self.fault_context_state = None
 
         reason_text = f" ({reason})" if reason else ""
         print(f"State transition: {old_state.value} -> {new_state.value}{reason_text}")

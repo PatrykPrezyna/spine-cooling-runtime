@@ -2076,6 +2076,9 @@ class MainScreen(QMainWindow):
         self.main_graph_widget.setMinimumHeight(280)
         self.main_graph_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
+        # Temperature graph tab
+        self.temperature_graph_tab = TemperatureGraphTab(self.temperature_sensor_names)
+
         # Service tab
         self.service_tab = ServiceTab(
             self.config.get('stepper_motor', {}),
@@ -2095,7 +2098,6 @@ class MainScreen(QMainWindow):
             pressure_sensor_names=pressure_sensor_names,
         )
         temp_series_names = ["Set Temp", *self.temperature_sensor_names]
-        self.temperature_graph_tab = TemperatureGraphTab(temp_series_names)
         self.calibration_tab = CalibrationTab(self.temperature_sensor_names)
         self.calibration_tab.on_apply_calibration_callback = (
             self._on_temperature_graph_calibration_apply
@@ -2103,16 +2105,16 @@ class MainScreen(QMainWindow):
 
         # In-window advanced area (Service / Animal Study / Temp Graph / Calibration).
         self.advanced_tab_selector = QTabBar()
+        self.advanced_tab_selector.addTab("Temp Graph")
         self.advanced_tab_selector.addTab("Service")
         self.advanced_tab_selector.addTab("Animal Study")
-        self.advanced_tab_selector.addTab("Temp Graph")
         self.advanced_tab_selector.addTab("Calibration")
         self.advanced_tab_selector.setExpanding(False)
 
         self.advanced_content_stack = QStackedWidget()
+        self.advanced_content_stack.addWidget(self.temperature_graph_tab)
         self.advanced_content_stack.addWidget(self.service_tab)
         self.advanced_content_stack.addWidget(self.service2_tab)
-        self.advanced_content_stack.addWidget(self.temperature_graph_tab)
         self.advanced_content_stack.addWidget(self.calibration_tab)
         self.advanced_tab_selector.currentChanged.connect(self.advanced_content_stack.setCurrentIndex)
 
@@ -2194,22 +2196,24 @@ class MainScreen(QMainWindow):
             }
         """)
         
-        # State indicator label (top status line)
-        self.state_label = QLabel("State: INIT")
+        # Top bar: workflow state (left) and error status (right)
+        self.state_label = QLabel("State: Init")
         self.state_label.setMinimumHeight(32)
-        self.state_label.setStyleSheet("""
-            QLabel {
-                background-color: #e9eef2;
-                color: #2f3b47;
-                font-size: 12px;
-                font-weight: 600;
-                padding: 4px 8px;
-                border-radius: 10px;
-                border: 1px solid #d6dde3;
-            }
-        """)
-        self.state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
+        self.state_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.state_label.setWordWrap(True)
+
+        self.error_status_label = QLabel("")
+        self.error_status_label.setMinimumHeight(32)
+        self.error_status_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.error_status_label.setWordWrap(True)
+        self.error_status_label.setVisible(False)
+
+        self._workflow_state_name = "Init"
+
         # Pumping toggle button - acts as "START PUMPING" in Cooling state
         # and "STOP PUMPING" in Pumping state. Disabled in other states.
         self.pumping_toggle_button = QPushButton("START PUMPING")
@@ -2239,23 +2243,22 @@ class MainScreen(QMainWindow):
         """)
         self.acknowledge_button.clicked.connect(self._on_acknowledge_clicked)
         self.acknowledge_button.setEnabled(False)
-        
-        # Error message label
-        self.error_label = QLabel("")
-        self.error_label.setStyleSheet("""
+
+        self.warnings_label = QLabel("")
+        self.warnings_label.setStyleSheet("""
             QLabel {
-                background-color: #f8e5db;
-                color: #7e3f26;
-                font-size: 13px;
+                background-color: #f8f3d8;
+                color: #6b5a1e;
+                font-size: 12px;
                 font-weight: 600;
-                padding: 10px;
-                border-radius: 14px;
-                border: 1px solid #edcdbd;
+                padding: 8px;
+                border-radius: 10px;
+                border: 1px solid #e8dca0;
             }
         """)
-        self.error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.error_label.setVisible(False)
-        self.error_label.setWordWrap(True)
+        self.warnings_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.warnings_label.setVisible(False)
+        self.warnings_label.setWordWrap(True)
     
     def _setup_layout(self):
         """Setup widget layout.
@@ -2284,11 +2287,12 @@ class MainScreen(QMainWindow):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(8)
         
-        # Header row: state indicator + advanced settings button
+        # Header row: state (left), error (right), then menu controls
         header_row = QHBoxLayout()
         header_row.setContentsMargins(0, 0, 0, 0)
         header_row.setSpacing(10)
         header_row.addWidget(self.state_label, 1)
+        header_row.addWidget(self.error_status_label, 1)
         header_row.addWidget(self.to_main_menu_button)
         header_row.addWidget(self.window_mode_toggle_button, 0, Qt.AlignmentFlag.AlignRight)
         main_layout.addLayout(header_row)
@@ -2296,8 +2300,7 @@ class MainScreen(QMainWindow):
         # Main content area
         main_layout.addWidget(self.content_stack, 1)
         
-        # Error message (only visible in ERROR state)
-        main_layout.addWidget(self.error_label)
+        main_layout.addWidget(self.warnings_label)
         
         # State-specific buttons row (visible only on Main tab)
         self.state_buttons_row = QWidget()
@@ -2401,7 +2404,7 @@ class MainScreen(QMainWindow):
         - Cooling state  -> start pumping
         - Pumping state  -> stop pumping
         """
-        current_state = self.state_label.text().replace("State: ", "")
+        current_state = self._workflow_state_name
         if current_state in ("Pumping", "Pumping Slowly"):
             if self.on_stop_pumping_callback:
                 self.on_stop_pumping_callback()
@@ -2465,28 +2468,9 @@ class MainScreen(QMainWindow):
         """Show or hide the bottom action row (children follow the parent)."""
         self.state_buttons_row.setVisible(visible)
 
-    def update_state_display(self, state_name: str, error_message: Optional[str] = None):
-        """
-        Update state display and button visibility
-        
-        Args:
-            state_name: Current state name
-            error_message: Error message if in ERROR state
-        """
-        # Update state label
-        self.state_label.setText(f"State: {state_name}")
-        
-        # Error state -> red, otherwise green.
-        if state_name == "Error":
-            bg_color = "#f8e5db"
-            border_color = "#d06a45"
-            text_color = "#7e3f26"
-        else:
-            bg_color = "#dff0f2"
-            border_color = "#8fc8cf"
-            text_color = "#245962"
-        
-        self.state_label.setStyleSheet(f"""
+    @staticmethod
+    def _status_chip_style(bg_color: str, border_color: str, text_color: str) -> str:
+        return f"""
             QLabel {{
                 background-color: {bg_color};
                 color: {text_color};
@@ -2496,7 +2480,48 @@ class MainScreen(QMainWindow):
                 border-radius: 10px;
                 border: 1px solid {border_color};
             }}
-        """)
+        """
+
+    def update_state_display(
+        self,
+        state_name: str,
+        error_message: Optional[str] = None,
+        workflow_state_name: Optional[str] = None,
+    ):
+        """
+        Update state display and button visibility
+
+        Args:
+            state_name: Current state machine state
+            error_message: Error message if in ERROR state
+            workflow_state_name: Pre-error workflow state shown on the left during ERROR
+        """
+        if state_name == "Error" and workflow_state_name:
+            self._workflow_state_name = workflow_state_name
+        else:
+            self._workflow_state_name = state_name
+
+        self.state_label.setText(f"State: {self._workflow_state_name}")
+
+        if state_name in ("Init", "Ready"):
+            state_bg, state_border, state_text = "#e9eef2", "#d6dde3", "#2f3b47"
+        else:
+            state_bg, state_border, state_text = "#dff0f2", "#8fc8cf", "#245962"
+
+        self.state_label.setStyleSheet(
+            self._status_chip_style(state_bg, state_border, state_text)
+        )
+
+        if state_name == "Error" and error_message:
+            self.error_status_label.setText(f"Error: {error_message}")
+            self.error_status_label.setStyleSheet(
+                self._status_chip_style("#f8e5db", "#d06a45", "#7e3f26")
+            )
+            self.error_status_label.setVisible(True)
+            self.warnings_label.setVisible(False)
+        else:
+            self.error_status_label.setText("")
+            self.error_status_label.setVisible(False)
         
         # Update unified pumping toggle button (label + style + enabled state)
         if state_name in ("Pumping", "Pumping Slowly"):
@@ -2508,15 +2533,15 @@ class MainScreen(QMainWindow):
             self._apply_pumping_button_style(active=False)
             self.pumping_toggle_button.setEnabled(state_name == "Cooling")
         
-        self.acknowledge_button.setEnabled(state_name == "Error")
-        
-        # Show/hide error message
-        if state_name == "Error" and error_message:
-            self.error_label.setText(f"⚠️ {error_message}")
-            self.error_label.setVisible(True)
-        else:
-            self.error_label.setVisible(False)
-    
+        self._in_error_state = state_name == "Error"
+        if not self._in_error_state:
+            self.acknowledge_button.setEnabled(False)
+
+    def set_acknowledge_enabled(self, enabled: bool) -> None:
+        """Enable ACK only when the latched fault condition has cleared."""
+        if getattr(self, "_in_error_state", False):
+            self.acknowledge_button.setEnabled(bool(enabled))
+
     def update_sensor_display(
         self,
         sensor_states: dict,
@@ -2555,6 +2580,16 @@ class MainScreen(QMainWindow):
     
     def set_status_message(self, message: str, is_error: bool = False):
         """No-op kept for API compatibility (status shown visually elsewhere)."""
+
+    def update_warnings(self, messages: list[str]) -> None:
+        """Show non-blocking MESSAGE-severity alerts."""
+        if not messages:
+            self.warnings_label.setVisible(False)
+            self.warnings_label.setText("")
+            return
+        lines = [f"⚠ {msg}" for msg in messages]
+        self.warnings_label.setText("\n".join(lines))
+        self.warnings_label.setVisible(True)
 
     # Width of the state indicator on the advanced page (half of usable width).
     _ADVANCED_STATE_LABEL_WIDTH = max(260, (SCREEN_WIDTH - 20) // 2)

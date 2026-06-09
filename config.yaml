@@ -1,17 +1,26 @@
+alarms:
+  csf_label: CSF 2
+  csf_low_temp_c: 28.0
+  heat_ex_label: Heat Ex
+  heat_ex_min_c: -10.0
+  leak_pressure_delta_min: 5.0
+  cooling_ineffective_timeout_s: 600
+  cooling_ineffective_csf_delta_c: 0.2
+  battery_low_pct: 20
 simulation:
-  csf_label: "CSF 2"
+  csf_label: CSF 2
   csf_initial_c: 37.0
   csf_max_c: 37.0
   csf_min_c: 25.0
   csf_rate_c_per_s: 0.1
   csf_cart_out_scale: 0.05
-  heat_ex_label: "Heat Ex"
+  heat_ex_label: Heat Ex
   heat_ex_initial_c: 22.0
   heat_ex_max_c: 22.0
   heat_ex_cool_rate_c_per_s: 0.5
   heat_ex_warm_rate_c_per_s: 0.02
-  cart_in_label: "Cart In"
-  cart_out_label: "Cart Out"
+  cart_in_label: Cart In
+  cart_out_label: Cart Out
   cart_initial_c: 22.0
   cart_in_rise_rate_c_per_s: 0.1
   sensors:
@@ -99,8 +108,8 @@ pressure_sensors:
 compressor:
   relay_pin: 6
   heat_ex_label: Heat Ex
-  off_below_temp_c: -1
-  on_above_temp_c: 0.3
+  off_below_temp_c: -7
+  on_above_temp_c: 0.0
 logging:
   csv_directory: data/csv
   filename_format: sensor_log_%Y%m%d_%H%M%S.csv
