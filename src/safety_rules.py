@@ -118,7 +118,7 @@ def _check_cooling_ineffective(ctx: RuleContext) -> bool:
     if not ctx.pump_running or not ctx.compressor_on:
         return False
     alarms = _alarms(ctx)
-    label = str(alarms.get("csf_label", "CSF"))
+    label = str(alarms.get("csf_label", "CSF 2"))
     csf_temp = ctx.temperatures.get(label)
     timeout_s = float(alarms.get("cooling_ineffective_timeout_s", 600))
     min_delta_c = float(alarms.get("cooling_ineffective_csf_delta_c", 0.2))

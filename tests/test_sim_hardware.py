@@ -96,17 +96,33 @@ class SimHardwareTests(unittest.TestCase):
         reader._last_raw_temperatures["Heat Ex"] = 20.0
         for label in ("CSF", "Cart In", "Heat Ex"):
             reader._apply_calibration_for_label(label)
-        reader.notify_setpoint(32.0, pump_running=True)
+        reader.notify_setpoint(32.0, pump_running=True, pump_speed_rpm=120)
         time.sleep(10.05)
-        reader.notify_setpoint(32.0, pump_running=True)
-        # Cart Out = 22 - (22 - 20) = 20; rate = 0.1 * 0.05 * 2 = 0.01 C/s
+        reader.notify_setpoint(32.0, pump_running=True, pump_speed_rpm=120)
+        # Cart Out = Cart In - (Cart In - Heat Ex) * 0.75
         self.assertAlmostEqual(reader.read_temperatures()["CSF"], 27.4, places=1)
 
         reader._last_raw_temperatures["CSF"] = 30.0
         reader._apply_calibration_for_label("CSF")
-        reader.notify_setpoint(32.0, pump_running=False)
+        reader.notify_setpoint(32.0, pump_running=False, pump_speed_rpm=0)
         time.sleep(1.05)
-        reader.notify_setpoint(32.0, pump_running=False)
+        reader.notify_setpoint(32.0, pump_running=False, pump_speed_rpm=0)
+        self.assertAlmostEqual(reader.read_temperatures()["CSF"], 30.1, places=1)
+        reader.cleanup()
+
+    def test_csf_warms_when_pump_speed_below_threshold(self) -> None:
+        bundle = build_hardware(_MINIMAL_CONFIG, simulation=True)
+        reader = bundle.thermocouple_reader
+
+        reader._last_raw_temperatures["CSF"] = 30.0
+        reader._last_raw_temperatures["Cart In"] = 22.0
+        reader._last_raw_temperatures["Heat Ex"] = 20.0
+        for label in ("CSF", "Cart In", "Heat Ex"):
+            reader._apply_calibration_for_label(label)
+
+        reader.notify_setpoint(32.0, pump_running=True, pump_speed_rpm=20)
+        time.sleep(1.05)
+        reader.notify_setpoint(32.0, pump_running=True, pump_speed_rpm=20)
         self.assertAlmostEqual(reader.read_temperatures()["CSF"], 30.1, places=1)
         reader.cleanup()
 
@@ -150,16 +166,16 @@ class SimHardwareTests(unittest.TestCase):
 
         reader._last_raw_temperatures["CSF"] = 50.0
         reader._apply_calibration_for_label("CSF")
-        reader.notify_setpoint(32.0, compressor_cooling=0, pump_running=True)
+        reader.notify_setpoint(32.0, compressor_cooling=0, pump_running=True, pump_speed_rpm=120)
         time.sleep(10.05)
-        reader.notify_setpoint(32.0, compressor_cooling=0, pump_running=True)
+        reader.notify_setpoint(32.0, compressor_cooling=0, pump_running=True, pump_speed_rpm=120)
         temps = reader.read_temperatures()
 
         self.assertAlmostEqual(temps["Cart In"], 24.0, places=1)
-        expected_cart_out = temps["Cart In"] - (22.0 - temps["Heat Ex"])
+        expected_cart_out = temps["Cart In"] - (temps["Cart In"] - temps["Heat Ex"]) * 0.75
         self.assertAlmostEqual(temps["Cart Out"], expected_cart_out, places=1)
 
-        reader.notify_setpoint(32.0, compressor_cooling=0, pump_running=False)
+        reader.notify_setpoint(32.0, compressor_cooling=0, pump_running=False, pump_speed_rpm=0)
         temps = reader.read_temperatures()
         self.assertAlmostEqual(temps["Cart Out"], temps["Cart In"], places=2)
         reader.cleanup()

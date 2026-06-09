@@ -43,10 +43,11 @@ class SimSensorReader:
 class SimThermocoupleReader:
     """Thermocouple readings from config defaults.
 
-    - CSF starts at 37.0 C. Pump off: rises at ``csf_rate_c_per_s`` until
-      ``csf_max_c`` (37). Pump on: change rate is
-      ``csf_rate_c_per_s * csf_cart_out_scale * (22 - Cart Out)`` until
-      ``csf_min_c`` (25).
+    - CSF starts at 37.0 C. Pump off or speed below
+      ``csf_min_effective_pump_speed_rpm`` (30): rises at ``csf_rate_c_per_s``
+      until ``csf_max_c`` (37). Pump on at effective speed: change rate is
+      ``csf_rate_c_per_s * csf_cart_out_scale * (Cart Initial - Cart Out)
+      * (pump_speed / csf_pump_speed_ref_rpm)`` until ``csf_min_c`` (25).
     - Heat Ex starts at 22.0 C, cools at ``heat_ex_cool_rate_c_per_s`` when the
       compressor is on, warms at ``heat_ex_warm_rate_c_per_s`` when off.
     - Cart In / Cart Out start at 22.0 C. When the pump is on, Cart In rises at
@@ -84,6 +85,16 @@ class SimThermocoupleReader:
             sim_cfg.get(
                 "csf_cart_out_scale",
                 sim_cfg.get("csf_heat_ex_scale", 0.05),
+            )
+        )
+        stepper_cfg = config.get("stepper_motor", {}) or {}
+        self._csf_min_effective_pump_speed_rpm = float(
+            sim_cfg.get("csf_min_effective_pump_speed_rpm", 30.0)
+        )
+        self._csf_pump_speed_ref_rpm = float(
+            sim_cfg.get(
+                "csf_pump_speed_ref_rpm",
+                stepper_cfg.get("pumping_speed_rpm", 120),
             )
         )
         self._heat_ex_label = str(
@@ -133,6 +144,7 @@ class SimThermocoupleReader:
         set_temperature_c: float,
         compressor_cooling: int = 0,
         pump_running: bool = False,
+        pump_speed_rpm: int = 0,
     ) -> None:
         """Advance simulated temperatures since the last tick."""
         if not self.physics_enabled:
@@ -143,31 +155,37 @@ class SimThermocoupleReader:
         self._last_advance_time = now
 
         del set_temperature_c  # CSF no longer follows the UI setpoint in sim mode
+        effective_speed = int(pump_speed_rpm) if pump_running else 0
         self._advance_heat_ex(bool(compressor_cooling), elapsed)
         self._advance_cart_temps(bool(pump_running), elapsed)
-        self._advance_csf(bool(pump_running), elapsed)
+        self._advance_csf(effective_speed, elapsed)
 
-    def _advance_csf(self, pump_running: bool, elapsed: float) -> None:
+    def _advance_csf(self, pump_speed_rpm: int, elapsed: float) -> None:
         if self._csf_label in self._frozen_labels:
             return
         if self._csf_label not in self._last_raw_temperatures:
             return
 
         current = self._last_raw_temperatures[self._csf_label]
-        if pump_running:
+        if (
+            pump_speed_rpm <= 0
+            or pump_speed_rpm < self._csf_min_effective_pump_speed_rpm
+        ):
+            step = self._csf_rate_c_per_s * elapsed
+            new_raw = min(current + step, self._csf_max_c)
+        else:
             cart_out = self._last_raw_temperatures.get(
                 self._cart_out_label, self._cart_initial_c
             )
+            speed_factor = pump_speed_rpm / max(self._csf_pump_speed_ref_rpm, 1.0)
             rate = (
                 self._csf_rate_c_per_s
                 * self._csf_cart_out_scale
                 * (self._cart_initial_c - cart_out)
+                * speed_factor
             )
             new_raw = current - rate * elapsed
             new_raw = max(min(new_raw, self._csf_max_c), self._csf_min_c)
-        else:
-            step = self._csf_rate_c_per_s * elapsed
-            new_raw = min(current + step, self._csf_max_c)
 
         self._last_raw_temperatures[self._csf_label] = new_raw
         self._apply_calibration_for_label(self._csf_label)
@@ -226,7 +244,7 @@ class SimThermocoupleReader:
             if self._heat_ex_label not in self._last_raw_temperatures:
                 return
             heat_ex = self._last_raw_temperatures[self._heat_ex_label]
-            new_raw = cart_in - (self._cart_initial_c - heat_ex*0.8)
+            new_raw = cart_in - (cart_in - heat_ex)*0.75
 
         self._last_raw_temperatures[self._cart_out_label] = new_raw
         self._apply_calibration_for_label(self._cart_out_label)

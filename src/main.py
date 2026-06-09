@@ -74,6 +74,11 @@ class _BackgroundIOWorker(QObject):
         pressures: dict = {}
         error_message: Optional[str] = None
         try:
+            logged_stepper_speed_rpm = (
+                int(peristaltic_pump_set_speed_rpm)
+                if bool(stepper_motor_running)
+                else 0
+            )
             if self._sensor_reader is not None:
                 sensor_states = self._sensor_reader.read_all()
             if self._thermocouple_reader is not None:
@@ -83,15 +88,13 @@ class _BackgroundIOWorker(QObject):
                         set_temperature_c,
                         compressor_cooling,
                         stepper_motor_running,
+                        logged_stepper_speed_rpm,
                     )
                 temperatures = self._thermocouple_reader.read_temperatures()
                 raw_temperatures = self._thermocouple_reader.get_last_raw_temperatures()
             if self._pressure_reader is not None:
                 pressures = self._pressure_reader.read_pressures()
             if self._csv_logger is not None:
-                logged_stepper_speed_rpm = (
-                    int(peristaltic_pump_set_speed_rpm) if bool(stepper_motor_running) else 0
-                )
                 self._csv_logger.log(
                     sensor_states,
                     temperatures,
@@ -137,6 +140,7 @@ class SensorMonitorApp(QObject):
             if len(self.temperature_sensor_names) > 1
             else (self.temperature_sensor_names[0] if self.temperature_sensor_names else None)
         )
+        self.control_temp_label = str(self.config.get("control_temp_label", "CSF 2"))
 
         self.sensor_reader: Any = None
         self.sensor_injection: Optional[SensorInjectionController] = None
@@ -535,6 +539,21 @@ class SensorMonitorApp(QObject):
             if new_state == State.ERROR:
                 self.ui.set_acknowledge_enabled(False)
         self._apply_state_driven_stepper_control(new_state)
+        self._apply_state_driven_compressor_control(new_state)
+        if self.ui:
+            self._update_stepper_ui_status()
+
+    def _apply_state_driven_compressor_control(self, state: State) -> None:
+        """Turn compressor on when precooling starts; off when session ends."""
+        active_states = (State.COOLING, State.PUMPING, State.PUMPING_SLOWLY)
+        if state == State.COOLING:
+            self.compressor_control_enabled = True
+            self.compressor_latched_on = True
+            self._set_compressor_running(True)
+        elif state not in active_states:
+            self.compressor_control_enabled = False
+            self.compressor_latched_on = False
+            self._set_compressor_running(False)
 
     def _apply_state_driven_stepper_control(self, state: State):
         """Drive the stepper from state machine transitions."""
@@ -602,11 +621,7 @@ class SensorMonitorApp(QObject):
             self._last_pressures = pressures
             self._apply_compressor_heat_ex_control(temperatures)
 
-            body_temp = (
-                temperatures.get(self.primary_temperature_label)
-                if self.primary_temperature_label
-                else None
-            )
+            body_temp = temperatures.get(self.control_temp_label)
             set_temp = self.ui.main_graph_widget.set_temperature if self.ui else None
 
             if self.state_machine:

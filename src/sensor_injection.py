@@ -124,10 +124,11 @@ class InjectableThermocoupleReader:
         set_temperature_c: float,
         compressor_cooling: int = 0,
         pump_running: bool = False,
+        pump_speed_rpm: int = 0,
     ) -> None:
         notify = getattr(self._inner, "notify_setpoint", None)
         if notify is not None:
-            notify(set_temperature_c, compressor_cooling, pump_running)
+            notify(set_temperature_c, compressor_cooling, pump_running, pump_speed_rpm)
         self._controller._push_temperature_overrides_to_inner(self._inner)
 
     def read_temperatures(self) -> Dict[str, float]:

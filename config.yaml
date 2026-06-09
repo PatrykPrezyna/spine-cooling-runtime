@@ -1,3 +1,4 @@
+control_temp_label: CSF 2
 alarms:
   csf_label: CSF 2
   csf_low_temp_c: 28.0
@@ -14,6 +15,8 @@ simulation:
   csf_min_c: 25.0
   csf_rate_c_per_s: 0.1
   csf_cart_out_scale: 0.05
+  csf_min_effective_pump_speed_rpm: 30
+  csf_pump_speed_ref_rpm: 120
   heat_ex_label: Heat Ex
   heat_ex_initial_c: 22.0
   heat_ex_max_c: 22.0
@@ -108,8 +111,8 @@ pressure_sensors:
 compressor:
   relay_pin: 6
   heat_ex_label: Heat Ex
-  off_below_temp_c: -20
-  on_above_temp_c: 10.1
+  off_below_temp_c: 3
+  on_above_temp_c: 7.0
 logging:
   csv_directory: data/csv
   filename_format: sensor_log_%Y%m%d_%H%M%S.csv

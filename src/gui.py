@@ -2310,7 +2310,7 @@ class MainScreen(QMainWindow):
             }
         """)
         
-        # Top bar: workflow state (left) and error status (right)
+        # Top bar: workflow state (left) and hint/error status (right)
         self.state_label = QLabel("State: Init")
         self.state_label.setMinimumHeight(32)
         self.state_label.setAlignment(
@@ -2600,6 +2600,16 @@ class MainScreen(QMainWindow):
             }}
         """
 
+    @staticmethod
+    def _hint_for_state(state_name: str) -> Optional[str]:
+        if state_name == "Ready":
+            return "Place and fill the cartridge"
+        if state_name == "Cooling":
+            return "Place the catheter and start cooling"
+        if state_name in ("Pumping", "Pumping Slowly"):
+            return "Cooling is taking place"
+        return None
+
     def update_state_display(
         self,
         state_name: str,
@@ -2612,16 +2622,14 @@ class MainScreen(QMainWindow):
         Args:
             state_name: Current state machine state
             error_message: Error message if in ERROR state
-            workflow_state_name: Pre-error workflow state shown on the left during ERROR
+            workflow_state_name: Pre-error workflow state (kept for API compatibility)
         """
-        if state_name == "Error" and workflow_state_name:
-            self._workflow_state_name = workflow_state_name
-        else:
-            self._workflow_state_name = state_name
+        self._workflow_state_name = state_name
+        self.state_label.setText(f"State: {state_name}")
 
-        self.state_label.setText(f"State: {self._workflow_state_name}")
-
-        if state_name in ("Init", "Ready"):
+        if state_name == "Error":
+            state_bg, state_border, state_text = "#f8e5db", "#d06a45", "#7e3f26"
+        elif state_name in ("Init", "Ready"):
             state_bg, state_border, state_text = "#e9eef2", "#d6dde3", "#2f3b47"
         else:
             state_bg, state_border, state_text = "#dff0f2", "#8fc8cf", "#245962"
@@ -2631,15 +2639,23 @@ class MainScreen(QMainWindow):
         )
 
         if state_name == "Error" and error_message:
-            self.error_status_label.setText(f"Error: {error_message}")
+            self.error_status_label.setText(error_message)
             self.error_status_label.setStyleSheet(
                 self._status_chip_style("#f8e5db", "#d06a45", "#7e3f26")
             )
             self.error_status_label.setVisible(True)
             self.warnings_label.setVisible(False)
         else:
-            self.error_status_label.setText("")
-            self.error_status_label.setVisible(False)
+            hint = self._hint_for_state(state_name)
+            if hint:
+                self.error_status_label.setText(hint)
+                self.error_status_label.setStyleSheet(
+                    self._status_chip_style("#e8f5e9", "#16a34a", "#166534")
+                )
+                self.error_status_label.setVisible(True)
+            else:
+                self.error_status_label.setText("")
+                self.error_status_label.setVisible(False)
         
         # Update unified pumping toggle button (label + style + enabled state)
         if state_name in ("Pumping", "Pumping Slowly"):
