@@ -58,10 +58,10 @@ _GRAPH_NAV_BUTTON_STYLE = """
     QPushButton {
         background-color: #475569;
         color: white;
-        font-size: 12px;
+        font-size: 18px;
         font-weight: bold;
         border: 1px solid #334155;
-        border-radius: 5px;
+        border-radius: 10px;
     }
     QPushButton:pressed { background-color: #334155; }
     QPushButton:disabled {
@@ -73,15 +73,15 @@ _GRAPH_NAV_BUTTON_STYLE = """
 
 _GRAPH_WINDOW_COMBO_STYLE = """
     QComboBox {
-        font-size: 10px;
+        font-size: 13px;
         font-weight: bold;
         color: #1f2937;
         background-color: white;
         border: 1px solid #94a3b8;
-        border-radius: 5px;
-        padding: 2px 6px;
+        border-radius: 10px;
+        padding: 4px 10px;
     }
-    QComboBox::drop-down { width: 14px; }
+    QComboBox::drop-down { width: 22px; }
 """
 
 
@@ -89,7 +89,8 @@ class MainScreenWidget(QWidget):
     """Composite main-screen widget.
 
     Renders one or more of:
-      - temperature history graph (with legend + x-axis controls),
+      - temperature history graph (with x-axis controls),
+      - prominent CSF + setpoint readouts in the upper-right,
       - vertical setpoint gauge with touch +/- buttons,
       - cartridge level visualization with threshold indicators.
     """
@@ -116,6 +117,7 @@ class MainScreenWidget(QWidget):
         self.temp_max = 35.0
         self.temp_step = 0.2
         self.set_temperature = 32.0
+        self.current_csf_temperature = float("nan")
         self._temp_gauge_rect = QRectF()  # Updated during paint, used for hit testing
         self._dragging_temp = False
         self.on_temperature_change_callback: Optional[Callable[[float], None]] = None
@@ -167,21 +169,20 @@ class MainScreenWidget(QWidget):
 
         if self.show_graph and not self.show_cartridge:
             margin = 10
-            # Reserve only the space needed for local graph controls so the
-            # plotted graph can use more of the available height.
-            bottom_safe = 76
             graph_width = self.width() - (2 * margin)
             if self.show_temp_controls:
-                # Keep room for the right-side gauge and +/- controls.
-                graph_width -= 200
+                graph_width -= self._right_controls_reserved_width()
+            # Graph fills the full available height; the time-controls overlay
+            # its bottom-left corner (see _position_graph_nav_controls).
             self._draw_temperature_graph(
                 painter,
                 graph_x=margin,
                 graph_y=margin,
                 graph_width=max(220, graph_width),
-                graph_height=max(330, self.height() - (2 * margin) - bottom_safe),
+                graph_height=max(180, self.height() - (2 * margin)),
             )
             if self.show_temp_controls:
+                self._draw_csf_readout(painter)
                 self._draw_temperature_gauge(painter)
             return
         
@@ -194,7 +195,7 @@ class MainScreenWidget(QWidget):
             # Draw present sensor indicator below the chamber
             self._draw_present_sensor(painter)
         if self.show_temp_controls:
-            # Draw set temperature gauge on the right side
+            self._draw_csf_readout(painter)
             self._draw_temperature_gauge(painter)
     
     def _draw_background(self, painter: QPainter):
@@ -211,13 +212,16 @@ class MainScreenWidget(QWidget):
     _GRAPH_TEMP_MAX = 40.0
     _GRAPH_SERIES = (
         # (history tuple index, label, color)
-        (1, "Set Tmp", "#0ea5e9"),
+        (1, "Set Temp", "#0ea5e9"),
         (2, "", "#16a34a"),
     )
+    _SETPOINT_COLOR = "#0ea5e9"
+    _CSF_COLOR = "#16a34a"
     
     def add_temperature_sample(self, temp1: float, temp2: float):
         """Record a new sample of (set temperature, primary temp, secondary temp)."""
         now = time.monotonic()
+        self.current_csf_temperature = float(temp1)
         self._temp_history.append((now, self.set_temperature, float(temp1), float(temp2)))
         
         # Drop samples older than retained history window
@@ -241,11 +245,13 @@ class MainScreenWidget(QWidget):
         painter.setPen(QPen(QColor("#cbd5e1"), 3))
         painter.drawRoundedRect(graph_x, graph_y, graph_width, graph_height, 10, 10)
         
-        # Plot area (inside with padding for legend / axes)
+        # Plot area. Padding reserves clean zones so the legend (top) and the
+        # time-controls (bottom-left, below the x-axis labels) never overlap
+        # the gridlines, axes, or tick labels.
         plot_left = graph_x + 36
         plot_right = graph_x + graph_width - 10
-        plot_top = graph_y + 12
-        plot_bottom = graph_y + graph_height - 42
+        plot_top = graph_y + 26
+        plot_bottom = graph_y + graph_height - 58
         plot_width = plot_right - plot_left
         plot_height = plot_bottom - plot_top
         
@@ -266,9 +272,11 @@ class MainScreenWidget(QWidget):
             painter.setPen(QPen(QColor("#cbd5e1"), 2))
             painter.drawLine(plot_left, py, plot_right, py)
             painter.setPen(QColor("#475569"))
-            label_text = f"{t:.1f}" if (y_max - y_min) < 10 else f"{t:.0f}"
+            label_text = (
+                f"{t:.1f}°C" if (y_max - y_min) < 10 else f"{t:.0f}°C"
+            )
             painter.drawText(
-                QRectF(graph_x + 2, py - 8, 30, 16),
+                QRectF(graph_x + 2, py - 8, 34, 16),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                 label_text
             )
@@ -282,16 +290,13 @@ class MainScreenWidget(QWidget):
             px = int(plot_left + ratio * plot_width)
             ts = start_ts + ratio * window_sec
             mins_ago = int(round((now - ts) / 60.0))
-            label = "now" if mins_ago == 0 else f"-{mins_ago}m"
+            label = "now" if mins_ago == 0 else f"-{mins_ago} min"
             painter.drawText(
                 QRectF(px - 20, plot_bottom + 4, 40, 14),
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
                 label
             )
 
-        # Legend with live values (moved to bottom footer).
-        self._draw_graph_legend(painter, graph_x, graph_y + graph_height - 20, graph_width)
-        
         # Plot axes
         painter.setPen(QPen(QColor("#64748b"), 2))
         painter.drawLine(int(plot_left), int(plot_top), int(plot_left), int(plot_bottom))
@@ -346,6 +351,44 @@ class MainScreenWidget(QWidget):
                 "Waiting for data..."
             )
 
+        # Color legend inside the graph, top-right corner (Set Temp vs CSF).
+        self._draw_graph_legend(painter, graph_x, graph_width, graph_y)
+
+    def _draw_graph_legend(self, painter: QPainter, graph_x: int, graph_width: int, top_y: int):
+        """Right-aligned Set Temp / CSF legend drawn inside the graph top."""
+        latest = self._temp_history[-1] if self._temp_history else None
+        set_text = f"Set {latest[1]:.1f}°C" if latest else "Set --.-°C"
+        csf_text = f"CSF {latest[2]:.1f}°C" if latest else "CSF --.-°C"
+        entries = (
+            (self._SETPOINT_COLOR, set_text, True),
+            (self._CSF_COLOR, csf_text, False),
+        )
+
+        painter.setFont(QFont("Arial", 9, QFont.Weight.DemiBold))
+        metrics = painter.fontMetrics()
+        swatch_w, swatch_gap, item_gap = 16, 6, 18
+        widths = [
+            swatch_w + swatch_gap + metrics.horizontalAdvance(text)
+            for _color, text, _dashed in entries
+        ]
+        total = sum(widths) + item_gap * (len(entries) - 1)
+        x = graph_x + graph_width - total - 14
+        y = top_y + 6
+
+        for (color, text, dashed), width in zip(entries, widths):
+            pen = QPen(QColor(color), 3)
+            if dashed:
+                pen.setDashPattern([3, 2])
+            painter.setPen(pen)
+            painter.drawLine(int(x), int(y + 8), int(x + swatch_w), int(y + 8))
+            painter.setPen(QColor("#334155"))
+            painter.drawText(
+                QRectF(x + swatch_w + swatch_gap, y, width - swatch_w - swatch_gap, 16),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                text,
+            )
+            x += width + item_gap
+
     def _compute_visible_y_range(self, visible_entries):
         # Y axis is intentionally locked to a fixed range so the visual
         # baseline does not shift as samples come in. Values outside the
@@ -360,42 +403,91 @@ class MainScreenWidget(QWidget):
         step = (y_max - y_min) / float(count - 1)
         return [y_min + i * step for i in range(count)]
     
-    def _draw_graph_legend(self, painter: QPainter, graph_x: int, y: int, graph_width: int):
-        """Draw legend entries for the graph series"""
-        entries = (
-            self._GRAPH_SERIES[0],
-            (2, self.primary_temperature_label, self._GRAPH_SERIES[1][2]),
-        )
-        # Compact, right-aligned legend to avoid overlapping graph nav controls.
-        entry_width = 92
-        legend_total_width = entry_width * len(entries)
-        start_x = max(graph_x + 112, graph_x + graph_width - legend_total_width - 8)
+    # Touch-friendly gauge geometry
+    _GAUGE_WIDTH = 55
+    _GAUGE_MIN_HEIGHT = 80
+    _GAUGE_TOP = 85
+    _GAUGE_HANDLE_OVERHANG = 12
+    _GAUGE_TICK_LABEL_LEFT = 48
+    _READOUT_MIN_WIDTH = 120
+    _RIGHT_MARGIN = 18
+    _CONTROLS_GRAPH_GAP = 8
+    _TEMP_BUTTON_SIZE = 48
+    _TEMP_BUTTON_GAP = 10
 
-        font = QFont("Arial", 8, QFont.Weight.DemiBold)
-        painter.setFont(font)
-        latest = self._temp_history[-1] if self._temp_history else None
-        
-        for i, (series_index, label, color_hex) in enumerate(entries):
-            ex = start_x + i * entry_width
-            
-            # Color line swatch
-            pen = QPen(QColor(color_hex), 3)
-            if series_index == 1:
-                pen.setDashPattern([3, 2])
-            painter.setPen(pen)
-            painter.drawLine(ex, y + 8, ex + 14, y + 8)
-            
-            # Label
-            painter.setPen(QColor("#334155"))
-            label_text = label
-            if latest is not None:
-                label_text = f"{label}: {latest[series_index]:.1f}°C"
-            painter.drawText(
-                QRectF(ex + 18, y, entry_width - 20, 16),
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                label_text
-            )
-    
+    def _right_controls_reserved_width(self) -> int:
+        """Horizontal space reserved for the right-side gauge column."""
+        gauge_extent = (
+            self._GAUGE_TICK_LABEL_LEFT
+            + self._GAUGE_WIDTH
+            + self._GAUGE_HANDLE_OVERHANG
+        )
+        return (
+            max(self._READOUT_MIN_WIDTH, gauge_extent)
+            + self._RIGHT_MARGIN
+            + self._CONTROLS_GRAPH_GAP
+        )
+
+    def _controls_column_right(self) -> float:
+        """Right edge shared by readouts and gauge handle."""
+        return self.width() - self._RIGHT_MARGIN
+
+    def _temp_buttons_top(self) -> int:
+        """Natural Y anchor for +/- buttons (must stay in sync with _position_temp_buttons)."""
+        return self.height() - self._TEMP_BUTTON_SIZE - 4
+
+    def _gauge_geometry(self):
+        """Return the gauge track rectangle dimensions based on widget size."""
+        column_left, column_width = self._readout_column_geometry()
+        gauge_x = column_left + (column_width - self._GAUGE_WIDTH) / 2
+        gauge_y = self._GAUGE_TOP
+        # Extend the track down toward the +/- buttons without moving them.
+        buttons_top = self._temp_buttons_top()
+        gauge_height = max(self._GAUGE_MIN_HEIGHT, buttons_top - gauge_y - 8)
+        return int(gauge_x), gauge_y, self._GAUGE_WIDTH, gauge_height
+
+    def _readout_column_geometry(self) -> tuple[float, float]:
+        """Left edge and width for CSF/set readouts, centered on the gauge."""
+        column_right = self._controls_column_right()
+        column_width = max(
+            self._READOUT_MIN_WIDTH,
+            self._GAUGE_WIDTH + 2 * self._GAUGE_HANDLE_OVERHANG,
+        )
+        return column_right - column_width, column_width
+
+    def _draw_csf_readout(self, painter: QPainter):
+        """Draw CSF and set-temperature readouts above the right-side gauge."""
+        column_left, column_width = self._readout_column_geometry()
+
+        csf_top = 6
+        csf_height = 38
+        if math.isnan(self.current_csf_temperature):
+            csf_text = "--.-°C"
+        else:
+            csf_text = f"{self.current_csf_temperature:.1f}°C"
+        painter.setPen(QColor(self._CSF_COLOR))
+        painter.setFont(QFont("Arial", 30, QFont.Weight.Bold))
+        painter.drawText(
+            QRectF(column_left, csf_top, column_width, csf_height),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+            csf_text,
+        )
+
+        set_font_size = 18
+        set_height = 24
+        _, gauge_y, _, _ = self._gauge_geometry()
+        set_top = csf_top + csf_height + (
+            (gauge_y - (csf_top + csf_height) - set_height) / 2
+        )
+        set_text = f"{self.set_temperature:.1f}°C"
+        painter.setPen(QColor(self._SETPOINT_COLOR))
+        painter.setFont(QFont("Arial", set_font_size, QFont.Weight.Bold))
+        painter.drawText(
+            QRectF(column_left, set_top, column_width, set_height),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+            set_text,
+        )
+
     def _draw_single_chamber(self, painter: QPainter):
         """Draw single chamber with liquid level and threshold markers"""
         # Chamber dimensions - centered in widget
@@ -540,35 +632,14 @@ class MainScreenWidget(QWidget):
             status_text
         )
     
-    # Touch-friendly gauge geometry
-    _GAUGE_WIDTH = 55
-    _GAUGE_HEIGHT = 240
-    _GAUGE_TOP = 50
-    _GAUGE_RIGHT_MARGIN = 140  # gauge_x = self.width() - _GAUGE_RIGHT_MARGIN
-    _TEMP_BUTTON_SIZE = 48
-    _TEMP_BUTTON_GAP = 10
-    
-    def _gauge_geometry(self):
-        """Return the gauge track rectangle dimensions based on widget size"""
-        gauge_x = self.width() - self._GAUGE_RIGHT_MARGIN
-        return gauge_x, self._GAUGE_TOP, self._GAUGE_WIDTH, self._GAUGE_HEIGHT
-    
     def _draw_temperature_gauge(self, painter: QPainter):
         """Draw vertical set temperature gauge on the right side"""
         gauge_x, gauge_y, gauge_width, gauge_height = self._gauge_geometry()
         
         # Store gauge track rectangle for hit testing
         self._temp_gauge_rect = QRectF(gauge_x, gauge_y, gauge_width, gauge_height)
-        
-        # Current value display
-        painter.setPen(QColor("#1f4f57"))
-        font = QFont("Arial", 18, QFont.Weight.Bold)
-        painter.setFont(font)
-        painter.drawText(
-            QRectF(gauge_x - 18, gauge_y - 24, gauge_width + 36, 22),
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-            f"{self.set_temperature:.1f}\u00b0C"
-        )
+        # The setpoint value is shown between the CSF readout and the gauge;
+        # the gauge handle + tick numbers indicate position on the track.
         
         # Draw gauge track
         track_gradient = QLinearGradient(gauge_x, gauge_y, gauge_x, gauge_y + gauge_height)
@@ -618,7 +689,7 @@ class MainScreenWidget(QWidget):
         handle_ratio = (self.set_temperature - self.temp_min) / (self.temp_max - self.temp_min)
         handle_y = int(gauge_y + gauge_height - handle_ratio * gauge_height)
         handle_half_height = 14
-        handle_overhang = 12
+        handle_overhang = self._GAUGE_HANDLE_OVERHANG
         
         # Handle shadow
         painter.setBrush(QColor(0, 0, 0, 50))
@@ -723,11 +794,12 @@ class MainScreenWidget(QWidget):
         self.temp_minus_button = make("-", self._on_temp_decrement)
         self.temp_plus_button = make("+", self._on_temp_increment)
 
-    # Compact size used for graph X-axis nav controls (fits inside main graph).
-    _GRAPH_NAV_BTN_W = 26
-    _GRAPH_NAV_BTN_H = 24
-    _GRAPH_NAV_COMBO_W = 64
-    _GRAPH_NAV_GAP = 4
+    # Touch-friendly graph X-axis nav controls (overlay the graph bottom-left,
+    # in the reserved strip below the x-axis labels).
+    _GRAPH_NAV_BTN_W = 44
+    _GRAPH_NAV_BTN_H = 36
+    _GRAPH_NAV_COMBO_W = 96
+    _GRAPH_NAV_GAP = 8
 
     def _create_graph_nav_controls(self):
         """Create graph X-axis controls (window size and panning)."""
@@ -743,7 +815,7 @@ class MainScreenWidget(QWidget):
 
         self.graph_window_combo = QComboBox(self)
         for minutes in self._x_window_minutes_options:
-            self.graph_window_combo.addItem(f"{minutes}m", minutes)
+            self.graph_window_combo.addItem(f"{minutes} min", minutes)
         self.graph_window_combo.setCurrentIndex(
             self._x_window_minutes_options.index(self._x_window_minutes)
         )
@@ -798,21 +870,18 @@ class MainScreenWidget(QWidget):
         combo_w = self._GRAPH_NAV_COMBO_W
         gap = self._GRAPH_NAV_GAP
 
-        # Anchor time controls to the bottom-left corner of the drawn graph.
+        # Overlay the time controls in the graph's bottom-left corner, inside
+        # the reserved strip below the x-axis labels (see plot_bottom padding
+        # in _draw_temperature_graph), and right of the y-axis tick labels.
         if self.show_graph and not self.show_cartridge:
             margin = 10
-            bottom_safe = 76
             graph_x = margin
             graph_y = margin
-            graph_width = self.width() - (2 * margin)
-            if self.show_temp_controls:
-                graph_width -= 200
-            graph_width = max(220, graph_width)
-            graph_height = max(330, self.height() - (2 * margin) - bottom_safe)
-            left = graph_x + 6
-            top = graph_y + graph_height - btn_h - 6
+            graph_height = max(180, self.height() - (2 * margin))
+            left = graph_x + 40
+            top = graph_y + graph_height - btn_h - 4
         else:
-            top = max(10, self.height() - 116)
+            top = max(10, self.height() - btn_h - 8)
             left = 12
 
         self.graph_nav_left_button.move(left, top)
@@ -1292,35 +1361,44 @@ class Service2Tab(QWidget):
         self.digital_labels = {}
         self.temp_labels = {}
         self.pressure_labels = {}
+        self.pump_speed_rpm = 0
+        self.compressor_on = False
         self._create_widgets()
         self._setup_layout()
 
     def _create_widgets(self):
         self.digital_group = QGroupBox("Digital Sensors")
-        self.digital_group.setStyleSheet(ServiceTab._group_box_style("#3b82f6", "12px"))
+        self.digital_group.setStyleSheet(ServiceTab._group_box_style("#3b82f6", "10px", margin_top=6))
         for name in self.digital_sensor_names:
             label = QLabel(f"{name}: --")
             label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
             self.digital_labels[name] = label
 
         self.temp_group = QGroupBox("Temperature Sensors")
-        self.temp_group.setStyleSheet(ServiceTab._group_box_style("#f59e0b", "12px"))
+        self.temp_group.setStyleSheet(ServiceTab._group_box_style("#f59e0b", "10px", margin_top=6))
         for name in self.sensor_names:
             label = QLabel(f"{name}: --°C")
             label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
             self.temp_labels[name] = label
 
         self.pressure_group = QGroupBox("Pressure Sensors")
-        self.pressure_group.setStyleSheet(ServiceTab._group_box_style("#8b5cf6", "12px"))
+        self.pressure_group.setStyleSheet(ServiceTab._group_box_style("#8b5cf6", "10px", margin_top=6))
         for name in self.pressure_sensor_names:
             label = QLabel(f"{name}: -- mmHg")
             label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
             self.pressure_labels[name] = label
 
+        self.actuators_group = QGroupBox("Actuators")
+        self.actuators_group.setStyleSheet(ServiceTab._group_box_style("#0e6a76", "10px", margin_top=6))
+        self.pump_speed_label = QLabel("Pump: 0 RPM")
+        self.pump_speed_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+        self.compressor_label = QLabel("Compressor: OFF")
+        self.compressor_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+
     def _setup_layout(self):
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
+        main_layout.setSpacing(4)
 
         digital_layout = QHBoxLayout()
         for name in self.digital_sensor_names:
@@ -1344,8 +1422,39 @@ class Service2Tab(QWidget):
         self.pressure_group.setLayout(pressure_layout)
         main_layout.addWidget(self.pressure_group)
 
+        actuators_layout = QHBoxLayout()
+        actuators_layout.addWidget(self.pump_speed_label)
+        actuators_layout.addWidget(self.compressor_label)
+        self.actuators_group.setLayout(actuators_layout)
+        main_layout.addWidget(self.actuators_group)
+
         main_layout.addStretch()
         self.setLayout(main_layout)
+
+    def update_actuators(
+        self,
+        pump_speed_rpm: Optional[int] = None,
+        compressor_on: Optional[bool] = None,
+    ):
+        """Update pump speed and compressor status."""
+        if pump_speed_rpm is not None:
+            self.pump_speed_rpm = max(0, int(pump_speed_rpm))
+        if compressor_on is not None:
+            self.compressor_on = bool(compressor_on)
+
+        if self.pump_speed_rpm > 0:
+            pump_color = "#16a34a"
+            pump_text = f"Pump: {self.pump_speed_rpm} RPM"
+        else:
+            pump_color = "#6b7280"
+            pump_text = "Pump: 0 RPM (stopped)"
+        self.pump_speed_label.setText(pump_text)
+        self.pump_speed_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=pump_color))
+
+        comp_status = "ON" if self.compressor_on else "OFF"
+        comp_color = "#16a34a" if self.compressor_on else "#6b7280"
+        self.compressor_label.setText(f"Compressor: {comp_status}")
+        self.compressor_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=comp_color))
 
     def update_sensors(self, sensor_states: dict):
         """Update digital sensor display."""
@@ -1486,9 +1595,9 @@ class MultiTemperatureGraphWidget(QWidget):
             painter.drawLine(plot_left, py, plot_right, py)
             painter.setPen(QColor("#475569"))
             painter.drawText(
-                QRectF(graph_x + 2, py - 8, 38, 16),
+                QRectF(graph_x + 2, py - 8, 42, 16),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                f"{t:.1f}",
+                f"{t:.1f}°C",
             )
 
         # X labels
@@ -1497,7 +1606,7 @@ class MultiTemperatureGraphWidget(QWidget):
             ratio = i / 5.0
             px = int(plot_left + ratio * plot_width)
             mins_ago = int(round((1.0 - ratio) * self._x_window_minutes))
-            label = "now" if mins_ago == 0 else f"-{mins_ago}m"
+            label = "now" if mins_ago == 0 else f"-{mins_ago} min"
             painter.drawText(
                 QRectF(px - 18, plot_bottom + 4, 36, 14),
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
@@ -2248,6 +2357,8 @@ class MainScreen(QMainWindow):
         """)
         self.acknowledge_button.clicked.connect(self._on_acknowledge_clicked)
         self.acknowledge_button.setEnabled(False)
+        # Only shown while a fault is latched (see update_state_display).
+        self.acknowledge_button.setVisible(False)
 
         self.warnings_label = QLabel("")
         self.warnings_label.setStyleSheet("""
@@ -2289,8 +2400,8 @@ class MainScreen(QMainWindow):
         outer_layout.addWidget(content_frame, 1, 1, Qt.AlignmentFlag.AlignCenter)
 
         main_layout = QVBoxLayout(content_frame)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(8, 5, 8, 5)
+        main_layout.setSpacing(4)
         
         # Header row: state (left), error (right), then menu controls
         header_row = QHBoxLayout()
@@ -2464,6 +2575,8 @@ class MainScreen(QMainWindow):
         """Return to main screen from advanced settings page."""
         self.content_stack.setCurrentWidget(self.main_graph_widget)
         self._set_main_action_buttons_visible(True)
+        # Acknowledge stays hidden unless a fault is currently latched.
+        self.acknowledge_button.setVisible(getattr(self, "_in_error_state", False))
         self.to_main_menu_button.setVisible(False)
         self.state_label.setMinimumWidth(0)
         self.state_label.setMaximumWidth(16777215)
@@ -2539,6 +2652,8 @@ class MainScreen(QMainWindow):
             self.pumping_toggle_button.setEnabled(state_name == "Cooling")
         
         self._in_error_state = state_name == "Error"
+        # The acknowledge button only exists on screen while in Error.
+        self.acknowledge_button.setVisible(self._in_error_state)
         if not self._in_error_state:
             self.acknowledge_button.setEnabled(False)
 
@@ -2582,6 +2697,7 @@ class MainScreen(QMainWindow):
 
         # Keep compressor display stable unless updated by app logic.
         self.service_tab.update_outputs()
+        self.service2_tab.update_actuators()
     
     def set_status_message(self, message: str, is_error: bool = False):
         """No-op kept for API compatibility (status shown visually elsewhere)."""

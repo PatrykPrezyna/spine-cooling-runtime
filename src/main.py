@@ -632,10 +632,13 @@ class SensorMonitorApp(QObject):
             self._tick_in_progress = False
 
     def _update_stepper_ui_status(self):
-        """Push latest compressor + stepper values into the service tab."""
+        """Push latest compressor + stepper values into the service tabs."""
         if not self.ui or not self.stepper_driver:
             return
         heat_ex_c = self._heat_ex_temperature_c(self._last_temperatures)
+        actual_pump_speed_rpm = (
+            int(self.stepper_speed_rpm) if self.stepper_motor_running else 0
+        )
         self.ui.service_tab.update_outputs(
             compressor_on=self.compressor_on,
             compressor_control_enabled=self.compressor_control_enabled,
@@ -644,6 +647,10 @@ class SensorMonitorApp(QObject):
             heat_ex_temp_c=heat_ex_c,
             refresh_heat_ex=True,
             stepper_speed_rpm=self.stepper_speed_rpm,
+        )
+        self.ui.service2_tab.update_actuators(
+            pump_speed_rpm=actual_pump_speed_rpm,
+            compressor_on=self.compressor_on,
         )
 
     # ------------------------------------------------------------------
