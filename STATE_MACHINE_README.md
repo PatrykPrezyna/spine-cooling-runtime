@@ -217,20 +217,48 @@ self.ui.on_acknowledge_callback = self.on_acknowledge_error
 4. **User clicks "ACKNOWLEDGE ERROR"** → READY state
 5. **System ready to retry**
 
-### Simulation Mode Testing
+### Sensor Override Test UI
 
-In simulation mode, you can manually control sensors to test state transitions:
+Use the second **Sensor Override** window to inject sensor values at runtime for manual and automated testing. Works with both `--sim` and real hardware (values are merged at the read layer).
 
-1. Start application (INIT → READY)
-2. Go to Simulation tab
-3. Check all three sensors:
-   - ☑️ Cartridge In Place
-   - ☑️ Level Low
-   - ☑️ Level Critical
-4. System automatically transitions to COOLING
-5. Click "START PUMPING" → PUMPING state
-6. Uncheck "Cartridge In Place" → Returns to READY
-7. System handles transitions automatically
+```bash
+# Desktop dev — sim + override window
+python src/main.py --sim --test-ui
+
+# On Pi with real hardware
+python src/main.py --test-ui
+```
+
+**Manual test flow (good weather):**
+
+1. Start with `--sim --test-ui`
+2. In the override window, turn **Simulate** on for each digital sensor and set HIGH
+3. Verify main UI: READY → COOLING (all sensors HIGH)
+4. Click **START PUMPING** → PUMPING; turn **Simulate** on for a temperature channel to test PUMPING ↔ PUMPING SLOWLY
+
+**Manual test flow (fault):**
+
+1. Enter COOLING or PUMPING on the main UI
+2. Turn **Simulate** on for a sensor and set a fault value (e.g. Level Low = LOW)
+3. Verify ERROR state and acknowledge flow
+
+**Automated testing (no window):**
+
+```python
+from sensor_injection import SensorInjectionController
+from hardware_factory import build_hardware
+
+controller = SensorInjectionController(config)
+bundle = controller.wrap_bundle(build_hardware(config, simulation=True))
+controller.set_temperature_raw("CSF 2", 27.0)
+# Read injected values on the next IO tick via bundle.sensor_reader.read_all(), etc.
+```
+
+Override window controls:
+
+- Per digital sensor: **HIGH** checkbox + **Simulate** toggle
+- Per temperature/pressure channel: value spinbox + **Simulate** toggle
+- When **Simulate** is off, that sensor passes through to real/sim hardware readings
 
 ## Safety Features
 
@@ -275,7 +303,7 @@ sensors:
    - Check green state indicator
 
 2. **Test READY → COOLING:**
-   - Enable all three sensors in Simulation tab
+   - Start with `--test-ui` and enable **Simulate** + HIGH on all three digital sensors
    - Verify automatic transition to COOLING
    - Check purple state indicator
    - Verify "START PUMPING" button appears
@@ -292,7 +320,7 @@ sensors:
    - Check "START PUMPING" button reappears
 
 5. **Test Error Handling:**
-   - While in PUMPING, uncheck "Level Low"
+   - While in PUMPING, turn **Simulate** on for Level Low and set it LOW in the override window
    - Verify transition to ERROR
    - Check red state indicator
    - Verify error message displayed

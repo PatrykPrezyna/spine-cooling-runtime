@@ -32,6 +32,8 @@ from fault_catalog import FaultCode, Severity, get_fault, stop_priority
 from gui import MainScreen
 from hardware_factory import build_hardware
 from safety_rules import RuleContext, TelemetrySnapshot, evaluate, is_fault_still_active
+from sensor_injection import SensorInjectionController
+from sensor_override_ui import SensorOverrideWindow
 from state_machine import State, StateMachine
 
 
@@ -117,10 +119,17 @@ class SensorMonitorApp(QObject):
     # Payload: (stepper_motor_running, peristaltic_pump_set_speed_rpm, set_temperature_c).
     request_io_tick = pyqtSignal(bool, int, float, int)
 
-    def __init__(self, config_path: str = "config.yaml", *, simulation: bool = False):
+    def __init__(
+        self,
+        config_path: str = "config.yaml",
+        *,
+        simulation: bool = False,
+        test_ui_enabled: bool = False,
+    ):
         super().__init__()
         self.config_path = Path(config_path)
         self.simulation = bool(simulation)
+        self.test_ui_enabled = bool(test_ui_enabled)
         self.config = self._load_config(config_path)
         self.temperature_sensor_names = self._temperature_sensor_names_from_config(self.config)
         self.primary_temperature_label = (
@@ -130,6 +139,8 @@ class SensorMonitorApp(QObject):
         )
 
         self.sensor_reader: Any = None
+        self.sensor_injection: Optional[SensorInjectionController] = None
+        self.override_ui: Optional[SensorOverrideWindow] = None
         self.csv_logger: Optional[CSVLogger] = None
         self.ui: Optional[MainScreen] = None
         self.state_machine: Optional[StateMachine] = None
@@ -210,6 +221,9 @@ class SensorMonitorApp(QObject):
             self.state_machine.on_state_change = self._on_state_changed
 
             bundle = build_hardware(self.config, simulation=self.simulation)
+            if self.test_ui_enabled:
+                self.sensor_injection = SensorInjectionController(self.config)
+                bundle = self.sensor_injection.wrap_bundle(bundle)
             self.sensor_reader = bundle.sensor_reader
             self.thermocouple_reader = bundle.thermocouple_reader
             self.pressure_reader = bundle.pressure_reader
@@ -819,6 +833,10 @@ class SensorMonitorApp(QObject):
             self.ui.update_timer.start(self.UPDATE_INTERVAL_MS)
             self.ui.show()
 
+            if self.test_ui_enabled and self.sensor_injection is not None:
+                self.override_ui = SensorOverrideWindow(self.config, self.sensor_injection)
+                self.override_ui.show()
+
             if self.stepper_driver:
                 self._update_stepper_ui_status()
 
@@ -856,6 +874,11 @@ def main() -> int:
         help="Use in-memory hardware fakes (no Raspberry Pi required)",
     )
     parser.add_argument(
+        "--test-ui",
+        action="store_true",
+        help="Open sensor override window for manual/automated test injection",
+    )
+    parser.add_argument(
         "--config",
         default="config.yaml",
         help="Path to config.yaml (default: config.yaml)",
@@ -867,10 +890,16 @@ def main() -> int:
     print("Medical Device Prototype")
     if args.sim:
         print("Mode: SIMULATION")
+    if args.test_ui:
+        print("Test UI: sensor override window enabled")
     print("=" * 50)
     print()
 
-    app = SensorMonitorApp(config_path=args.config, simulation=args.sim)
+    app = SensorMonitorApp(
+        config_path=args.config,
+        simulation=args.sim,
+        test_ui_enabled=args.test_ui,
+    )
     exit_code = app.run()
 
     print()

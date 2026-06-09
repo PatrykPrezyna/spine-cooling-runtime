@@ -32,6 +32,10 @@ class SimSensorReader:
     def read_all(self) -> Dict[str, bool]:
         return dict(self.sensor_states)
 
+    def set_state(self, name: str, active: bool) -> None:
+        if name in self.sensor_states:
+            self.sensor_states[name] = bool(active)
+
     def cleanup(self) -> None:
         self.is_initialized = False
 
@@ -94,6 +98,8 @@ class SimThermocoupleReader:
         self._cart_initial_c = float(sim_cfg.get("cart_initial_c", 22.0))
         self._cart_in_rise_rate_c_per_s = float(sim_cfg.get("cart_in_rise_rate_c_per_s", 0.2))
         self._last_advance_time = time.monotonic()
+        self.physics_enabled = True
+        self._frozen_labels: set[str] = set()
 
         if not self.enabled:
             self.last_error = "Thermocouple reader disabled by config"
@@ -129,6 +135,9 @@ class SimThermocoupleReader:
         pump_running: bool = False,
     ) -> None:
         """Advance simulated temperatures since the last tick."""
+        if not self.physics_enabled:
+            return
+
         now = time.monotonic()
         elapsed = max(0.0, now - self._last_advance_time)
         self._last_advance_time = now
@@ -139,6 +148,8 @@ class SimThermocoupleReader:
         self._advance_csf(bool(pump_running), elapsed)
 
     def _advance_csf(self, pump_running: bool, elapsed: float) -> None:
+        if self._csf_label in self._frozen_labels:
+            return
         if self._csf_label not in self._last_raw_temperatures:
             return
 
@@ -162,6 +173,8 @@ class SimThermocoupleReader:
         self._apply_calibration_for_label(self._csf_label)
 
     def _advance_heat_ex(self, compressor_on: bool, elapsed: float) -> None:
+        if self._heat_ex_label in self._frozen_labels:
+            return
         if self._heat_ex_label not in self._last_raw_temperatures:
             return
 
@@ -181,6 +194,8 @@ class SimThermocoupleReader:
         self._update_cart_out(pump_running)
 
     def _advance_cart_in(self, elapsed: float) -> None:
+        if self._cart_in_label in self._frozen_labels:
+            return
         if self._cart_in_label not in self._last_raw_temperatures:
             return
         if self._csf_label not in self._last_raw_temperatures:
@@ -197,6 +212,8 @@ class SimThermocoupleReader:
         self._apply_calibration_for_label(self._cart_in_label)
 
     def _update_cart_out(self, pump_running: bool) -> None:
+        if self._cart_out_label in self._frozen_labels:
+            return
         if self._cart_out_label not in self._last_raw_temperatures:
             return
         if self._cart_in_label not in self._last_raw_temperatures:
@@ -276,6 +293,16 @@ class SimThermocoupleReader:
     def get_last_raw_temperatures(self) -> Dict[str, float]:
         return dict(self._last_raw_temperatures)
 
+    def set_raw_temperature(self, label: str, raw_c: float) -> None:
+        if label not in self._last_raw_temperatures:
+            return
+        self._last_raw_temperatures[label] = float(raw_c)
+        self._frozen_labels.add(label)
+        self._apply_calibration_for_label(label)
+
+    def release_temperature(self, label: str) -> None:
+        self._frozen_labels.discard(label)
+
     def set_channel_two_point_calibration(
         self,
         channel: int,
@@ -346,6 +373,10 @@ class SimPressureReader:
         if not self.is_initialized:
             return {}
         return dict(self._pressures)
+
+    def set_pressure(self, label: str, value: float) -> None:
+        if label in self._pressures:
+            self._pressures[label] = float(value)
 
     def cleanup(self) -> None:
         self.is_initialized = False
