@@ -908,8 +908,7 @@ class ServiceTab(QWidget):
         stepper_cfg = stepper_config or {}
         compressor_cfg = compressor_config or {}
 
-        # Sensor + output state
-        self.sensor_states: dict = {}
+        # Output state
         self.compressor_on = False
         self.compressor_control_enabled = False
         self.compressor_off_temp_c = int(compressor_cfg.get("off_below_temp_c", 5))
@@ -932,18 +931,6 @@ class ServiceTab(QWidget):
     
     def _create_widgets(self):
         """Create service tab widgets"""
-        # Sensors group
-        self.sensors_group = QGroupBox("Digital Sensors")
-        self.sensors_group.setStyleSheet(self._group_box_style("#3b82f6", "12px"))
-        
-        # Sensor labels
-        self.sensor_labels = {}
-        sensor_names = ['Level Low', 'Level Critical', 'Cartridge In Place']
-        for name in sensor_names:
-            label = QLabel(f"{name}: --")
-            label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-            self.sensor_labels[name] = label
-        
         # Compressor group
         self.compressor_group = QGroupBox("Compressor")
         self.compressor_group.setStyleSheet(self._group_box_style("#16a34a", "12px"))
@@ -1056,14 +1043,7 @@ class ServiceTab(QWidget):
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(1, 1, 1, 1)
         main_layout.setSpacing(1)
-        
-        # Sensors layout - horizontal arrangement
-        sensors_layout = QHBoxLayout()
-        for name in ['Level Low', 'Level Critical', 'Cartridge In Place']:
-            sensors_layout.addWidget(self.sensor_labels[name])
-        self.sensors_group.setLayout(sensors_layout)
-        main_layout.addWidget(self.sensors_group)
-        
+
         # Compressor layout
         compressor_layout = QVBoxLayout()
         compressor_layout.setContentsMargins(2, 1, 2, 1)
@@ -1113,17 +1093,7 @@ class ServiceTab(QWidget):
         main_layout.addStretch()
         
         self.setLayout(main_layout)
-    
-    def update_sensors(self, sensor_states: dict):
-        """Update sensor display"""
-        self.sensor_states = sensor_states
-        for name, state in sensor_states.items():
-            if name in self.sensor_labels:
-                status = "HIGH" if state else "LOW"
-                color = "#16a34a" if state else "#dc2626"
-                self.sensor_labels[name].setText(f"{name}: {status}")
-                self.sensor_labels[name].setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
-    
+
     def update_outputs(
         self,
         compressor_on: bool = None,
@@ -1291,16 +1261,18 @@ class ServiceTab(QWidget):
 
 
 class Service2Tab(QWidget):
-    """Animal Study tab showing temperature and pressure channels."""
+    """Animal Study tab showing digital, temperature, and pressure channels."""
     _LABEL_NEUTRAL_STYLE = "font-size: 12px; padding: 6px; color: #5c6b79;"
     _LABEL_STRONG_TEMPLATE = "font-size: 12px; padding: 6px; color: {color}; font-weight: 600;"
 
     _DEFAULT_PRESSURE_SENSOR_NAMES = ("Pressure 1", "Pressure 2")
+    _DEFAULT_DIGITAL_SENSOR_NAMES = ("Level Low", "Level Critical", "Cartridge In Place")
 
     def __init__(
         self,
         sensor_names: list[str],
         pressure_sensor_names: Optional[list[str]] = None,
+        digital_sensor_names: Optional[list[str]] = None,
     ):
         super().__init__()
         self.sensor_names = list(sensor_names)
@@ -1309,14 +1281,28 @@ class Service2Tab(QWidget):
             if pressure_sensor_names is not None
             else self._DEFAULT_PRESSURE_SENSOR_NAMES
         )
+        self.digital_sensor_names = list(
+            digital_sensor_names
+            if digital_sensor_names is not None
+            else self._DEFAULT_DIGITAL_SENSOR_NAMES
+        )
+        self.sensor_states: dict = {}
         self.temp_values = {name: float("nan") for name in self.sensor_names}
         self.pressure_values = {name: float("nan") for name in self.pressure_sensor_names}
+        self.digital_labels = {}
         self.temp_labels = {}
         self.pressure_labels = {}
         self._create_widgets()
         self._setup_layout()
 
     def _create_widgets(self):
+        self.digital_group = QGroupBox("Digital Sensors")
+        self.digital_group.setStyleSheet(ServiceTab._group_box_style("#3b82f6", "12px"))
+        for name in self.digital_sensor_names:
+            label = QLabel(f"{name}: --")
+            label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+            self.digital_labels[name] = label
+
         self.temp_group = QGroupBox("Temperature Sensors")
         self.temp_group.setStyleSheet(ServiceTab._group_box_style("#f59e0b", "12px"))
         for name in self.sensor_names:
@@ -1336,10 +1322,11 @@ class Service2Tab(QWidget):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
 
-        overview_page = QWidget()
-        overview_layout = QVBoxLayout()
-        overview_layout.setContentsMargins(0, 0, 0, 0)
-        overview_layout.setSpacing(10)
+        digital_layout = QHBoxLayout()
+        for name in self.digital_sensor_names:
+            digital_layout.addWidget(self.digital_labels[name])
+        self.digital_group.setLayout(digital_layout)
+        main_layout.addWidget(self.digital_group)
 
         temp_layout = QGridLayout()
         for index, name in enumerate(self.sensor_names):
@@ -1359,6 +1346,18 @@ class Service2Tab(QWidget):
 
         main_layout.addStretch()
         self.setLayout(main_layout)
+
+    def update_sensors(self, sensor_states: dict):
+        """Update digital sensor display."""
+        self.sensor_states = sensor_states
+        for name, state in sensor_states.items():
+            label = self.digital_labels.get(name)
+            if label is None:
+                continue
+            status = "HIGH" if state else "LOW"
+            color = "#16a34a" if state else "#dc2626"
+            label.setText(f"{name}: {status}")
+            label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
 
     def update_temperatures(self, temps: Optional[dict] = None):
         """Update temperature display with real thermocouple values."""
@@ -1950,6 +1949,10 @@ class MainScreen(QMainWindow):
         return None
 
     @staticmethod
+    def _digital_sensor_names_from_config(config: dict) -> list[str]:
+        return [str(s["name"]) for s in config.get("sensors", []) if s.get("name")]
+
+    @staticmethod
     def _pressure_sensor_names_from_config(config: dict) -> list[str]:
         ps_cfg = config.get("pressure_sensors", {})
         channels = ps_cfg.get("channels", [])
@@ -2091,11 +2094,13 @@ class MainScreen(QMainWindow):
         self.service_tab.on_compressor_control_toggle_callback = self._on_service_compressor_control_toggle
         self.service_tab.on_compressor_thresholds_change_callback = self._on_service_compressor_thresholds_change
 
-        # Service 2 tab (temperature channels)
+        # Service 2 tab (Animal Study — digital, temperature, pressure)
         pressure_sensor_names = self._pressure_sensor_names_from_config(self.config)
+        digital_sensor_names = self._digital_sensor_names_from_config(self.config)
         self.service2_tab = Service2Tab(
             self.temperature_sensor_names,
             pressure_sensor_names=pressure_sensor_names,
+            digital_sensor_names=digital_sensor_names,
         )
         temp_series_names = ["Set Temp", *self.temperature_sensor_names]
         self.calibration_tab = CalibrationTab(self.temperature_sensor_names)
@@ -2216,7 +2221,7 @@ class MainScreen(QMainWindow):
 
         # Pumping toggle button - acts as "START PUMPING" in Cooling state
         # and "STOP PUMPING" in Pumping state. Disabled in other states.
-        self.pumping_toggle_button = QPushButton("START PUMPING")
+        self.pumping_toggle_button = QPushButton("START COOLING")#pumping = cooling patient
         self.pumping_toggle_button.setMinimumHeight(52)
         self.pumping_toggle_button.clicked.connect(self._on_pumping_toggle_clicked)
         self.pumping_toggle_button.setEnabled(False)
@@ -2525,11 +2530,11 @@ class MainScreen(QMainWindow):
         
         # Update unified pumping toggle button (label + style + enabled state)
         if state_name in ("Pumping", "Pumping Slowly"):
-            self.pumping_toggle_button.setText("STOP PUMPING")
+            self.pumping_toggle_button.setText("STOP COOLING")
             self._apply_pumping_button_style(active=True)
             self.pumping_toggle_button.setEnabled(True)
         else:
-            self.pumping_toggle_button.setText("START PUMPING")
+            self.pumping_toggle_button.setText("START COOLING")
             self._apply_pumping_button_style(active=False)
             self.pumping_toggle_button.setEnabled(state_name == "Cooling")
         
@@ -2550,7 +2555,7 @@ class MainScreen(QMainWindow):
         pressures: Optional[dict] = None,
     ):
         """Update sensor display"""
-        self.service_tab.update_sensors(sensor_states)
+        self.service2_tab.update_sensors(sensor_states)
         self.service2_tab.update_temperatures(temperatures)
         self.service2_tab.update_pressures(pressures)
         self.calibration_tab.update_current_temperatures(raw_temperatures, temperatures)
