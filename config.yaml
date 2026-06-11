@@ -15,8 +15,8 @@ simulation:
   csf_min_c: 25.0
   csf_rate_c_per_s: 0.1
   csf_cart_out_scale: 0.05
-  csf_min_effective_pump_speed_rpm: 30
-  csf_pump_speed_ref_rpm: 120
+  csf_min_effective_pump_speed_rpm: 20
+  csf_pump_speed_ref_rpm: 60
   heat_ex_label: Heat Ex
   heat_ex_initial_c: 22.0
   heat_ex_max_c: 22.0
