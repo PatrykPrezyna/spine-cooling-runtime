@@ -125,8 +125,8 @@ stepper_motor:
   driver: TB6600
   steps_per_revolution: 200
   microstepping: 16
-  default_speed_rpm: 30
-  pumping_speed_rpm: 120
+  default_speed_rpm: 20
+  pumping_speed_rpm: 60
   pumping_slow_speed_rpm: 20
   max_speed_rpm: 240
   continuous_direction: -1
