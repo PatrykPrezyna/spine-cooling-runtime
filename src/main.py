@@ -117,8 +117,6 @@ class SensorMonitorApp(QObject):
     """Top-level application coordinator (lives on the GUI thread)."""
 
     UPDATE_INTERVAL_MS = 100
-    # TEMP workaround: ignore Heat Ex readings briefly after compressor toggles.
-    COMPRESSOR_HEAT_EX_SETTLE_S = 3.0
 
     # Emitted on every UI tick to ask the IO worker thread to do its work.
     # Payload: (stepper_motor_running, peristaltic_pump_set_speed_rpm, set_temperature_c).
@@ -166,7 +164,6 @@ class SensorMonitorApp(QObject):
         self.compressor_heat_ex_label: str = str(compressor_cfg.get('heat_ex_label', 'Heat Ex'))
         self.compressor_off_temp_c: float = float(compressor_cfg.get('off_below_temp_c', 5))
         self.compressor_on_temp_c: float = float(compressor_cfg.get('on_above_temp_c', 10))
-        self._compressor_heat_ex_ignore_until: float = 0.0
         self._last_temperatures: dict = {}
         self._last_sensor_states: dict = {}
         self._last_pressures: dict = {}
@@ -319,13 +316,7 @@ class SensorMonitorApp(QObject):
 
     def _set_compressor_running(self, on: bool) -> None:
         """Drive compressor relay (IO6 active-low)."""
-        on = bool(on)
-        if on != self.compressor_on:
-            # TEMP workaround: settle window before Heat Ex hysteresis reacts again.
-            self._compressor_heat_ex_ignore_until = (
-                time.monotonic() + self.COMPRESSOR_HEAT_EX_SETTLE_S
-            )
-        self.compressor_on = on
+        self.compressor_on = bool(on)
         self._set_compressor_relay_io6_high(not on)
 
     def _heat_ex_temperature_c(self, temperatures: dict) -> Optional[float]:
@@ -342,10 +333,6 @@ class SensorMonitorApp(QObject):
         if not self.compressor_control_enabled:
             self.compressor_latched_on = False
             self._set_compressor_running(False)
-            return
-
-        # TEMP workaround: skip Heat Ex samples right after compressor on/off toggles.
-        if time.monotonic() < self._compressor_heat_ex_ignore_until:
             return
 
         temp_c = self._heat_ex_temperature_c(temperatures)
@@ -392,7 +379,6 @@ class SensorMonitorApp(QObject):
         self._set_compressor_running(False)
         self.compressor_control_enabled = False
         self.compressor_latched_on = False
-        self._compressor_heat_ex_ignore_until = 0.0
         self.thermocouple_reader = None
         self.pressure_reader = None
 
