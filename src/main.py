@@ -116,7 +116,7 @@ class _BackgroundIOWorker(QObject):
 class SensorMonitorApp(QObject):
     """Top-level application coordinator (lives on the GUI thread)."""
 
-    UPDATE_INTERVAL_MS = 1000
+    UPDATE_INTERVAL_MS = 100
 
     # Emitted on every UI tick to ask the IO worker thread to do its work.
     # Payload: (stepper_motor_running, peristaltic_pump_set_speed_rpm, set_temperature_c).
