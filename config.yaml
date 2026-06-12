@@ -1,6 +1,6 @@
-control_temp_label: CSF 2
+control_temp_label: CSF
 alarms:
-  csf_label: CSF 2
+  csf_label: CSF
   csf_low_temp_c: 28.0
   heat_ex_label: Heat Ex
   heat_ex_min_c: -10.0
@@ -9,7 +9,7 @@ alarms:
   cooling_ineffective_csf_delta_c: 0.2
   battery_low_pct: 20
 simulation:
-  csf_label: CSF 2
+  csf_label: CSF
   csf_initial_c: 37.0
   csf_max_c: 37.0
   csf_min_c: 25.0
@@ -71,10 +71,10 @@ thermocouples:
   - 7
   - 8
   labels:
-    1: CSF 2
-    2: CSF
-    3: Cart In
-    4: Cart Out
+    1: CSF
+    2: CSF 2
+    3: Cart Out
+    4: Cart In
     5: Heat Ex
     6: Heat Ex 2
     7: Temp 7
@@ -85,8 +85,8 @@ thermocouples:
       measured_at_100c: 100.0
     channels:
       1:
-        measured_at_0c: 1.0
-        measured_at_100c: 99.0
+        measured_at_0c: 0.0
+        measured_at_100c: 100.0
 pressure_sensors:
   enabled: true
   i2c_address: 72
