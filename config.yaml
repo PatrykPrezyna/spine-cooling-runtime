@@ -126,9 +126,11 @@ stepper_motor:
   steps_per_revolution: 200
   microstepping: 16
   default_speed_rpm: 20
-  pumping_speed_rpm: 60
+  pumping_speed_rpm: 120
   pumping_slow_speed_rpm: 20
   max_speed_rpm: 240
+  min_pump_speed_rpm: 120
+  ramp_start_fraction: 0.5
   continuous_direction: -1
   enable_on_startup: false
   disable_on_idle: true

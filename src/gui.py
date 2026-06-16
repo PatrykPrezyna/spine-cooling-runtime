@@ -985,6 +985,10 @@ class ServiceTab(QWidget):
         self.heat_ex_temp_c: Optional[float] = None
         self.stepper_speed_rpm = int(stepper_cfg.get("default_speed_rpm", 30))
         self.stepper_max_speed_rpm = max(5, int(stepper_cfg.get("max_speed_rpm", 60)))
+        self.stepper_min_speed_rpm = max(
+            5,
+            int(stepper_cfg.get("min_pump_speed_rpm", 0) or 0),
+        )
         self.stepper_continuous_on: bool = False
 
         # Callbacks (set by the host window).
@@ -1062,12 +1066,20 @@ class ServiceTab(QWidget):
         self.stepper_speed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.stepper_speed_slider = QSlider(Qt.Orientation.Horizontal)
-        self.stepper_speed_slider.setRange(5, self.stepper_max_speed_rpm)
+        self.stepper_speed_slider.setRange(
+            min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm),
+            self.stepper_max_speed_rpm,
+        )
         self.stepper_speed_slider.setTickInterval(10)
         self.stepper_speed_slider.setSingleStep(1)
         self.stepper_speed_slider.setPageStep(10)
         self.stepper_speed_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.stepper_speed_slider.setValue(max(5, min(self.stepper_max_speed_rpm, self.stepper_speed_rpm)))
+        self.stepper_speed_slider.setValue(
+            max(
+                min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm),
+                min(self.stepper_max_speed_rpm, self.stepper_speed_rpm),
+            )
+        )
         self.stepper_speed_slider.setMinimumHeight(52)
         self.stepper_speed_slider.setStyleSheet("""
             QSlider::groove:horizontal {

@@ -561,13 +561,27 @@ class SensorMonitorApp(QObject):
             self.compressor_latched_on = False
             self._set_compressor_running(False)
 
+    def _clamp_pump_speed_rpm(self, speed_rpm: int, *, enforce_min: bool = True) -> int:
+        """Clamp requested pump speed to driver limits and optional minimum."""
+        requested = max(1, int(speed_rpm))
+        if self.stepper_driver:
+            requested = min(requested, int(self.stepper_driver.max_speed_rpm))
+        if enforce_min:
+            min_rpm = int(self.config.get("stepper_motor", {}).get("min_pump_speed_rpm", 0) or 0)
+            if min_rpm > 0:
+                requested = max(min_rpm, requested)
+        return requested
+
     def _apply_state_driven_stepper_control(self, state: State):
         """Drive the stepper from state machine transitions."""
         if state == State.PUMPING:
-            self.stepper_speed_rpm = self.pumping_stepper_speed_rpm
+            self.stepper_speed_rpm = self._clamp_pump_speed_rpm(self.pumping_stepper_speed_rpm)
             self.on_stepper_continuous_toggle(True)
         elif state == State.PUMPING_SLOWLY:
-            self.stepper_speed_rpm = self.pumping_slow_stepper_speed_rpm
+            self.stepper_speed_rpm = self._clamp_pump_speed_rpm(
+                self.pumping_slow_stepper_speed_rpm,
+                enforce_min=False,
+            )
             self.on_stepper_continuous_toggle(True)
         elif self.stepper_continuous_forward:
             self.on_stepper_continuous_toggle(False)
@@ -699,12 +713,15 @@ class SensorMonitorApp(QObject):
         self.state_machine.acknowledge_error()
 
     def on_stepper_speed_changed(self, speed_rpm: int):
-        requested_speed = int(speed_rpm)
-        if self.stepper_driver:
-            requested_speed = min(requested_speed, int(self.stepper_driver.max_speed_rpm))
-        self.stepper_speed_rpm = max(1, requested_speed)
+        enforce_min = (
+            self.state_machine is not None
+            and self.state_machine.get_current_state() == State.PUMPING
+        )
+        self.stepper_speed_rpm = self._clamp_pump_speed_rpm(
+            speed_rpm,
+            enforce_min=enforce_min,
+        )
         if self.stepper_continuous_forward and self.stepper_driver:
-            # Update target speed without restarting the continuous ramp from zero.
             self.stepper_driver.set_continuous_speed(self.stepper_speed_rpm)
         if self.ui:
             self._update_stepper_ui_status()

@@ -75,6 +75,7 @@ class TB6600Driver:
         self.max_speed_rpm: float = stepper_cfg.get('max_speed_rpm', 60)
         self.ramp_seconds: float = float(stepper_cfg.get('ramp_seconds', 1.0))
         self.ramp_start_rpm: float = float(stepper_cfg.get('ramp_start_rpm', 5.0))
+        self.ramp_start_fraction: float = float(stepper_cfg.get('ramp_start_fraction', 0.5))
         self.disable_on_idle: bool = stepper_cfg.get('disable_on_idle', True)
         self.enable_on_startup: bool = stepper_cfg.get('enable_on_startup', False)
         if self.ramp_seconds < 0:
@@ -92,6 +93,7 @@ class TB6600Driver:
         self._continuous_direction: int = 1
         self._continuous_target_rpm: float = 0.0
         self._continuous_current_rpm: float = 0.0
+        self._continuous_force_pwm_update: bool = False
 
         # pigpio daemon is required (no RPi.GPIO fallback).
         self._pi = None
@@ -400,10 +402,17 @@ class TB6600Driver:
             run_ramp_seconds = (
                 self.ramp_seconds if ramp_seconds is None else max(0.0, float(ramp_seconds))
             )
-            run_start_rpm = self.ramp_start_rpm if start_rpm is None else float(start_rpm)
+            if start_rpm is None:
+                run_start_rpm = max(
+                    self.ramp_start_rpm,
+                    run_speed * self.ramp_start_fraction,
+                )
+            else:
+                run_start_rpm = float(start_rpm)
             self._continuous_direction = run_direction
             self._continuous_target_rpm = run_speed
             self._continuous_current_rpm = max(0.1, min(run_start_rpm, run_speed))
+            self._continuous_force_pwm_update = True
             self._continuous_thread = Thread(
                 target=self._continuous_loop,
                 args=(run_ramp_seconds,),
@@ -417,7 +426,12 @@ class TB6600Driver:
         with self._lock:
             if not self._continuous_thread or not self._continuous_thread.is_alive():
                 return
-            self._continuous_target_rpm = self._resolve_speed_rpm(speed_rpm)
+            resolved = self._resolve_speed_rpm(speed_rpm)
+            self._continuous_target_rpm = resolved
+            # Apply immediately so slider changes reach the STEP output without
+            # waiting for the startup ramp to catch up.
+            self._continuous_current_rpm = resolved
+            self._continuous_force_pwm_update = True
 
     def stop_continuous(self) -> None:
         """Stop continuous stepping loop."""
@@ -441,6 +455,7 @@ class TB6600Driver:
         self._continuous_thread = None
         self._continuous_target_rpm = 0.0
         self._continuous_current_rpm = 0.0
+        self._continuous_force_pwm_update = False
 
     def _continuous_loop(self, ramp_seconds: float) -> None:
         """Background step loop used for true continuous movement."""
@@ -502,9 +517,26 @@ class TB6600Driver:
                     last_freq_hz = -1  # force re-apply
                 current_rpm = advance_ramp(target_rpm)
                 target_hz = max(1, int(round(self._frequency_from_rpm(current_rpm))))
-                if target_hz != last_freq_hz:
-                    pi.set_PWM_frequency(self.pin_step, target_hz)
-                    last_freq_hz = target_hz
+                force_update = False
+                with self._lock:
+                    if self._continuous_force_pwm_update:
+                        force_update = True
+                        self._continuous_force_pwm_update = False
+                if force_update or target_hz != last_freq_hz:
+                    try:
+                        if force_update:
+                            pi.set_PWM_dutycycle(self.pin_step, 0)
+                            pi.write(self.pin_step, 0)
+                            time.sleep(0.000002)
+                        actual_hz = pi.set_PWM_frequency(self.pin_step, target_hz)
+                        last_freq_hz = int(actual_hz) if actual_hz and actual_hz > 0 else target_hz
+                        if force_update:
+                            pi.set_PWM_dutycycle(self.pin_step, self._PIGPIO_PWM_DUTY)
+                    except Exception as exc:
+                        print(
+                            f"{self.DRIVER_NAME}: PWM frequency update failed "
+                            f"({target_hz} Hz): {exc}"
+                        )
                 # Polling interval for smooth ramp updates without high CPU load.
                 self._sleep_precise(0.02)
         finally:
