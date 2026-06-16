@@ -86,7 +86,19 @@ thermocouples:
     channels:
       1:
         measured_at_0c: 0.0
-        measured_at_100c: 100.0
+        measured_at_100c: 97.7
+      2:
+        measured_at_0c: 0.3
+        measured_at_100c: 99.1
+      6:
+        measured_at_0c: 0.3
+        measured_at_100c: 98.3
+      7:
+        measured_at_0c: -0.3
+        measured_at_100c: 98.3
+      8:
+        measured_at_0c: 1.7
+        measured_at_100c: 89.5
 pressure_sensors:
   enabled: true
   i2c_address: 72
@@ -111,8 +123,8 @@ pressure_sensors:
 compressor:
   relay_pin: 6
   heat_ex_label: Heat Ex
-  off_below_temp_c: 3
-  on_above_temp_c: 7.0
+  off_below_temp_c: -11
+  on_above_temp_c: -9.0
 logging:
   csv_directory: data/csv
   filename_format: sensor_log_%Y%m%d_%H%M%S.csv
@@ -126,11 +138,9 @@ stepper_motor:
   steps_per_revolution: 200
   microstepping: 16
   default_speed_rpm: 20
-  pumping_speed_rpm: 120
+  pumping_speed_rpm: 60
   pumping_slow_speed_rpm: 20
   max_speed_rpm: 240
-  min_pump_speed_rpm: 120
-  ramp_start_fraction: 0.5
   continuous_direction: -1
   enable_on_startup: false
   disable_on_idle: true
