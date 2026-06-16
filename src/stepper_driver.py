@@ -93,7 +93,6 @@ class TB6600Driver:
         self._continuous_direction: int = 1
         self._continuous_target_rpm: float = 0.0
         self._continuous_current_rpm: float = 0.0
-        self._continuous_force_pwm_update: bool = False
 
         # pigpio daemon is required (no RPi.GPIO fallback).
         self._pi = None
@@ -412,7 +411,6 @@ class TB6600Driver:
             self._continuous_direction = run_direction
             self._continuous_target_rpm = run_speed
             self._continuous_current_rpm = max(0.1, min(run_start_rpm, run_speed))
-            self._continuous_force_pwm_update = True
             self._continuous_thread = Thread(
                 target=self._continuous_loop,
                 args=(run_ramp_seconds,),
@@ -431,7 +429,6 @@ class TB6600Driver:
             # Apply immediately so slider changes reach the STEP output without
             # waiting for the startup ramp to catch up.
             self._continuous_current_rpm = resolved
-            self._continuous_force_pwm_update = True
 
     def stop_continuous(self) -> None:
         """Stop continuous stepping loop."""
@@ -445,6 +442,7 @@ class TB6600Driver:
             try:
                 pi = self._pi
                 assert pi is not None
+                pi.wave_tx_stop()
                 pi.set_PWM_dutycycle(self.pin_step, 0)
                 pi.write(self.pin_step, 0)
             except Exception:
@@ -455,10 +453,39 @@ class TB6600Driver:
         self._continuous_thread = None
         self._continuous_target_rpm = 0.0
         self._continuous_current_rpm = 0.0
-        self._continuous_force_pwm_update = False
+
+    def _half_period_us_for_rpm(self, rpm: float) -> int:
+        """Half the STEP period (microseconds) for the given RPM."""
+        freq_hz = max(1.0, self._frequency_from_rpm(max(0.1, float(rpm))))
+        return max(1, int(round(1_000_000.0 / freq_hz / 2.0)))
+
+    def _build_square_wave(self, half_period_us: int) -> Optional[int]:
+        """Create a repeating 50%-duty STEP square wave; return its wave id.
+
+        Uses pigpio waveforms (1 us resolution) instead of ``set_PWM_frequency``.
+        Soft-PWM only offers ~18 discrete frequencies, so step rates snap to
+        coarse values (e.g. every RPM from ~56 to ~112 collapses onto 4000 Hz,
+        then jumps to 8000 Hz). Waves give effectively continuous step rates.
+        """
+        pi = self._pi
+        if pi is None:
+            return None
+        half = max(1, int(half_period_us))
+        try:
+            pi.wave_add_new()
+            pi.wave_add_generic(
+                [
+                    pigpio.pulse(1 << self.pin_step, 0, half),  # type: ignore[union-attr]
+                    pigpio.pulse(0, 1 << self.pin_step, half),  # type: ignore[union-attr]
+                ]
+            )
+            return pi.wave_create()
+        except Exception as exc:
+            print(f"{self.DRIVER_NAME}: wave create failed ({half} us half-period): {exc}")
+            return None
 
     def _continuous_loop(self, ramp_seconds: float) -> None:
-        """Background step loop used for true continuous movement."""
+        """Background step loop using pigpio waveforms for true continuous movement."""
         pi = self._pi
         assert pi is not None
 
@@ -492,54 +519,75 @@ class TB6600Driver:
             return self._continuous_current_rpm
 
         current_direction, _ = current_state()
+        active_wid: Optional[int] = None
+        last_half_us = -1
         try:
+            pi.wave_tx_stop()
+            pi.wave_clear()
             pi.write(self.pin_dir, 1 if current_direction > 0 else 0)
             time.sleep(0.000002)
-            initial_hz = max(1, int(round(self._frequency_from_rpm(self._continuous_current_rpm))))
-            applied_hz = pi.set_PWM_frequency(self.pin_step, initial_hz)
-            del applied_hz  # actual frequency picked by pigpio; we don't need it here
-            pi.set_PWM_dutycycle(self.pin_step, self._PIGPIO_PWM_DUTY)
         except Exception as exc:
-            print(f"{self.DRIVER_NAME}: pigpio start failed: {exc}")
+            print(f"{self.DRIVER_NAME}: wave init failed: {exc}")
             return
 
-        last_freq_hz = -1
         try:
             while not self._continuous_stop_event.is_set():
                 direction, target_rpm = current_state()
                 if direction != current_direction:
                     current_direction = direction
-                    pi.set_PWM_dutycycle(self.pin_step, 0)
-                    pi.write(self.pin_step, 0)
                     pi.write(self.pin_dir, 1 if current_direction > 0 else 0)
                     time.sleep(0.000002)
-                    pi.set_PWM_dutycycle(self.pin_step, self._PIGPIO_PWM_DUTY)
-                    last_freq_hz = -1  # force re-apply
+
                 current_rpm = advance_ramp(target_rpm)
-                target_hz = max(1, int(round(self._frequency_from_rpm(current_rpm))))
-                force_update = False
-                with self._lock:
-                    if self._continuous_force_pwm_update:
-                        force_update = True
-                        self._continuous_force_pwm_update = False
-                if force_update or target_hz != last_freq_hz:
-                    try:
-                        if force_update:
-                            pi.set_PWM_dutycycle(self.pin_step, 0)
-                            pi.write(self.pin_step, 0)
-                            time.sleep(0.000002)
-                        actual_hz = pi.set_PWM_frequency(self.pin_step, target_hz)
-                        last_freq_hz = int(actual_hz) if actual_hz and actual_hz > 0 else target_hz
-                        if force_update:
-                            pi.set_PWM_dutycycle(self.pin_step, self._PIGPIO_PWM_DUTY)
-                    except Exception as exc:
-                        print(
-                            f"{self.DRIVER_NAME}: PWM frequency update failed "
-                            f"({target_hz} Hz): {exc}"
-                        )
+                half_us = self._half_period_us_for_rpm(current_rpm)
+
+                if half_us != last_half_us:
+                    new_wid = self._build_square_wave(half_us)
+                    if new_wid is not None and new_wid >= 0:
+                        try:
+                            if active_wid is None:
+                                pi.wave_send_repeat(new_wid)
+                            else:
+                                # Sync switch: new wave starts after the current
+                                # cycle finishes, so there is no missed/short pulse.
+                                pi.wave_send_using_mode(
+                                    new_wid, pigpio.WAVE_MODE_REPEAT_SYNC  # type: ignore[union-attr]
+                                )
+                                deadline = time.perf_counter() + 0.25
+                                while time.perf_counter() < deadline:
+                                    try:
+                                        if pi.wave_tx_at() == new_wid:
+                                            break
+                                    except Exception:
+                                        break
+                                    time.sleep(0.001)
+                                try:
+                                    pi.wave_delete(active_wid)
+                                except Exception:
+                                    pass
+                            active_wid = new_wid
+                            last_half_us = half_us
+                        except Exception as exc:
+                            print(
+                                f"{self.DRIVER_NAME}: wave send failed "
+                                f"({half_us} us half-period): {exc}"
+                            )
+                            try:
+                                pi.wave_delete(new_wid)
+                            except Exception:
+                                pass
                 # Polling interval for smooth ramp updates without high CPU load.
                 self._sleep_precise(0.02)
         finally:
+            try:
+                pi.wave_tx_stop()
+            except Exception:
+                pass
+            if active_wid is not None:
+                try:
+                    pi.wave_delete(active_wid)
+                except Exception:
+                    pass
             try:
                 pi.set_PWM_dutycycle(self.pin_step, 0)
                 pi.write(self.pin_step, 0)
