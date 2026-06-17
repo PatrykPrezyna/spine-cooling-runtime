@@ -980,7 +980,7 @@ class ServiceTab(QWidget):
         # Output state
         self.compressor_on = False
         self.compressor_control_enabled = False
-        self.compressor_off_temp_c = int(compressor_cfg.get("off_below_temp_c", 5))
+        self.compressor_off_temp_c = float(compressor_cfg.get("off_below_temp_c", 5))
         self.compressor_on_temp_c = float(compressor_cfg.get("on_above_temp_c", 10))
         self.heat_ex_temp_c: Optional[float] = None
         self.stepper_speed_rpm = int(stepper_cfg.get("default_speed_rpm", 30))
@@ -993,7 +993,7 @@ class ServiceTab(QWidget):
 
         # Callbacks (set by the host window).
         self.on_compressor_control_toggle_callback: Optional[Callable[[bool], None]] = None
-        self.on_compressor_thresholds_change_callback: Optional[Callable[[int, float], None]] = None
+        self.on_compressor_thresholds_change_callback: Optional[Callable[[float, float], None]] = None
         self.on_stepper_speed_change_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
@@ -1026,13 +1026,15 @@ class ServiceTab(QWidget):
                 font-weight: 700;
             }
         """
-        self.compressor_off_temp_spin = QSpinBox()
-        self.compressor_off_temp_spin.setRange(-20, 80)
+        self.compressor_off_temp_spin = QDoubleSpinBox()
+        self.compressor_off_temp_spin.setRange(-20.0, 80.0)
+        self.compressor_off_temp_spin.setDecimals(1)
+        self.compressor_off_temp_spin.setSingleStep(0.1)
         self.compressor_off_temp_spin.setValue(self.compressor_off_temp_c)
-        self.compressor_off_temp_spin.setFixedWidth(72)
+        self.compressor_off_temp_spin.setFixedWidth(80)
         self.compressor_off_temp_spin.setFixedHeight(48)
         self.compressor_off_temp_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.compressor_off_temp_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        self.compressor_off_temp_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         self.compressor_off_temp_spin.setStyleSheet(spin_style)
         self.compressor_off_temp_spin.valueChanged.connect(self._on_compressor_thresholds_changed)
         self.compressor_off_temp_down = QPushButton("-")
@@ -1179,7 +1181,7 @@ class ServiceTab(QWidget):
         self,
         compressor_on: bool = None,
         compressor_control_enabled: bool = None,
-        compressor_off_temp_c: int = None,
+        compressor_off_temp_c: float = None,
         compressor_on_temp_c: float = None,
         heat_ex_temp_c: Optional[float] = None,
         refresh_heat_ex: bool = False,
@@ -1192,8 +1194,8 @@ class ServiceTab(QWidget):
             self.compressor_control_enabled = bool(compressor_control_enabled)
             self._apply_compressor_control_button_style(self.compressor_control_enabled)
         if compressor_off_temp_c is not None:
-            self.compressor_off_temp_c = int(compressor_off_temp_c)
-            if self.compressor_off_temp_spin.value() != self.compressor_off_temp_c:
+            self.compressor_off_temp_c = float(compressor_off_temp_c)
+            if abs(self.compressor_off_temp_spin.value() - self.compressor_off_temp_c) > 0.05:
                 self.compressor_off_temp_spin.setValue(self.compressor_off_temp_c)
         if compressor_on_temp_c is not None:
             self.compressor_on_temp_c = float(compressor_on_temp_c)
@@ -1233,7 +1235,7 @@ class ServiceTab(QWidget):
             self.on_compressor_control_toggle_callback(self.compressor_control_enabled)
 
     def _on_compressor_thresholds_changed(self, _value: Optional[float] = None):
-        off_c = int(self.compressor_off_temp_spin.value())
+        off_c = round(float(self.compressor_off_temp_spin.value()), 1)
         on_c = round(float(self.compressor_on_temp_spin.value()), 1)
         if on_c <= off_c:
             on_c = round(off_c + 0.1, 1)
@@ -1529,7 +1531,9 @@ class MultiTemperatureGraphWidget(QWidget):
         self.series_names = list(series_names)
         self._history = deque()
         self._visible = {name: True for name in self.series_names}
+        self._x_window_minutes_options = [5, 10, 15, 30, 60]
         self._x_window_minutes = 10
+        self._x_pan_windows = 0
         self.setMinimumHeight(260)
 
         base_colors = [
@@ -1551,6 +1555,33 @@ class MultiTemperatureGraphWidget(QWidget):
         if name in self._visible:
             self._visible[name] = bool(visible)
             self.update()
+
+    def set_window_minutes(self, minutes: int):
+        """Set the visible time window (X-axis span) and reset panning."""
+        self._x_window_minutes = int(minutes)
+        self._x_pan_windows = 0
+        self.update()
+
+    def pan_older(self):
+        """Shift the visible window one step into the past."""
+        self._x_pan_windows = min(self.max_pan_windows(), self._x_pan_windows + 1)
+        self.update()
+
+    def pan_newer(self):
+        """Shift the visible window one step toward the present."""
+        self._x_pan_windows = max(0, self._x_pan_windows - 1)
+        self.update()
+
+    def max_pan_windows(self) -> int:
+        """How many full windows back the recorded history allows."""
+        if not self._history:
+            return 0
+        oldest_ts = self._history[0][0]
+        now = time.monotonic()
+        window_sec = float(self._x_window_minutes) * 60.0
+        if window_sec <= 0:
+            return 0
+        return int(max(0.0, (now - oldest_ts) // window_sec))
 
     def add_sample(self, series_values: dict):
         now = time.monotonic()
@@ -1592,8 +1623,11 @@ class MultiTemperatureGraphWidget(QWidget):
 
         now = time.monotonic()
         window_sec = float(self._x_window_minutes) * 60.0
-        start_ts = now - window_sec
-        visible_entries = [entry for entry in self._history if entry[0] >= start_ts]
+        end_ts = now - (self._x_pan_windows * window_sec)
+        start_ts = end_ts - window_sec
+        visible_entries = [
+            entry for entry in self._history if start_ts <= entry[0] <= end_ts
+        ]
 
         y_min, y_max = self._compute_visible_y_range(visible_entries)
 
@@ -1617,7 +1651,8 @@ class MultiTemperatureGraphWidget(QWidget):
         for i in range(6):
             ratio = i / 5.0
             px = int(plot_left + ratio * plot_width)
-            mins_ago = int(round((1.0 - ratio) * self._x_window_minutes))
+            ts = start_ts + ratio * window_sec
+            mins_ago = int(round((now - ts) / 60.0))
             label = "now" if mins_ago == 0 else f"-{mins_ago} min"
             painter.drawText(
                 QRectF(px - 18, plot_bottom + 4, 36, 14),
@@ -1723,73 +1758,133 @@ class TemperatureGraphTab(QWidget):
         self.series_names = list(series_names)
         self.graph_widget = MultiTemperatureGraphWidget(self.series_names)
         self.checkboxes = {}
+        self._create_time_scale_controls()
         self._create_widgets()
         self._setup_layout()
+
+    def _create_time_scale_controls(self):
+        """Build the X-axis time-window selector and pan buttons (like main page)."""
+        self.graph_nav_left_button = QPushButton("<")
+        self.graph_nav_left_button.setFixedSize(34, 34)
+        self.graph_nav_left_button.setStyleSheet(_GRAPH_NAV_BUTTON_STYLE)
+        self.graph_nav_left_button.clicked.connect(self._on_nav_older)
+
+        self.graph_nav_right_button = QPushButton(">")
+        self.graph_nav_right_button.setFixedSize(34, 34)
+        self.graph_nav_right_button.setStyleSheet(_GRAPH_NAV_BUTTON_STYLE)
+        self.graph_nav_right_button.clicked.connect(self._on_nav_newer)
+
+        self.graph_window_combo = QComboBox()
+        for minutes in self.graph_widget._x_window_minutes_options:
+            self.graph_window_combo.addItem(f"{minutes} min", minutes)
+        self.graph_window_combo.setCurrentIndex(
+            self.graph_widget._x_window_minutes_options.index(
+                self.graph_widget._x_window_minutes
+            )
+        )
+        self.graph_window_combo.setStyleSheet(_GRAPH_WINDOW_COMBO_STYLE)
+        self.graph_window_combo.setMinimumHeight(34)
+        self.graph_window_combo.currentIndexChanged.connect(self._on_window_changed)
+
+    def _on_window_changed(self, index: int):
+        self.graph_widget.set_window_minutes(
+            int(self.graph_window_combo.itemData(index))
+        )
+        self._update_nav_states()
+
+    def _on_nav_older(self):
+        self.graph_widget.pan_older()
+        self._update_nav_states()
+
+    def _on_nav_newer(self):
+        self.graph_widget.pan_newer()
+        self._update_nav_states()
+
+    def _update_nav_states(self):
+        self.graph_nav_right_button.setEnabled(self.graph_widget._x_pan_windows > 0)
+        self.graph_nav_left_button.setEnabled(
+            self.graph_widget._x_pan_windows < self.graph_widget.max_pan_windows()
+        )
 
     def _create_widgets(self):
         for name in self.series_names:
             checkbox = QCheckBox(name)
             checkbox.setChecked(True)
-            checkbox.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
             series_color = self.graph_widget._series_colors.get(name, "#1f2937")
-            # Unchecked = neutral gray; checked = series color (matches the
-            # plotted line and the label text).
+            # The whole row is a large pressable toggle: tinted with the series
+            # colour when enabled, neutral grey when disabled. The tick indicator
+            # is hidden since the fill colour conveys the state.
             checkbox.setStyleSheet("""
                 QCheckBox {
-                    font-size: 18px;
-                    font-weight: 600;
-                    color: %s;
-                    min-height: 44px;
-                    padding: 4px 0;
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #475569;
+                    min-height: 26px;
+                    padding: 2px 8px;
+                    border: 2px solid #cbd5e1;
+                    border-radius: 8px;
+                    background-color: #f1f5f9;
+                }
+                QCheckBox:checked {
+                    color: #ffffff;
+                    border: 2px solid %s;
+                    background-color: %s;
                 }
                 QCheckBox::indicator {
-                    width: 32px;
-                    height: 32px;
-                    margin-left: 10px;
-                    border-radius: 6px;
+                    width: 0px;
+                    height: 0px;
+                    margin: 0px;
                 }
-                QCheckBox::indicator:unchecked {
-                    background-color: #e5e7eb;
-                    border: 2px solid #9ca3af;
-                }
-                QCheckBox::indicator:checked {
-                    background-color: %s;
-                    border: 2px solid %s;
-                }
-            """ % (series_color, series_color, series_color))
+            """ % (series_color, series_color))
             checkbox.stateChanged.connect(
                 lambda state, series_name=name: self.graph_widget.set_series_visible(
                     series_name, state == Qt.CheckState.Checked.value
                 )
             )
+            # Expand vertically so the touch targets share the full column height.
+            checkbox.setSizePolicy(
+                QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
+            )
             self.checkboxes[name] = checkbox
 
     def _setup_layout(self):
         main_layout = QHBoxLayout()
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(4, 4, 4, 4)
+        main_layout.setSpacing(6)
 
-        control_group = QGroupBox("Series Visibility")
-        control_group.setStyleSheet(ServiceTab._group_box_style("#0ea5e9", "16px"))
-        controls_layout = QVBoxLayout()
-        controls_layout.setContentsMargins(12, 14, 12, 12)
-        controls_layout.setSpacing(6)
+        # Right-hand control column: time-scale selector on top, series toggles below.
+        right_column = QVBoxLayout()
+        right_column.setContentsMargins(0, 0, 0, 0)
+        right_column.setSpacing(4)
+
+        # Time-scale selector (no title label, to save space).
+        time_layout = QHBoxLayout()
+        time_layout.setContentsMargins(0, 0, 0, 0)
+        time_layout.setSpacing(4)
+        time_layout.addWidget(self.graph_nav_left_button)
+        time_layout.addWidget(self.graph_window_combo, 1)
+        time_layout.addWidget(self.graph_nav_right_button)
+        right_column.addLayout(time_layout)
+
+        # Series toggles (no title label) expand to fill the column height so
+        # each is a large, easy touch target.
         for name in self.series_names:
-            controls_layout.addWidget(self.checkboxes[name])
-        controls_layout.addStretch()
-        control_group.setLayout(controls_layout)
-        # Wide enough to fit the longest configured sensor name (e.g.
-        # "Heat Exchanger Temp") at 18px bold next to the 32px indicator.
-        control_group.setFixedWidth(210)
+            right_column.addWidget(self.checkboxes[name], 1)
+
+        right_container = QWidget()
+        right_container.setLayout(right_column)
+        right_container.setFixedWidth(150)
 
         # Maximize graph area (left) while keeping touch-friendly controls (right).
         main_layout.addWidget(self.graph_widget, 1)
-        main_layout.addWidget(control_group, 0)
+        main_layout.addWidget(right_container, 0)
         self.setLayout(main_layout)
+        self._update_nav_states()
 
     def add_sample(self, series_values: dict):
         self.graph_widget.add_sample(series_values)
         self._update_checkbox_labels(series_values)
+        self._update_nav_states()
 
     def _update_checkbox_labels(self, series_values: dict) -> None:
         """Show the latest value next to each probe name in the toggles."""
@@ -2017,7 +2112,7 @@ class MainScreen(QMainWindow):
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_control_toggle_callback: Optional[Callable[[bool], None]] = None
-        self.on_compressor_thresholds_change_callback: Optional[Callable[[int, float], None]] = None
+        self.on_compressor_thresholds_change_callback: Optional[Callable[[float, float], None]] = None
         self.on_temperature_calibration_callback: Optional[
             Callable[[str, float, float], tuple[bool, str]]
         ] = None
@@ -2483,7 +2578,7 @@ class MainScreen(QMainWindow):
         if self.on_compressor_control_toggle_callback:
             self.on_compressor_control_toggle_callback(enabled)
 
-    def _on_service_compressor_thresholds_change(self, off_temp_c: int, on_temp_c: float):
+    def _on_service_compressor_thresholds_change(self, off_temp_c: float, on_temp_c: float):
         if self.on_compressor_thresholds_change_callback:
             self.on_compressor_thresholds_change_callback(off_temp_c, on_temp_c)
 

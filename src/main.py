@@ -677,7 +677,7 @@ class SensorMonitorApp(QObject):
         self.ui.service_tab.update_outputs(
             compressor_on=self.compressor_on,
             compressor_control_enabled=self.compressor_control_enabled,
-            compressor_off_temp_c=int(self.compressor_off_temp_c),
+            compressor_off_temp_c=float(self.compressor_off_temp_c),
             compressor_on_temp_c=float(self.compressor_on_temp_c),
             heat_ex_temp_c=heat_ex_c,
             refresh_heat_ex=True,
@@ -740,15 +740,15 @@ class SensorMonitorApp(QObject):
         if self.ui:
             self._update_stepper_ui_status()
 
-    def on_compressor_thresholds_changed(self, off_temp_c: int, on_temp_c: float) -> None:
-        off_c = float(off_temp_c)
+    def on_compressor_thresholds_changed(self, off_temp_c: float, on_temp_c: float) -> None:
+        off_c = round(float(off_temp_c), 1)
         on_c = round(float(on_temp_c), 1)
         if on_c <= off_c:
             on_c = round(off_c + 0.1, 1)
         self.compressor_off_temp_c = off_c
         self.compressor_on_temp_c = on_c
         compressor_cfg = self.config.setdefault('compressor', {})
-        compressor_cfg['off_below_temp_c'] = int(off_c)
+        compressor_cfg['off_below_temp_c'] = off_c
         compressor_cfg['on_above_temp_c'] = on_c
         self._save_config()
         if self.compressor_control_enabled:
