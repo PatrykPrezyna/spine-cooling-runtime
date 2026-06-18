@@ -1398,7 +1398,7 @@ class Service2Tab(QWidget):
         self.pressure_group = QGroupBox("Pressure Sensors")
         self.pressure_group.setStyleSheet(ServiceTab._group_box_style("#8b5cf6", "10px", margin_top=6))
         for name in self.pressure_sensor_names:
-            label = QLabel(f"{name}: -- mmHg")
+            label = QLabel(f"{name}: --")
             label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
             self.pressure_labels[name] = label
 
@@ -1514,10 +1514,10 @@ class Service2Tab(QWidget):
             if label is None:
                 continue
             if math.isnan(value):
-                label.setText(f"{name}: --.- mmHg")
+                label.setText(f"{name}: --")
                 label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
                 continue
-            label.setText(f"{name}: {value:.1f} mmHg")
+            label.setText(f"{name}: {int(value)}")
             label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color="#8b5cf6"))
 
 

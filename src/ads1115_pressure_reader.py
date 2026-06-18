@@ -108,10 +108,7 @@ class ADS1115PressureReader:
         values: Dict[str, float] = {}
         for channel, analog in self._analog_inputs.items():
             try:
-                voltage = float(analog.voltage)
-                v_min, v_max, p_min, p_max = self._channel_limits(channel)
-                pressure = self._convert_voltage_to_pressure(voltage, v_min, v_max, p_min, p_max)
-                values[self._channel_label(channel)] = pressure
+                values[self._channel_label(channel)] = float(analog.value)
             except Exception as exc:
                 self.last_error = f"Pressure read failed on channel {channel}: {exc}"
         return values
