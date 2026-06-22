@@ -140,8 +140,9 @@ stepper_motor:
   default_speed_rpm: 20
   pumping_speed_rpm: 60
   pumping_slow_speed_rpm: 20
-  max_speed_rpm: 980
+  max_speed_rpm: 390
   min_pump_speed_rpm: 1
+  min_speed_rpm: 1
   ramp_start_fraction: 0.5
   continuous_direction: -1
   enable_on_startup: false

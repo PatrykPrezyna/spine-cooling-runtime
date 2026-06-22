@@ -985,9 +985,11 @@ class ServiceTab(QWidget):
         self.heat_ex_temp_c: Optional[float] = None
         self.stepper_speed_rpm = int(stepper_cfg.get("default_speed_rpm", 30))
         self.stepper_max_speed_rpm = max(5, int(stepper_cfg.get("max_speed_rpm", 60)))
+        # Manual (service tab) slider floor. Independent of ``min_pump_speed_rpm``,
+        # which is only the minimum enforced during automatic workflow pumping.
         self.stepper_min_speed_rpm = max(
-            5,
-            int(stepper_cfg.get("min_pump_speed_rpm", 0) or 0),
+            1,
+            int(stepper_cfg.get("min_speed_rpm", 1) or 1),
         )
         self.stepper_continuous_on: bool = False
 
