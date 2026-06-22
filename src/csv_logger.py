@@ -13,6 +13,10 @@ class CSVLogger:
         self.csv_directory = config['logging']['csv_directory']
         self.filename_format = config['logging']['filename_format']
         self.temperature_columns = self._temperature_columns_from_config(config)
+        # Linear pump model: flow_ml_per_s = rpm * slope / 60.
+        self.pump_flow_ml_per_min_per_rpm = float(
+            config.get('pump_flow_ml_per_min_per_rpm', 0.7823)
+        )
         self.header = self._build_header(self.temperature_columns)
 
         self.csv_file: Optional[Path] = None
@@ -55,6 +59,7 @@ class CSVLogger:
             header.append(f"{self._csv_slug(name)}_c")
         header.append('set_temperature_c')
         header.append('peristaltic_pump_set_speed_rpm')
+        header.append('pump_flow_ml_per_s')
         header.append('compressor_cooling')
         return header
 
@@ -121,6 +126,15 @@ class CSVLogger:
                 if peristaltic_pump_set_speed_rpm is not None
                 else ""
             )
+            if peristaltic_pump_set_speed_rpm is not None:
+                flow_ml_per_s = (
+                    float(peristaltic_pump_set_speed_rpm)
+                    * self.pump_flow_ml_per_min_per_rpm
+                    / 60.0
+                )
+                row.append(f"{flow_ml_per_s:.4f}")
+            else:
+                row.append("")
             row.append(
                 int(compressor_cooling)
                 if compressor_cooling is not None

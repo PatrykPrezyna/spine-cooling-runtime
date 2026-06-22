@@ -73,8 +73,8 @@ thermocouples:
   labels:
     1: CSF
     2: CSF 2
-    3: Cart Out
-    4: Cart In
+    3: Cart In
+    4: Cart Out
     5: Heat Ex
     6: Heat Ex 2
     7: Temp 7
@@ -128,6 +128,10 @@ compressor:
 logging:
   csv_directory: data/csv
   filename_format: sensor_log_%Y%m%d_%H%M%S.csv
+# Pump throughput: flow scales linearly with stepper RPM. Slope from a
+# least-squares fit (through the origin) of the measured calibration data.
+# flow_ml_per_s = pump_rpm * pump_flow_ml_per_min_per_rpm / 60
+pump_flow_ml_per_min_per_rpm: 0.7823
 ui:
   window_width: 500
   window_height: 450
