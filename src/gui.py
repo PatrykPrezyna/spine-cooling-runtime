@@ -84,6 +84,13 @@ _GRAPH_WINDOW_COMBO_STYLE = """
     QComboBox::drop-down { width: 22px; }
 """
 
+# Default linear pump model (overridden from config): flow_ml_min = rpm * slope.
+DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.7823
+
+
+def _pump_flow_ml_per_min(rpm: float, slope: float) -> float:
+    return max(0.0, float(rpm)) * float(slope)
+
 
 class MainScreenWidget(QWidget):
     """Composite main-screen widget.
@@ -978,6 +985,7 @@ class ServiceTab(QWidget):
         compressor_cfg = compressor_config or {}
 
         # Output state
+        self.pump_flow_ml_per_min_per_rpm = DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
         self.compressor_on = False
         self.compressor_control_enabled = False
         self.compressor_off_temp_c = float(compressor_cfg.get("off_below_temp_c", 5))
@@ -1064,7 +1072,7 @@ class ServiceTab(QWidget):
         self.compressor_on_temp_up.setFixedSize(48, 48)
         self.compressor_on_temp_up.clicked.connect(lambda: self.compressor_on_temp_spin.stepBy(1))
         
-        self.stepper_speed_label = QLabel(f"{self.stepper_speed_rpm} RPM")
+        self.stepper_speed_label = QLabel(self._format_speed_text(self.stepper_speed_rpm))
         self.stepper_speed_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
         self.stepper_speed_label.setFixedHeight(52)
         self.stepper_speed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1219,14 +1227,18 @@ class ServiceTab(QWidget):
         control = "cooling" if self.compressor_control_enabled else "idle"
         self.compressor_label.setText(f"Compressor: {comp_status} ({heat_text}, {control})")
         self.compressor_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=comp_color))
-        self.stepper_speed_label.setText(f"{self.stepper_speed_rpm} RPM")
+        self.stepper_speed_label.setText(self._format_speed_text(self.stepper_speed_rpm))
         self._update_stepper_control_enabled_state()
         self.stepper_continuous_button.setEnabled(True)
+
+    def _format_speed_text(self, rpm: int) -> str:
+        ml_per_min = _pump_flow_ml_per_min(rpm, self.pump_flow_ml_per_min_per_rpm)
+        return f"{rpm} RPM\n{ml_per_min:.1f} ml/min"
 
     def _on_stepper_speed_changed(self, value: int):
         """Handle speed slider changes."""
         self.stepper_speed_rpm = int(value)
-        self.stepper_speed_label.setText(f"{self.stepper_speed_rpm} RPM")
+        self.stepper_speed_label.setText(self._format_speed_text(self.stepper_speed_rpm))
         if self.on_stepper_speed_change_callback:
             self.on_stepper_speed_change_callback(self.stepper_speed_rpm)
 
@@ -1378,6 +1390,7 @@ class Service2Tab(QWidget):
         self.temp_labels = {}
         self.pressure_labels = {}
         self.pump_speed_rpm = 0
+        self.pump_flow_ml_per_min_per_rpm = DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
         self.compressor_on = False
         self._create_widgets()
         self._setup_layout()
@@ -1460,7 +1473,10 @@ class Service2Tab(QWidget):
 
         if self.pump_speed_rpm > 0:
             pump_color = "#16a34a"
-            pump_text = f"Pump: {self.pump_speed_rpm} RPM"
+            ml_per_min = _pump_flow_ml_per_min(
+                self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
+            )
+            pump_text = f"Pump: {self.pump_speed_rpm} RPM ({ml_per_min:.1f} ml/min)"
         else:
             pump_color = "#6b7280"
             pump_text = "Pump: 0 RPM (stopped)"
@@ -2300,10 +2316,21 @@ class MainScreen(QMainWindow):
         # Temperature graph tab
         self.temperature_graph_tab = TemperatureGraphTab(self.temperature_sensor_names)
 
+        # Pump flow model slope (shared with service tabs for RPM -> ml/min display).
+        pump_flow_slope = float(
+            self.config.get(
+                "pump_flow_ml_per_min_per_rpm", DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
+            )
+        )
+
         # Service tab
         self.service_tab = ServiceTab(
             self.config.get('stepper_motor', {}),
             self.config.get('compressor', {}),
+        )
+        self.service_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
+        self.service_tab.stepper_speed_label.setText(
+            self.service_tab._format_speed_text(self.service_tab.stepper_speed_rpm)
         )
         self.service_tab.on_stepper_speed_change_callback = self._on_service_stepper_speed_change
         self.service_tab.on_stepper_jog_start_callback = self._on_service_stepper_jog_start
@@ -2320,6 +2347,7 @@ class MainScreen(QMainWindow):
             pressure_sensor_names=pressure_sensor_names,
             digital_sensor_names=digital_sensor_names,
         )
+        self.service2_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
         temp_series_names = ["Set Temp", *self.temperature_sensor_names]
         self.calibration_tab = CalibrationTab(self.temperature_sensor_names)
         self.calibration_tab.on_apply_calibration_callback = (
