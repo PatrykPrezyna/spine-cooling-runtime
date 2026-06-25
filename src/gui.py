@@ -1471,15 +1471,15 @@ class Service2Tab(QWidget):
         if compressor_on is not None:
             self.compressor_on = bool(compressor_on)
 
+        ml_per_min = _pump_flow_ml_per_min(
+            self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
+        )
         if self.pump_speed_rpm > 0:
             pump_color = "#16a34a"
-            ml_per_min = _pump_flow_ml_per_min(
-                self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
-            )
             pump_text = f"Pump: {self.pump_speed_rpm} RPM ({ml_per_min:.1f} ml/min)"
         else:
             pump_color = "#6b7280"
-            pump_text = "Pump: 0 RPM (stopped)"
+            pump_text = f"Pump: 0 RPM ({ml_per_min:.1f} ml/min, stopped)"
         self.pump_speed_label.setText(pump_text)
         self.pump_speed_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=pump_color))
 
