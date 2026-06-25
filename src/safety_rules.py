@@ -98,16 +98,17 @@ def _check_heat_ex_min(ctx: RuleContext) -> bool:
 
 
 def _check_leak(ctx: RuleContext) -> bool:
-    if ctx.current_state not in (State.PUMPING, State.PUMPING_SLOWLY):
+    # Digital leak sensor (config ``leak_sensor_label``, e.g. GPIO26): the line
+    # is held high while dry, and a leak pulls it low. A 0 reading therefore
+    # means fluid was detected -> immediate stop. Active in every operational
+    # state (skipped during INIT bring-up and while already in ERROR).
+    if ctx.current_state in (State.INIT, State.ERROR):
         return False
     alarms = _alarms(ctx)
-    threshold = float(alarms.get("leak_pressure_delta_min", 5.0))
-    values = [float(v) for v in ctx.pressures.values() if v is not None]
-    if len(values) < 2:
+    sensor_name = str(alarms.get("leak_sensor_label", "Leak Sensor"))
+    if sensor_name not in ctx.sensor_states:
         return False
-    delta = abs(values[0] - values[1])
-    #return delta > threshold
-    return False
+    return not bool(ctx.sensor_states.get(sensor_name))
 
 
 def _check_cooling_ineffective(ctx: RuleContext) -> bool:

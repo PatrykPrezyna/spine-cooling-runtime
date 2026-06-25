@@ -126,24 +126,51 @@ class SafetyRulesTests(unittest.TestCase):
         active = evaluate(_ctx(temperatures={"Heat Ex": -10.5}, config=config))
         self.assertIn(FaultCode.HEAT_EX_TOO_COLD, active)
 
-    def test_leak_detected_while_pumping(self) -> None:
-        config = {"alarms": {"leak_pressure_delta_min": 5.0}}
+    def test_leak_detected_when_sensor_low(self) -> None:
         active = evaluate(
             _ctx(
                 state=State.PUMPING,
-                pressures={"Pressure 1": 120.0, "Pressure 2": 110.0},
-                config=config,
+                sensor_states={"Leak Sensor": False},
             )
         )
         self.assertIn(FaultCode.LEAK_DETECTED, active)
 
-    def test_leak_not_checked_in_cooling(self) -> None:
-        config = {"alarms": {"leak_pressure_delta_min": 5.0}}
+    def test_leak_clear_when_sensor_high(self) -> None:
+        active = evaluate(
+            _ctx(
+                state=State.PUMPING,
+                sensor_states={"Leak Sensor": True},
+            )
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+
+    def test_leak_detected_in_cooling(self) -> None:
         active = evaluate(
             _ctx(
                 state=State.COOLING,
-                pressures={"Pressure 1": 120.0, "Pressure 2": 110.0},
-                config=config,
+                sensor_states={"Leak Sensor": False},
+            )
+        )
+        self.assertIn(FaultCode.LEAK_DETECTED, active)
+
+    def test_leak_not_checked_during_init(self) -> None:
+        active = evaluate(
+            _ctx(
+                state=State.INIT,
+                sensor_states={"Leak Sensor": False},
+            )
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+
+    def test_leak_ignored_when_sensor_absent(self) -> None:
+        active = evaluate(
+            _ctx(
+                state=State.PUMPING,
+                sensor_states={
+                    "Cartridge In Place": True,
+                    "Level Low": True,
+                    "Level Critical": True,
+                },
             )
         )
         self.assertNotIn(FaultCode.LEAK_DETECTED, active)

@@ -5,6 +5,8 @@ alarms:
   heat_ex_label: Heat Ex
   heat_ex_min_c: -10.0
   leak_pressure_delta_min: 5.0
+  # Digital leak sensor: a 0/low reading means fluid detected -> immediate stop.
+  leak_sensor_label: Leak Sensor
   cooling_ineffective_timeout_s: 600
   cooling_ineffective_csf_delta_c: 0.2
   battery_low_pct: 20
@@ -30,6 +32,7 @@ simulation:
     Cartridge In Place: true
     Level Low: true
     Level Critical: true
+    Leak Sensor: true
   pressures:
     Pressure 1: 120.0
     Pressure 2: 95.0
@@ -45,6 +48,11 @@ sensors:
   pull_up: true
 - name: Cartridge In Place
   gpio_pin: 19
+  active_high: true
+  pull_up: true
+# Leak detector: line is held high when dry; a leak pulls it low (0).
+- name: Leak Sensor
+  gpio_pin: 26
   active_high: true
   pull_up: true
 sample_rate_hz: 1.0
