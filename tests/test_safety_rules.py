@@ -11,6 +11,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from fault_catalog import FaultCode  # noqa: E402
+from leak_debounce import LeakDebounceTracker  # noqa: E402
 from safety_rules import (  # noqa: E402
     RuleContext,
     TelemetrySnapshot,
@@ -28,6 +29,8 @@ def _ctx(
     pressures: dict | None = None,
     telemetry: TelemetrySnapshot | None = None,
     config: dict | None = None,
+    leak_tracker: LeakDebounceTracker | None = None,
+    now: float = 0.0,
 ) -> RuleContext:
     return RuleContext(
         current_state=state,
@@ -44,7 +47,8 @@ def _ctx(
         telemetry=telemetry or TelemetrySnapshot(),
         config=config or {"alarms": {"csf_label": "CSF", "csf_low_temp_c": 28.0}},
         cooling_tracker=None,
-        now=0.0,
+        leak_tracker=leak_tracker,
+        now=now,
     )
 
 
@@ -161,6 +165,39 @@ class SafetyRulesTests(unittest.TestCase):
             )
         )
         self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+
+    def test_leak_debounce_ignores_brief_flicker(self) -> None:
+        tracker = LeakDebounceTracker(hold_s=0.5)
+        # Signal drops low but not yet for the full hold time.
+        active = evaluate(
+            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.0)
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+        active = evaluate(
+            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.3)
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+        # A high reading clears the pending leak (flicker rejected).
+        active = evaluate(
+            _ctx(sensor_states={"Leak Sensor": True}, leak_tracker=tracker, now=0.4)
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+        active = evaluate(
+            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.6)
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+
+    def test_leak_debounce_fires_after_hold(self) -> None:
+        tracker = LeakDebounceTracker(hold_s=0.5)
+        active = evaluate(
+            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.0)
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+        # Stayed low continuously past the hold time.
+        active = evaluate(
+            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.5)
+        )
+        self.assertIn(FaultCode.LEAK_DETECTED, active)
 
     def test_leak_ignored_when_sensor_absent(self) -> None:
         active = evaluate(

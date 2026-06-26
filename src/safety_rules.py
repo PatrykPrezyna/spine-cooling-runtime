@@ -8,6 +8,7 @@ from state_machine import State
 
 if TYPE_CHECKING:
     from cooling_tracker import CoolingEffectivenessTracker
+    from leak_debounce import LeakDebounceTracker
 
 ACTIVE_STATES = (State.COOLING, State.PUMPING, State.PUMPING_SLOWLY)
 
@@ -30,6 +31,7 @@ class RuleContext:
     telemetry: TelemetrySnapshot
     config: dict
     cooling_tracker: Optional["CoolingEffectivenessTracker"] = None
+    leak_tracker: Optional["LeakDebounceTracker"] = None
     now: float = 0.0
 
 
@@ -108,7 +110,12 @@ def _check_leak(ctx: RuleContext) -> bool:
     sensor_name = str(alarms.get("leak_sensor_label", "Leak Sensor"))
     if sensor_name not in ctx.sensor_states:
         return False
-    return not bool(ctx.sensor_states.get(sensor_name))
+    signal_low = not bool(ctx.sensor_states.get(sensor_name))
+    if ctx.leak_tracker is None:
+        return signal_low
+    # Debounce: require the signal to stay low for the hold time to ignore
+    # brief flicker on the line.
+    return ctx.leak_tracker.update(signal_low=signal_low, now=ctx.now)
 
 
 def _check_cooling_ineffective(ctx: RuleContext) -> bool:

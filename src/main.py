@@ -28,6 +28,7 @@ except Exception:  # pragma: no cover - non-RPi environments
 
 from cooling_tracker import CoolingEffectivenessTracker
 from csv_logger import CSVLogger
+from leak_debounce import LeakDebounceTracker
 from fault_catalog import FaultCode, Severity, get_fault, stop_priority
 from gui import MainScreen
 from hardware_factory import build_hardware
@@ -179,6 +180,10 @@ class SensorMonitorApp(QObject):
         # Skip a tick if the worker hasn't finished the previous one yet.
         self._tick_in_progress: bool = False
         self._cooling_tracker = CoolingEffectivenessTracker()
+        leak_debounce_s = float(
+            self.config.get("alarms", {}).get("leak_debounce_s", 0.5)
+        )
+        self._leak_tracker = LeakDebounceTracker(hold_s=leak_debounce_s)
 
     # ------------------------------------------------------------------
     # Configuration
@@ -461,6 +466,7 @@ class SensorMonitorApp(QObject):
             telemetry=TelemetrySnapshot(),
             config=self.config,
             cooling_tracker=self._cooling_tracker,
+            leak_tracker=self._leak_tracker,
             now=now,
         )
 

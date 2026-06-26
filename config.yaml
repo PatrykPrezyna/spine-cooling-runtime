@@ -7,6 +7,8 @@ alarms:
   leak_pressure_delta_min: 5.0
   # Digital leak sensor: a 0/low reading means fluid detected -> immediate stop.
   leak_sensor_label: Leak Sensor
+  # Ignore brief flicker: the leak line must stay low this long before tripping.
+  leak_debounce_s: 0.5
   cooling_ineffective_timeout_s: 600
   cooling_ineffective_csf_delta_c: 0.2
   battery_low_pct: 20
