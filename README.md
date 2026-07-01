@@ -56,6 +56,12 @@ Raspberry Pi 4B application for medical device with visual UI, sensor reading, a
 
 Off-Pi mode uses fakes in `src/sim/`; tweak default sensor/temp values under `simulation:` in `config.yaml`.
 
+## Download data
+
+1 Install Filezilla
+2 check ip adress `ifconfig`
+3 log in using port 22
+4 Go to spine-cooling-runtime/data/csv and doube cloick selected file
 
 ## Project structure
 
