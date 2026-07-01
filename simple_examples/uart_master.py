@@ -116,7 +116,7 @@ def main() -> None:
                 print("RX: (nothing)")
 
             print()
-            time.sleep(1)
+            time.sleep(0.1)
 
 
 if __name__ == "__main__":
