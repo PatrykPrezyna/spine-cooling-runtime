@@ -6,7 +6,13 @@ Raspberry Pi 4B application for medical device with visual UI, sensor reading, a
 ## Raspberry Pi setup (can be further automated)
 
 1. Install Raspberry Pi OS and connect the device to the network via Wi-Fi or Ethernet.
-2. Connect to the Pi using a keyboard and display, or remotely via SSH (for example, with PuTTY on Windows).2. 
+   1.1 We recoment to use the imager: https://www.raspberrypi.com/software/ 
+   1.2 Select the newest OS (for now Debian 13 64bit)
+   1.3 Hostname spine (refere to the keypass for password)
+   1.4 Enable SHH with passwor and Raspebbry pi connect 
+2. Connect to the Pi using a keyboard and display, or remotely via SSH (for example, with PuTTY on Windows)
+   2.1 check 
+   2.2 https://connect.raspberrypi.com/devices
 3. Enable interfaces: SSH, SPI, I2C, ...:
    - Use `sudo raspi-config` and enable SSH, I2C under `Interface Options` > `I2C` > `Enable`. 
    Optional check: `ls /dev/i2c-1`
@@ -32,7 +38,7 @@ Raspberry Pi 4B application for medical device with visual UI, sensor reading, a
 
 ## Installation
 
-1. Clone or download this repository
+1. Clone or download this repository https://github.com/PatrykPrezyna/spine-cooling-runtime.git
 2. Create a virtual environment:
    ```bash
    python -m venv venv
