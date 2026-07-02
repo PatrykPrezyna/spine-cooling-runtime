@@ -1649,10 +1649,19 @@ class MultiTemperatureGraphWidget(QWidget):
 
         y_min, y_max = self._compute_visible_y_range(visible_entries)
 
+        # Dotted minor subdivisions between the major horizontal gridlines.
+        minor_pen = QPen(QColor("#e2e8f0"), 1)
+        minor_pen.setStyle(Qt.PenStyle.DotLine)
+        painter.setPen(minor_pen)
+        for i in range(6):
+            ratio = (i + 0.5) / 6.0
+            py = int(plot_bottom - ratio * plot_height)
+            painter.drawLine(plot_left, py, plot_right, py)
+
         # Y grid and labels
         painter.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-        for i in range(4):
-            t = y_min + (i / 3.0) * (y_max - y_min)
+        for i in range(7):
+            t = y_min + (i / 6.0) * (y_max - y_min)
             ratio = (t - y_min) / max(0.001, (y_max - y_min))
             py = int(plot_bottom - ratio * plot_height)
             painter.setPen(QPen(QColor("#e2e8f0"), 1))
@@ -1664,14 +1673,25 @@ class MultiTemperatureGraphWidget(QWidget):
                 f"{t:.1f}°C",
             )
 
-        # X labels
-        painter.setPen(QColor("#334155"))
-        for i in range(6):
-            ratio = i / 5.0
+        # Dotted minor subdivisions between the major vertical gridlines.
+        minor_pen = QPen(QColor("#e2e8f0"), 1)
+        minor_pen.setStyle(Qt.PenStyle.DotLine)
+        painter.setPen(minor_pen)
+        for i in range(10):
+            ratio = (i + 0.5) / 10.0
+            px = int(plot_left + ratio * plot_width)
+            painter.drawLine(px, plot_top, px, plot_bottom)
+
+        # X labels (with vertical time gridlines)
+        for i in range(11):
+            ratio = i / 10.0
             px = int(plot_left + ratio * plot_width)
             ts = start_ts + ratio * window_sec
             mins_ago = int(round((now - ts) / 60.0))
             label = "now" if mins_ago == 0 else f"-{mins_ago} min"
+            painter.setPen(QPen(QColor("#e2e8f0"), 1))
+            painter.drawLine(px, plot_top, px, plot_bottom)
+            painter.setPen(QColor("#334155"))
             painter.drawText(
                 QRectF(px - 18, plot_bottom + 4, 36, 14),
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
@@ -2457,11 +2477,23 @@ class MainScreen(QMainWindow):
 
         self.error_status_label = QLabel("")
         self.error_status_label.setMinimumHeight(32)
+        self.error_status_label.setMaximumWidth(300)
         self.error_status_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         self.error_status_label.setWordWrap(True)
         self.error_status_label.setVisible(False)
+
+        # Session timer chip: elapsed minutes since the session started.
+        self._session_start_time = time.monotonic()
+        self.session_timer_label = QLabel("0 min")
+        self.session_timer_label.setMinimumHeight(32)
+        self.session_timer_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+        self.session_timer_label.setStyleSheet(
+            self._status_chip_style("#e9eef2", "#d6dde3", "#2f3b47")
+        )
 
         self._workflow_state_name = "Init"
 
@@ -2545,7 +2577,8 @@ class MainScreen(QMainWindow):
         header_row.setContentsMargins(0, 0, 0, 0)
         header_row.setSpacing(10)
         header_row.addWidget(self.state_label, 1)
-        header_row.addWidget(self.error_status_label, 1)
+        header_row.addWidget(self.error_status_label, 0)
+        header_row.addWidget(self.session_timer_label, 0)
         header_row.addWidget(self.to_main_menu_button)
         header_row.addWidget(self.window_mode_toggle_button, 0, Qt.AlignmentFlag.AlignRight)
         main_layout.addLayout(header_row)
@@ -2823,6 +2856,7 @@ class MainScreen(QMainWindow):
         pressures: Optional[dict] = None,
     ):
         """Update sensor display"""
+        self._update_session_timer()
         self.service2_tab.update_sensors(sensor_states)
         self.service2_tab.update_temperatures(temperatures)
         self.service2_tab.update_pressures(pressures)
@@ -2852,6 +2886,16 @@ class MainScreen(QMainWindow):
         self.service_tab.update_outputs()
         self.service2_tab.update_actuators()
     
+    def _update_session_timer(self) -> None:
+        """Refresh the header session timer (whole minutes since start)."""
+        elapsed_min = int((time.monotonic() - self._session_start_time) // 60)
+        self.session_timer_label.setText(f"{elapsed_min} min")
+
+    def reset_session_timer(self) -> None:
+        """Restart the session timer from zero."""
+        self._session_start_time = time.monotonic()
+        self._update_session_timer()
+
     def set_status_message(self, message: str, is_error: bool = False):
         """No-op kept for API compatibility (status shown visually elsewhere)."""
 
