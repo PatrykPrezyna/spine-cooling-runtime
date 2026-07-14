@@ -414,7 +414,7 @@ class SimThermistorReader:
 
 
 class SimPressureReader:
-    """Pressure readings from config defaults (third ADS1115)."""
+    """Pressure readings from config defaults (differential ADS1115 simulation)."""
 
     def __init__(self, config: dict):
         ps_cfg = config.get("pressure_sensors", {})

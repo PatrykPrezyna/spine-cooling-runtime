@@ -153,11 +153,15 @@ thermistor_sensors:
     - [616.0, 0.0]
     - [142.0, 37.0]
     - [87.0, 50.0]
-# Pressure sensors on a third ADS1115 (up to 4 channels).
+# Differential pressure sensors on a third + fourth ADS1115 (up to 4 sensors).
+# Each sensor uses one differential pair (2 analog inputs), so one chip serves
+# two sensors: channels 0-1 on the first address, 2-3 on the second.
 pressure_sensors:
   enabled: true
-  i2c_address: 50
-  gain: '1'
+  i2c_addresses:
+  - 50   # third ADS1115 — Pressure 1 (P0-P1), Pressure 2 (P2-P3)
+  - 51   # fourth ADS1115 — Pressure 3 (P0-P1), Pressure 4 (P2-P3)
+  gain: '16'  # ±0.256 V — max amplification (smallest FSR)
   data_rate: 128
   channels:
   - 0

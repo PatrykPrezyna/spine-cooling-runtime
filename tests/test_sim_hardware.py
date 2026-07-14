@@ -32,7 +32,7 @@ _MINIMAL_CONFIG = {
     },
     "pressure_sensors": {
         "enabled": True,
-        "i2c_address": 50,
+        "i2c_addresses": [50, 51],
         "channels": [0, 1, 2, 3],
         "channel_configs": {
             0: {"label": "Pressure 1"},
