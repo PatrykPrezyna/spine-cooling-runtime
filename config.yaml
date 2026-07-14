@@ -38,11 +38,17 @@ simulation:
   pressures:
     Pressure 1: 120.0
     Pressure 2: 95.0
+    Pressure 3: 110.0
+    Pressure 4: 100.0
   thermistors:
-    Therm 1: 37.0
-    Therm 2: 36.5
-    Therm 3: 22.0
-    Therm 4: 22.0
+    CSF: 37.0
+    CSF 2: 36.5
+    Cart In: 22.0
+    Cart Out: 22.0
+    Heat Ex: 22.0
+    Heat Ex 2: 22.0
+    Temp 7: 22.0
+    Temp 8: 22.0
 acustic_signal_gpio_pin: 16
 sensors:
 - name: Level Low
@@ -114,14 +120,14 @@ thermocouples:
       8:
         measured_at_0c: 1.7
         measured_at_100c: 89.5
-# Thermistor temperatures on the primary ADS1115 (ADDR=GND → 0x48).
-# Up to 8 channels: channels 0-3 on the first chip, 4-7 on a second chip
-# listed in i2c_addresses. Conversion is piecewise-linear in mV.
+# Thermistor temperatures on two ADS1115 chips (up to 8 channels).
+# Channels 0-3 → first address, 4-7 → second. Labels match thermocouples.
+# Conversion is piecewise-linear in mV.
 thermistor_sensors:
   enabled: true
   i2c_addresses:
-  - 72   # 0x48 — former pressure ADC, now thermistors
-  # - 75 # 0x4B — optional second ADS1115 for channels 4-7
+  - 72   # 0x48 — thermistors 0-3
+  - 73   # 0x49 — thermistors 4-7
   gain: '1'
   data_rate: 128
   channels:
@@ -129,25 +135,35 @@ thermistor_sensors:
   - 1
   - 2
   - 3
+  - 4
+  - 5
+  - 6
+  - 7
   labels:
-    0: Therm 1
-    1: Therm 2
-    2: Therm 3
-    3: Therm 4
+    0: CSF
+    1: CSF 2
+    2: Cart In
+    3: Cart Out
+    4: Heat Ex
+    5: Heat Ex 2
+    6: Temp 7
+    7: Temp 8
   conversion:
     points_mv_c:
     - [616.0, 0.0]
     - [142.0, 37.0]
     - [87.0, 50.0]
-# Pressure sensors on a second ADS1115 (ADDR=VDD → 0x49).
+# Pressure sensors on a third ADS1115 (up to 4 channels).
 pressure_sensors:
   enabled: true
-  i2c_address: 73   # 0x49
+  i2c_address: 50
   gain: '1'
   data_rate: 128
   channels:
   - 0
   - 1
+  - 2
+  - 3
   channel_configs:
     0:
       label: Pressure 1
@@ -157,6 +173,18 @@ pressure_sensors:
       pressure_max: 300.0
     1:
       label: Pressure 2
+      voltage_min: 0.5
+      voltage_max: 4.5
+      pressure_min: 0.0
+      pressure_max: 300.0
+    2:
+      label: Pressure 3
+      voltage_min: 0.5
+      voltage_max: 4.5
+      pressure_min: 0.0
+      pressure_max: 300.0
+    3:
+      label: Pressure 4
       voltage_min: 0.5
       voltage_max: 4.5
       pressure_min: 0.0

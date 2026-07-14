@@ -7,17 +7,20 @@ from typing import Optional
 
 
 class CSVLogger:
-    """Append sensor + thermocouple samples to a timestamped CSV file."""
+    """Append sensor + temperature samples to a timestamped CSV file."""
 
     def __init__(self, config: dict):
         self.csv_directory = config['logging']['csv_directory']
         self.filename_format = config['logging']['filename_format']
-        self.temperature_columns = self._temperature_columns_from_config(config)
+        self.thermocouple_columns = self._thermocouple_columns_from_config(config)
+        self.thermistor_columns = self._thermistor_columns_from_config(config)
         # Linear pump model: flow_ml_per_s = rpm * slope / 60.
         self.pump_flow_ml_per_min_per_rpm = float(
             config.get('pump_flow_ml_per_min_per_rpm', 0.7823)
         )
-        self.header = self._build_header(self.temperature_columns)
+        self.header = self._build_header(
+            self.thermocouple_columns, self.thermistor_columns
+        )
 
         self.csv_file: Optional[Path] = None
         self.csv_writer: Optional[csv.writer] = None
@@ -27,22 +30,34 @@ class CSVLogger:
         Path(self.csv_directory).mkdir(parents=True, exist_ok=True)
 
     @staticmethod
-    def _temperature_columns_from_config(config: dict) -> list[str]:
-        from sensor_injection import temperature_labels_from_config
+    def _thermocouple_columns_from_config(config: dict) -> list[str]:
+        from sensor_injection import thermocouple_labels_from_config
 
-        return temperature_labels_from_config(config)
+        return thermocouple_labels_from_config(config)
 
     @staticmethod
-    def _csv_slug(label: str) -> str:
+    def _thermistor_columns_from_config(config: dict) -> list[str]:
+        from sensor_injection import thermistor_labels_from_config
+
+        return thermistor_labels_from_config(config)
+
+    @staticmethod
+    def _csv_slug(label: str, *, prefix: str = "") -> str:
         slug = "".join(c.lower() if c.isalnum() else "_" for c in label).strip("_")
         while "__" in slug:
             slug = slug.replace("__", "_")
-        return slug or "temp"
+        slug = slug or "temp"
+        return f"{prefix}{slug}" if prefix else slug
 
-    def _build_header(self, temperature_columns: list[str]) -> list[str]:
+    def _build_header(
+        self, thermocouple_columns: list[str], thermistor_columns: list[str]
+    ) -> list[str]:
         header = ['timestamp']
-        for name in temperature_columns:
+        for name in thermocouple_columns:
             header.append(f"{self._csv_slug(name)}_c")
+        for name in thermistor_columns:
+            # Prefix so same display names as thermocouples stay unique.
+            header.append(f"{self._csv_slug(name, prefix='therm_')}_c")
         header.append('set_temperature_c')
         header.append('peristaltic_pump_set_speed_rpm')
         header.append('pump_flow_ml_per_s')
@@ -79,6 +94,7 @@ class CSVLogger:
         peristaltic_pump_set_speed_rpm: Optional[float] = None,
         set_temperature_c: Optional[float] = None,
         compressor_cooling: Optional[int] = None,
+        thermistor_temperatures: Optional[dict] = None,
     ):
         """Append a single row with the current temperature + actuator state.
 
@@ -98,9 +114,13 @@ class CSVLogger:
         try:
             timestamp = datetime.now().isoformat()
             temperatures = temperatures or {}
+            thermistor_temperatures = thermistor_temperatures or {}
             row: list = [timestamp]
-            for column in self.temperature_columns:
+            for column in self.thermocouple_columns:
                 value = temperatures.get(column)
+                row.append(f"{float(value):.3f}" if value is not None else "")
+            for column in self.thermistor_columns:
+                value = thermistor_temperatures.get(column)
                 row.append(f"{float(value):.3f}" if value is not None else "")
             row.append(
                 f"{float(set_temperature_c):.3f}"
@@ -178,11 +198,15 @@ if __name__ == "__main__":
 
     for i in range(10):
         sample_temps = {}
-        for idx, name in enumerate(logger.temperature_columns):
+        for idx, name in enumerate(logger.thermocouple_columns):
             sample_temps[name] = 22.0 + i * 0.1 + idx
+        sample_therms = {}
+        for idx, name in enumerate(logger.thermistor_columns):
+            sample_therms[name] = 23.0 + i * 0.1 + idx
         logger.log(
             sensor_states={},
             temperatures=sample_temps,
+            thermistor_temperatures=sample_therms,
             peristaltic_pump_set_speed_rpm=30 + i,
             set_temperature_c=33.0,
             compressor_cooling=i % 2,

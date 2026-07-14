@@ -41,9 +41,10 @@ class ADS1115PressureReader:
     def __init__(self, config: dict):
         ps_cfg = config.get("pressure_sensors", {})
         self.enabled = bool(ps_cfg.get("enabled", False))
-        # Default 0x49 — ADDR pin tied to VDD. 0x48 is reserved for thermistors.
-        self.i2c_address = int(ps_cfg.get("i2c_address", 0x49))
-        self.channels = ps_cfg.get("channels", [0, 1])
+        # Default 50 — third ADS1115 for up to 4 pressure channels.
+        # (0x48/0x49 are reserved for thermistors.)
+        self.i2c_address = int(ps_cfg.get("i2c_address", 50))
+        self.channels = ps_cfg.get("channels", [0, 1, 2, 3])
         self.channel_configs = ps_cfg.get("channel_configs", {})
         self.last_error: Optional[str] = None
         self.is_initialized = False

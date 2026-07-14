@@ -78,17 +78,12 @@ def thermistor_labels_from_config(config: dict) -> list[str]:
 
 
 def temperature_labels_from_config(config: dict) -> list[str]:
-    """Return thermocouple then thermistor labels (deduped)."""
-    names: list[str] = []
-    seen: set[str] = set()
-    for name in (
-        *thermocouple_labels_from_config(config),
-        *thermistor_labels_from_config(config),
-    ):
-        if name not in seen:
-            names.append(name)
-            seen.add(name)
-    return names
+    """Return thermocouple labels (control / calibration / primary UI).
+
+    Thermistors may reuse the same display names and are listed separately via
+    ``thermistor_labels_from_config``.
+    """
+    return thermocouple_labels_from_config(config)
 
 
 def pressure_labels_from_config(config: dict) -> list[str]:
@@ -212,6 +207,24 @@ class InjectableThermocoupleReader:
         return temps, raw
 
 
+class InjectableThermistorReader:
+    """Delegates thermistor reads and merges injection overrides."""
+
+    def __init__(self, inner: Any, controller: "SensorInjectionController"):
+        self._inner = inner
+        self._controller = controller
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def read_temperatures(self) -> Dict[str, float]:
+        values = dict(self._inner.read_temperatures())
+        for label, override in self._controller.thermistor_overrides.items():
+            if override is not None:
+                values[label] = float(override)
+        return values
+
+
 class InjectablePressureReader:
     """Delegates pressure reads and merges injection overrides."""
 
@@ -238,7 +251,8 @@ class SensorInjectionController:
         self._label_calibration = _build_label_calibration(config)
 
         self.digital_names = digital_sensor_names(config)
-        self.temperature_labels = temperature_labels_from_config(config)
+        self.temperature_labels = thermocouple_labels_from_config(config)
+        self.thermistor_labels = thermistor_labels_from_config(config)
         self.pressure_labels = pressure_labels_from_config(config)
 
         self.digital_overrides: Dict[str, Optional[bool]] = {
@@ -247,11 +261,15 @@ class SensorInjectionController:
         self.temperature_overrides: Dict[str, Optional[float]] = {
             label: None for label in self.temperature_labels
         }
+        self.thermistor_overrides: Dict[str, Optional[float]] = {
+            label: None for label in self.thermistor_labels
+        }
         self.pressure_overrides: Dict[str, Optional[float]] = {
             label: None for label in self.pressure_labels
         }
 
         self._inner_thermocouple: Any = None
+        self._inner_thermistor: Any = None
 
     def set_digital(self, name: str, active: bool) -> None:
         if name in self.digital_overrides:
@@ -260,6 +278,10 @@ class SensorInjectionController:
     def set_temperature_raw(self, label: str, raw_c: float) -> None:
         if label in self.temperature_overrides:
             self.temperature_overrides[label] = float(raw_c)
+
+    def set_thermistor_raw(self, label: str, raw_c: float) -> None:
+        if label in self.thermistor_overrides:
+            self.thermistor_overrides[label] = float(raw_c)
 
     def set_pressure(self, label: str, value: float) -> None:
         if label in self.pressure_overrides:
@@ -270,14 +292,22 @@ class SensorInjectionController:
             self.digital_overrides[name] = None
         elif kind == "temperature" and name in self.temperature_overrides:
             self.temperature_overrides[name] = None
+        elif kind == "thermistor" and name in self.thermistor_overrides:
+            self.thermistor_overrides[name] = None
         elif kind == "pressure" and name in self.pressure_overrides:
             self.pressure_overrides[name] = None
 
     def wrap_bundle(self, bundle: HardwareBundle) -> HardwareBundle:
         self._inner_thermocouple = bundle.thermocouple_reader
+        self._inner_thermistor = bundle.thermistor_reader
         return HardwareBundle(
             sensor_reader=InjectableDigitalReader(bundle.sensor_reader, self),
-            thermocouple_reader=InjectableThermocoupleReader(bundle.thermocouple_reader, self),
+            thermocouple_reader=InjectableThermocoupleReader(
+                bundle.thermocouple_reader, self
+            ),
+            thermistor_reader=InjectableThermistorReader(
+                bundle.thermistor_reader, self
+            ),
             pressure_reader=InjectablePressureReader(bundle.pressure_reader, self),
             stepper_driver=bundle.stepper_driver,
         )
@@ -293,6 +323,18 @@ class SensorInjectionController:
             elif release is not None:
                 release(label)
 
+    def _push_thermistor_overrides_to_inner(self, inner: Any) -> None:
+        set_raw = getattr(inner, "set_raw_temperature", None)
+        if set_raw is None:
+            return
+        for label, value in self.thermistor_overrides.items():
+            if value is not None:
+                set_raw(label, value)
+
     def _sync_thermocouple_inner(self) -> None:
         if self._inner_thermocouple is not None:
             self._push_temperature_overrides_to_inner(self._inner_thermocouple)
+
+    def _sync_thermistor_inner(self) -> None:
+        if self._inner_thermistor is not None:
+            self._push_thermistor_overrides_to_inner(self._inner_thermistor)

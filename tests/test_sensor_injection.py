@@ -35,11 +35,11 @@ _TEST_CONFIG = {
     "thermistor_sensors": {
         "enabled": True,
         "channels": [0],
-        "labels": {0: "Therm 1"},
+        "labels": {0: "CSF 2"},
     },
     "pressure_sensors": {
         "enabled": True,
-        "i2c_address": 73,
+        "i2c_address": 50,
         "channels": [0, 1],
         "channel_configs": {
             0: {"label": "Pressure 1"},
@@ -57,7 +57,7 @@ _TEST_CONFIG = {
             "Level Critical": True,
         },
         "pressures": {"Pressure 1": 120.0, "Pressure 2": 95.0},
-        "thermistors": {"Therm 1": 25.0},
+        "thermistors": {"CSF 2": 25.0},
     },
 }
 

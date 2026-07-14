@@ -414,12 +414,12 @@ class SimThermistorReader:
 
 
 class SimPressureReader:
-    """Pressure readings from config defaults (second ADS1115)."""
+    """Pressure readings from config defaults (third ADS1115)."""
 
     def __init__(self, config: dict):
         ps_cfg = config.get("pressure_sensors", {})
         self.enabled = bool(ps_cfg.get("enabled", False))
-        self.channels = ps_cfg.get("channels", [0, 1])
+        self.channels = ps_cfg.get("channels", [0, 1, 2, 3])
         self.channel_configs = ps_cfg.get("channel_configs", {})
         self.last_error: Optional[str] = None
         self.is_initialized = False

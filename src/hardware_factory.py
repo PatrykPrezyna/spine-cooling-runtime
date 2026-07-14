@@ -5,13 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from combined_temperature_reader import CombinedTemperatureReader
-
 
 @dataclass
 class HardwareBundle:
     sensor_reader: Any
     thermocouple_reader: Any
+    thermistor_reader: Any
     pressure_reader: Any
     stepper_driver: Any
 
@@ -28,13 +27,10 @@ def build_hardware(config: dict, *, simulation: bool) -> HardwareBundle:
         from sim.stepper import SimStepperDriver
 
         print("Building simulated hardware (--sim)")
-        temperature_reader = CombinedTemperatureReader(
-            SimThermocoupleReader(config),
-            SimThermistorReader(config),
-        )
         return HardwareBundle(
             sensor_reader=SimSensorReader(config),
-            thermocouple_reader=temperature_reader,
+            thermocouple_reader=SimThermocoupleReader(config),
+            thermistor_reader=SimThermistorReader(config),
             pressure_reader=SimPressureReader(config),
             stepper_driver=SimStepperDriver(config),
         )
@@ -45,13 +41,10 @@ def build_hardware(config: dict, *, simulation: bool) -> HardwareBundle:
     from stepper_driver import STSPIN220Driver
     from thermocouple_reader import ThermocoupleReader
 
-    temperature_reader = CombinedTemperatureReader(
-        ThermocoupleReader(config),
-        ADS1115ThermistorReader(config),
-    )
     return HardwareBundle(
         sensor_reader=MultiSensorReader(config),
-        thermocouple_reader=temperature_reader,
+        thermocouple_reader=ThermocoupleReader(config),
+        thermistor_reader=ADS1115ThermistorReader(config),
         pressure_reader=ADS1115PressureReader(config),
         stepper_driver=STSPIN220Driver(config),
     )

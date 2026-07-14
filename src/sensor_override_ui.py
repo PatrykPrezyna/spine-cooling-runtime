@@ -7,7 +7,6 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QMainWindow,
     QScrollArea,
@@ -49,11 +48,13 @@ class SensorOverrideWindow(QMainWindow):
         self._digital_simulate_checks: dict[str, QCheckBox] = {}
         self._temp_spins: dict[str, QDoubleSpinBox] = {}
         self._temp_simulate_checks: dict[str, QCheckBox] = {}
+        self._therm_spins: dict[str, QDoubleSpinBox] = {}
+        self._therm_simulate_checks: dict[str, QCheckBox] = {}
         self._pressure_spins: dict[str, QDoubleSpinBox] = {}
         self._pressure_simulate_checks: dict[str, QCheckBox] = {}
 
         self.setWindowTitle("Sensor Override (Test UI)")
-        self.resize(480, 640)
+        self.resize(480, 720)
         self.setStyleSheet(self._WINDOW_STYLE)
 
         self._build_ui()
@@ -70,7 +71,26 @@ class SensorOverrideWindow(QMainWindow):
         layout.setSpacing(10)
 
         layout.addWidget(self._build_digital_group())
-        layout.addWidget(self._build_temperature_group())
+        layout.addWidget(
+            self._build_temp_family_group(
+                "Thermocouples (raw °C)",
+                self.controller.temperature_labels,
+                self._temp_spins,
+                self._temp_simulate_checks,
+                self._on_temperature_changed,
+                self._on_temperature_simulate_toggled,
+            )
+        )
+        layout.addWidget(
+            self._build_temp_family_group(
+                "Thermistors (°C)",
+                self.controller.thermistor_labels,
+                self._therm_spins,
+                self._therm_simulate_checks,
+                self._on_thermistor_changed,
+                self._on_thermistor_simulate_toggled,
+            )
+        )
         layout.addWidget(self._build_pressure_group())
         layout.addStretch()
 
@@ -100,14 +120,22 @@ class SensorOverrideWindow(QMainWindow):
         group.setLayout(grid)
         return group
 
-    def _build_temperature_group(self) -> QGroupBox:
-        group = QGroupBox("Temperatures (raw °C)")
+    def _build_temp_family_group(
+        self,
+        title: str,
+        labels: list[str],
+        spins: dict[str, QDoubleSpinBox],
+        simulate_checks: dict[str, QCheckBox],
+        on_value_changed,
+        on_simulate_toggled,
+    ) -> QGroupBox:
+        group = QGroupBox(title)
         grid = QGridLayout()
         grid.addWidget(QLabel("Channel"), 0, 0)
         grid.addWidget(QLabel("Value"), 0, 1)
         grid.addWidget(QLabel("Simulate"), 0, 2)
 
-        for index, label in enumerate(self.controller.temperature_labels):
+        for index, label in enumerate(labels):
             row = index + 1
             spin = QDoubleSpinBox()
             spin.setRange(-20.0, 80.0)
@@ -115,15 +143,15 @@ class SensorOverrideWindow(QMainWindow):
             spin.setSingleStep(0.5)
             spin.setFixedWidth(90)
             spin.setValue(25.0)
-            spin.valueChanged.connect(lambda _v, lbl=label: self._on_temperature_changed(lbl))
+            spin.valueChanged.connect(lambda _v, lbl=label: on_value_changed(lbl))
 
             simulate_check = QCheckBox("Simulate")
             simulate_check.toggled.connect(
-                lambda enabled, lbl=label: self._on_temperature_simulate_toggled(lbl, enabled)
+                lambda enabled, lbl=label: on_simulate_toggled(lbl, enabled)
             )
 
-            self._temp_spins[label] = spin
-            self._temp_simulate_checks[label] = simulate_check
+            spins[label] = spin
+            simulate_checks[label] = simulate_check
 
             grid.addWidget(QLabel(label), row, 0)
             grid.addWidget(spin, row, 1)
@@ -200,6 +228,23 @@ class SensorOverrideWindow(QMainWindow):
         if simulate_check.isChecked():
             self.controller.set_temperature_raw(label, float(spin.value()))
             self.controller._sync_thermocouple_inner()
+
+    def _on_thermistor_simulate_toggled(self, label: str, enabled: bool) -> None:
+        spin = self._therm_spins.get(label)
+        if spin is None:
+            return
+        if enabled:
+            self.controller.set_thermistor_raw(label, float(spin.value()))
+        else:
+            self.controller.clear_override("thermistor", label)
+
+    def _on_thermistor_changed(self, label: str) -> None:
+        simulate_check = self._therm_simulate_checks.get(label)
+        spin = self._therm_spins.get(label)
+        if simulate_check is None or spin is None:
+            return
+        if simulate_check.isChecked():
+            self.controller.set_thermistor_raw(label, float(spin.value()))
 
     def _on_pressure_simulate_toggled(self, label: str, enabled: bool) -> None:
         spin = self._pressure_spins.get(label)

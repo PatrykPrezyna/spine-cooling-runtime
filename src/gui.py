@@ -2859,6 +2859,7 @@ class MainScreen(QMainWindow):
         temperatures: Optional[dict] = None,
         raw_temperatures: Optional[dict] = None,
         pressures: Optional[dict] = None,
+        thermistor_temperatures: Optional[dict] = None,
     ):
         """Update sensor display"""
         self._update_session_timer()
@@ -2866,7 +2867,7 @@ class MainScreen(QMainWindow):
         self.service2_tab.update_temperatures(temperatures)
         self.service2_tab.update_pressures(pressures)
         self.thermistor_study_tab.update_sensors(sensor_states)
-        self.thermistor_study_tab.update_temperatures(temperatures)
+        self.thermistor_study_tab.update_temperatures(thermistor_temperatures)
         self.thermistor_study_tab.update_pressures(pressures)
         self.calibration_tab.update_current_temperatures(raw_temperatures, temperatures)
         

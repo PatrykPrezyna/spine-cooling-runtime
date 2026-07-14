@@ -28,13 +28,18 @@ _MINIMAL_CONFIG = {
     "thermistor_sensors": {
         "enabled": True,
         "channels": [0, 1],
-        "labels": {0: "Therm 1", 1: "Therm 2"},
+        "labels": {0: "CSF", 1: "Heat Ex"},
     },
     "pressure_sensors": {
         "enabled": True,
-        "i2c_address": 73,
-        "channels": [0],
-        "channel_configs": {0: {"label": "Pressure 1"}},
+        "i2c_address": 50,
+        "channels": [0, 1, 2, 3],
+        "channel_configs": {
+            0: {"label": "Pressure 1"},
+            1: {"label": "Pressure 2"},
+            2: {"label": "Pressure 3"},
+            3: {"label": "Pressure 4"},
+        },
     },
     "stepper_motor": {"max_speed_rpm": 120},
     "simulation": {
@@ -58,8 +63,13 @@ _MINIMAL_CONFIG = {
             "Level Low": True,
             "Level Critical": True,
         },
-        "pressures": {"Pressure 1": 120.0},
-        "thermistors": {"Therm 1": 37.0, "Therm 2": 22.0},
+        "pressures": {
+            "Pressure 1": 120.0,
+            "Pressure 2": 95.0,
+            "Pressure 3": 110.0,
+            "Pressure 4": 100.0,
+        },
+        "thermistors": {"CSF": 36.0, "Heat Ex": 21.0},
     },
 }
 
@@ -78,12 +88,16 @@ class SimHardwareTests(unittest.TestCase):
         temps = bundle.thermocouple_reader.read_temperatures()
         self.assertAlmostEqual(temps["CSF"], 37.0)
         self.assertAlmostEqual(temps["Heat Ex"], 22.0)
-        self.assertAlmostEqual(temps["Therm 1"], 37.0)
-        self.assertAlmostEqual(temps["Therm 2"], 22.0)
+
+        self.assertTrue(bundle.thermistor_reader.is_initialized)
+        therms = bundle.thermistor_reader.read_temperatures()
+        self.assertAlmostEqual(therms["CSF"], 36.0)
+        self.assertAlmostEqual(therms["Heat Ex"], 21.0)
 
         self.assertTrue(bundle.pressure_reader.is_initialized)
         pressures = bundle.pressure_reader.read_pressures()
         self.assertAlmostEqual(pressures["Pressure 1"], 120.0)
+        self.assertAlmostEqual(pressures["Pressure 4"], 100.0)
 
         self.assertTrue(bundle.stepper_driver.is_initialized)
         bundle.stepper_driver.enable()
@@ -92,6 +106,7 @@ class SimHardwareTests(unittest.TestCase):
         bundle.stepper_driver.cleanup()
         bundle.sensor_reader.cleanup()
         bundle.thermocouple_reader.cleanup()
+        bundle.thermistor_reader.cleanup()
         bundle.pressure_reader.cleanup()
 
     def test_csf_follows_pump_state(self) -> None:

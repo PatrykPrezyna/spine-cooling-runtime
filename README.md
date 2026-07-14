@@ -73,8 +73,8 @@ Off-Pi mode uses fakes in `src/sim/`; tweak default sensor/temp values under `si
 | `src/state_machine.py` | Operating flow: Init → Ready → Cooling → Pumping |
 | `src/multi_sensor_reader.py` | Digital GPIO sensors (cartridge, level) |
 | `src/thermocouple_reader.py` | I2C thermocouple readings |
-| `src/ads1115_thermistor_reader.py` | Thermistor temps via ADS1115 (0x48) |
-| `src/ads1115_pressure_reader.py` | Pressure sensors via second ADS1115 (0x49) |
+| `src/ads1115_thermistor_reader.py` | Thermistor temps via ADS1115 (0x48 / 0x49, up to 8) |
+| `src/ads1115_pressure_reader.py` | Pressure sensors via third ADS1115 (addr 50, up to 4) |
 | `src/stepper_driver.py` | Peristaltic pump stepper motor |
 | `src/csv_logger.py` | CSV session logging |
 | `src/sim/` | In-memory hardware fakes (used with `--sim`) |
