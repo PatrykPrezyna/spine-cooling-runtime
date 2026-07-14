@@ -25,8 +25,14 @@ _MINIMAL_CONFIG = {
         "channels": [2, 3, 4, 5],
         "labels": {2: "CSF", 3: "Cart In", 4: "Cart Out", 5: "Heat Ex"},
     },
+    "thermistor_sensors": {
+        "enabled": True,
+        "channels": [0, 1],
+        "labels": {0: "Therm 1", 1: "Therm 2"},
+    },
     "pressure_sensors": {
         "enabled": True,
+        "i2c_address": 73,
         "channels": [0],
         "channel_configs": {0: {"label": "Pressure 1"}},
     },
@@ -53,6 +59,7 @@ _MINIMAL_CONFIG = {
             "Level Critical": True,
         },
         "pressures": {"Pressure 1": 120.0},
+        "thermistors": {"Therm 1": 37.0, "Therm 2": 22.0},
     },
 }
 
@@ -71,6 +78,8 @@ class SimHardwareTests(unittest.TestCase):
         temps = bundle.thermocouple_reader.read_temperatures()
         self.assertAlmostEqual(temps["CSF"], 37.0)
         self.assertAlmostEqual(temps["Heat Ex"], 22.0)
+        self.assertAlmostEqual(temps["Therm 1"], 37.0)
+        self.assertAlmostEqual(temps["Therm 2"], 22.0)
 
         self.assertTrue(bundle.pressure_reader.is_initialized)
         pressures = bundle.pressure_reader.read_pressures()

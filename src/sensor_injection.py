@@ -16,7 +16,10 @@ def digital_sensor_names(config: dict) -> list[str]:
     return [str(s["name"]) for s in config.get("sensors", []) if s.get("name")]
 
 
-def temperature_labels_from_config(config: dict) -> list[str]:
+def thermocouple_labels_from_config(config: dict) -> list[str]:
+    """Return ordered thermocouple channel labels from config."""
+    names: list[str] = []
+    seen: set[str] = set()
     tc_cfg = config.get("thermocouples", {})
     channels = tc_cfg.get("channels", [])
     raw_labels = tc_cfg.get("labels", {}) or {}
@@ -26,13 +29,65 @@ def temperature_labels_from_config(config: dict) -> list[str]:
             labels[int(key)] = str(value)
         except (TypeError, ValueError):
             continue
-    names: list[str] = []
     for channel in channels:
         try:
             ch = int(channel)
         except (TypeError, ValueError):
             continue
-        names.append(labels.get(ch, f"Temp {ch}"))
+        name = labels.get(ch, f"Temp {ch}")
+        if name not in seen:
+            names.append(name)
+            seen.add(name)
+    return names
+
+
+def thermistor_labels_from_config(config: dict) -> list[str]:
+    """Return ordered thermistor channel labels from config (when enabled)."""
+    names: list[str] = []
+    seen: set[str] = set()
+    ts_cfg = config.get("thermistor_sensors", {})
+    if not bool(ts_cfg.get("enabled", False)):
+        return names
+
+    ts_channels = ts_cfg.get("channels", [])
+    ts_labels_raw = ts_cfg.get("labels", {}) or {}
+    ts_labels: dict[int, str] = {}
+    for key, value in ts_labels_raw.items():
+        try:
+            ts_labels[int(key)] = str(value)
+        except (TypeError, ValueError):
+            continue
+    channel_configs = ts_cfg.get("channel_configs", {}) or {}
+    for key, cfg in channel_configs.items():
+        if not isinstance(cfg, dict) or not cfg.get("label"):
+            continue
+        try:
+            ts_labels[int(key)] = str(cfg["label"])
+        except (TypeError, ValueError):
+            continue
+    for channel in ts_channels:
+        try:
+            ch = int(channel)
+        except (TypeError, ValueError):
+            continue
+        name = ts_labels.get(ch, f"Therm {ch + 1}")
+        if name not in seen:
+            names.append(name)
+            seen.add(name)
+    return names
+
+
+def temperature_labels_from_config(config: dict) -> list[str]:
+    """Return thermocouple then thermistor labels (deduped)."""
+    names: list[str] = []
+    seen: set[str] = set()
+    for name in (
+        *thermocouple_labels_from_config(config),
+        *thermistor_labels_from_config(config),
+    ):
+        if name not in seen:
+            names.append(name)
+            seen.add(name)
     return names
 
 

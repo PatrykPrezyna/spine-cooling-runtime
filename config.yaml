@@ -38,6 +38,11 @@ simulation:
   pressures:
     Pressure 1: 120.0
     Pressure 2: 95.0
+  thermistors:
+    Therm 1: 37.0
+    Therm 2: 36.5
+    Therm 3: 22.0
+    Therm 4: 22.0
 acustic_signal_gpio_pin: 16
 sensors:
 - name: Level Low
@@ -109,9 +114,35 @@ thermocouples:
       8:
         measured_at_0c: 1.7
         measured_at_100c: 89.5
+# Thermistor temperatures on the primary ADS1115 (ADDR=GND → 0x48).
+# Up to 8 channels: channels 0-3 on the first chip, 4-7 on a second chip
+# listed in i2c_addresses. Conversion is piecewise-linear in mV.
+thermistor_sensors:
+  enabled: true
+  i2c_addresses:
+  - 72   # 0x48 — former pressure ADC, now thermistors
+  # - 75 # 0x4B — optional second ADS1115 for channels 4-7
+  gain: '1'
+  data_rate: 128
+  channels:
+  - 0
+  - 1
+  - 2
+  - 3
+  labels:
+    0: Therm 1
+    1: Therm 2
+    2: Therm 3
+    3: Therm 4
+  conversion:
+    points_mv_c:
+    - [616.0, 0.0]
+    - [142.0, 37.0]
+    - [87.0, 50.0]
+# Pressure sensors on a second ADS1115 (ADDR=VDD → 0x49).
 pressure_sensors:
   enabled: true
-  i2c_address: 72
+  i2c_address: 73   # 0x49
   gain: '1'
   data_rate: 128
   channels:

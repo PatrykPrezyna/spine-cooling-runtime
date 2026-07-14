@@ -28,23 +28,9 @@ class CSVLogger:
 
     @staticmethod
     def _temperature_columns_from_config(config: dict) -> list[str]:
-        tc_cfg = config.get("thermocouples", {})
-        channels = tc_cfg.get("channels", [])
-        raw_labels = tc_cfg.get("labels", {})
-        labels = {}
-        for key, value in raw_labels.items():
-            try:
-                labels[int(key)] = str(value)
-            except (TypeError, ValueError):
-                continue
-        columns: list[str] = []
-        for channel in channels:
-            try:
-                ch = int(channel)
-            except (TypeError, ValueError):
-                continue
-            columns.append(str(labels.get(ch, f"Temp {ch}")))
-        return columns
+        from sensor_injection import temperature_labels_from_config
+
+        return temperature_labels_from_config(config)
 
     @staticmethod
     def _csv_slug(label: str) -> str:

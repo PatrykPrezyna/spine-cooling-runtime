@@ -200,23 +200,9 @@ class SensorMonitorApp(QObject):
 
     @staticmethod
     def _temperature_sensor_names_from_config(config: dict) -> list[str]:
-        tc_cfg = config.get("thermocouples", {})
-        channels = tc_cfg.get("channels", [])
-        raw_labels = tc_cfg.get("labels", {})
-        labels = {}
-        for key, value in raw_labels.items():
-            try:
-                labels[int(key)] = str(value)
-            except (TypeError, ValueError):
-                continue
-        names: list[str] = []
-        for channel in channels:
-            try:
-                ch = int(channel)
-            except (TypeError, ValueError):
-                continue
-            names.append(str(labels.get(ch, f"Temp {ch}")))
-        return names
+        from sensor_injection import temperature_labels_from_config
+
+        return temperature_labels_from_config(config)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -690,6 +676,10 @@ class SensorMonitorApp(QObject):
             stepper_speed_rpm=self.stepper_speed_rpm,
         )
         self.ui.service2_tab.update_actuators(
+            pump_speed_rpm=actual_pump_speed_rpm,
+            compressor_on=self.compressor_on,
+        )
+        self.ui.thermistor_study_tab.update_actuators(
             pump_speed_rpm=actual_pump_speed_rpm,
             compressor_on=self.compressor_on,
         )

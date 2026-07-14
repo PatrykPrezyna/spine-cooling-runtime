@@ -1,4 +1,4 @@
-"""Simulated sensor readers (GPIO, thermocouple, pressure)."""
+"""Simulated sensor readers (GPIO, thermocouple, thermistor, pressure)."""
 
 from __future__ import annotations
 
@@ -351,8 +351,70 @@ class SimThermocoupleReader:
         self.is_initialized = False
 
 
+class SimThermistorReader:
+    """Thermistor temperatures from config defaults (ADS1115 simulation)."""
+
+    def __init__(self, config: dict):
+        ts_cfg = config.get("thermistor_sensors", {})
+        self.enabled = bool(ts_cfg.get("enabled", False))
+        self.channels = [int(ch) for ch in ts_cfg.get("channels", [])]
+        self.channel_labels = self._parse_labels(ts_cfg)
+        self.last_error: Optional[str] = None
+        self.is_initialized = False
+        self._temperatures: Dict[str, float] = {}
+
+        if not self.enabled:
+            self.last_error = "ADS1115 thermistor reader disabled by config"
+            return
+
+        overrides = _sim_cfg(config).get("thermistors", {}) or {}
+        for channel in self.channels:
+            label = self.channel_labels.get(channel, f"Therm {channel + 1}")
+            self._temperatures[label] = float(overrides.get(label, 25.0))
+
+        self.is_initialized = bool(self._temperatures)
+        if self.is_initialized:
+            print(
+                f"SimThermistorReader: {len(self._temperatures)} channels "
+                "(simulation mode)"
+            )
+        else:
+            self.last_error = "No valid thermistor channels configured"
+
+    @staticmethod
+    def _parse_labels(ts_cfg: dict) -> Dict[int, str]:
+        raw = ts_cfg.get("labels", {}) or {}
+        labels: Dict[int, str] = {}
+        for key, value in raw.items():
+            try:
+                labels[int(key)] = str(value)
+            except (TypeError, ValueError):
+                continue
+        channel_configs = ts_cfg.get("channel_configs", {}) or {}
+        for key, cfg in channel_configs.items():
+            if not isinstance(cfg, dict) or not cfg.get("label"):
+                continue
+            try:
+                labels[int(key)] = str(cfg["label"])
+            except (TypeError, ValueError):
+                continue
+        return labels
+
+    def read_temperatures(self) -> Dict[str, float]:
+        if not self.is_initialized:
+            return {}
+        return dict(self._temperatures)
+
+    def set_raw_temperature(self, label: str, raw_c: float) -> None:
+        if label in self._temperatures:
+            self._temperatures[label] = float(raw_c)
+
+    def cleanup(self) -> None:
+        self.is_initialized = False
+
+
 class SimPressureReader:
-    """Pressure readings from config defaults."""
+    """Pressure readings from config defaults (second ADS1115)."""
 
     def __init__(self, config: dict):
         ps_cfg = config.get("pressure_sensors", {})

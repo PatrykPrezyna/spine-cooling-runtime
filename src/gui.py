@@ -1501,9 +1501,11 @@ class Service2Tab(QWidget):
             label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
 
     def update_temperatures(self, temps: Optional[dict] = None):
-        """Update temperature display with real thermocouple values."""
+        """Update temperature display for this tab's configured sensor labels."""
         if temps:
-            self.temp_values.update(temps)
+            for name in self.sensor_names:
+                if name in temps:
+                    self.temp_values[name] = temps[name]
 
         for name, value in self.temp_values.items():
             label = self.temp_labels.get(name)
@@ -2132,7 +2134,8 @@ class MainScreen(QMainWindow):
         super().__init__()
 
         self.config = config
-        self.temperature_sensor_names = self._temperature_sensor_names_from_config(config)
+        self.temperature_sensor_names = self._thermocouple_sensor_names_from_config(config)
+        self.thermistor_sensor_names = self._thermistor_sensor_names_from_config(config)
         self.primary_temperature_label = self._pick_primary_temperature_label(
             self.temperature_sensor_names
         )
@@ -2165,24 +2168,16 @@ class MainScreen(QMainWindow):
             self.showFullScreen()
 
     @staticmethod
-    def _temperature_sensor_names_from_config(config: dict) -> list[str]:
-        tc_cfg = config.get("thermocouples", {})
-        channels = tc_cfg.get("channels", [])
-        raw_labels = tc_cfg.get("labels", {})
-        labels = {}
-        for key, value in raw_labels.items():
-            try:
-                labels[int(key)] = str(value)
-            except (TypeError, ValueError):
-                continue
-        names: list[str] = []
-        for channel in channels:
-            try:
-                ch = int(channel)
-            except (TypeError, ValueError):
-                continue
-            names.append(str(labels.get(ch, f"Temp {ch}")))
-        return names
+    def _thermocouple_sensor_names_from_config(config: dict) -> list[str]:
+        from sensor_injection import thermocouple_labels_from_config
+
+        return thermocouple_labels_from_config(config)
+
+    @staticmethod
+    def _thermistor_sensor_names_from_config(config: dict) -> list[str]:
+        from sensor_injection import thermistor_labels_from_config
+
+        return thermistor_labels_from_config(config)
 
     @staticmethod
     def _pick_primary_temperature_label(sensor_names: list[str]) -> Optional[str]:
@@ -2333,8 +2328,9 @@ class MainScreen(QMainWindow):
         self.main_graph_widget.setMinimumHeight(280)
         self.main_graph_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
-        # Temperature graph tab
+        # Temperature graph tabs (thermocouple vs thermistor)
         self.temperature_graph_tab = TemperatureGraphTab(self.temperature_sensor_names)
+        self.thermistor_graph_tab = TemperatureGraphTab(self.thermistor_sensor_names)
 
         # Pump flow model slope (shared with service tabs for RPM -> ml/min display).
         pump_flow_slope = float(
@@ -2359,7 +2355,7 @@ class MainScreen(QMainWindow):
         self.service_tab.on_compressor_control_toggle_callback = self._on_service_compressor_control_toggle
         self.service_tab.on_compressor_thresholds_change_callback = self._on_service_compressor_thresholds_change
 
-        # Service 2 tab (Animal Study — digital, temperature, pressure)
+        # Animal Study tabs (thermocouple vs thermistor temperatures)
         pressure_sensor_names = self._pressure_sensor_names_from_config(self.config)
         digital_sensor_names = self._digital_sensor_names_from_config(self.config)
         self.service2_tab = Service2Tab(
@@ -2368,24 +2364,33 @@ class MainScreen(QMainWindow):
             digital_sensor_names=digital_sensor_names,
         )
         self.service2_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
-        temp_series_names = ["Set Temp", *self.temperature_sensor_names]
+        self.thermistor_study_tab = Service2Tab(
+            self.thermistor_sensor_names,
+            pressure_sensor_names=pressure_sensor_names,
+            digital_sensor_names=digital_sensor_names,
+        )
+        self.thermistor_study_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
         self.calibration_tab = CalibrationTab(self.temperature_sensor_names)
         self.calibration_tab.on_apply_calibration_callback = (
             self._on_temperature_graph_calibration_apply
         )
 
-        # In-window advanced area (Service / Animal Study / Temp Graph / Calibration).
+        # In-window advanced area (graphs / Service / study tabs / Calibration).
         self.advanced_tab_selector = QTabBar()
         self.advanced_tab_selector.addTab("Temp Graph")
+        self.advanced_tab_selector.addTab("Therm Graph")
         self.advanced_tab_selector.addTab("Service")
         self.advanced_tab_selector.addTab("Animal Study")
+        self.advanced_tab_selector.addTab("Therm Study")
         self.advanced_tab_selector.addTab("Calibration")
         self.advanced_tab_selector.setExpanding(False)
 
         self.advanced_content_stack = QStackedWidget()
         self.advanced_content_stack.addWidget(self.temperature_graph_tab)
+        self.advanced_content_stack.addWidget(self.thermistor_graph_tab)
         self.advanced_content_stack.addWidget(self.service_tab)
         self.advanced_content_stack.addWidget(self.service2_tab)
+        self.advanced_content_stack.addWidget(self.thermistor_study_tab)
         self.advanced_content_stack.addWidget(self.calibration_tab)
         self.advanced_tab_selector.currentChanged.connect(self.advanced_content_stack.setCurrentIndex)
 
@@ -2860,6 +2865,9 @@ class MainScreen(QMainWindow):
         self.service2_tab.update_sensors(sensor_states)
         self.service2_tab.update_temperatures(temperatures)
         self.service2_tab.update_pressures(pressures)
+        self.thermistor_study_tab.update_sensors(sensor_states)
+        self.thermistor_study_tab.update_temperatures(temperatures)
+        self.thermistor_study_tab.update_pressures(pressures)
         self.calibration_tab.update_current_temperatures(raw_temperatures, temperatures)
         
         # Feed first two configured thermocouple channels into the main trend graph.
@@ -2876,15 +2884,23 @@ class MainScreen(QMainWindow):
         if temp1 == temp1 and temp2 == temp2:  # skip NaN values
             self.main_graph_widget.add_temperature_sample(temp1, temp2)
 
-        # Feed full temperature set into advanced multi-series graph tab.
+        # Feed thermocouple set into advanced multi-series graph tab.
         series_values = {"Set Temp": float(self.main_graph_widget.set_temperature)}
         for name in self.temperature_sensor_names:
             series_values[name] = self.service2_tab.temp_values.get(name, float("nan"))
         self.temperature_graph_tab.add_sample(series_values)
 
+        # Feed thermistor set into dedicated thermistor graph tab.
+        therm_series = {
+            name: self.thermistor_study_tab.temp_values.get(name, float("nan"))
+            for name in self.thermistor_sensor_names
+        }
+        self.thermistor_graph_tab.add_sample(therm_series)
+
         # Keep compressor display stable unless updated by app logic.
         self.service_tab.update_outputs()
         self.service2_tab.update_actuators()
+        self.thermistor_study_tab.update_actuators()
     
     def _update_session_timer(self) -> None:
         """Refresh the header session timer (whole minutes since start)."""
