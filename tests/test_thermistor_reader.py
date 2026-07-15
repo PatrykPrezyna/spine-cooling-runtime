@@ -37,13 +37,13 @@ _CONFIG = {
     },
     "pressure_sensors": {
         "enabled": True,
-        "i2c_addresses": [50, 51],
+        "i2c_addresses": [74, 75],
         "channels": [0, 1, 2, 3],
         "channel_configs": {
-            0: {"label": "Pressure 1"},
-            1: {"label": "Pressure 2"},
-            2: {"label": "Pressure 3"},
-            3: {"label": "Pressure 4"},
+            0: {"label": "Cartridge Input"},
+            1: {"label": "Cartridge Output"},
+            2: {"label": "Pump Input"},
+            3: {"label": "Pump Output"},
         },
     },
     "stepper_motor": {"max_speed_rpm": 120},
@@ -52,10 +52,10 @@ _CONFIG = {
         "csf_initial_c": 37.0,
         "thermistors": {"CSF": 36.5, "Heat Ex": 22.0},
         "pressures": {
-            "Pressure 1": 120.0,
-            "Pressure 2": 95.0,
-            "Pressure 3": 110.0,
-            "Pressure 4": 100.0,
+            "Cartridge Input": 20.0,
+            "Cartridge Output": 15.0,
+            "Pump Input": 25.0,
+            "Pump Output": 30.0,
         },
         "sensors": {"Level Low": True},
     },
@@ -94,7 +94,7 @@ class ThermistorHardwareTests(unittest.TestCase):
         self.assertAlmostEqual(therms["Heat Ex"], 22.0)
 
         pressures = bundle.pressure_reader.read_pressures()
-        self.assertAlmostEqual(pressures["Pressure 1"], 120.0)
+        self.assertAlmostEqual(pressures["Cartridge Input"], 20.0)
         self.assertEqual(len(pressures), 4)
 
         bundle.thermocouple_reader.cleanup()

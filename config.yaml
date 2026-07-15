@@ -36,10 +36,10 @@ simulation:
     Level Critical: true
     Leak Sensor: true
   pressures:
-    Pressure 1: 120.0
-    Pressure 2: 95.0
-    Pressure 3: 110.0
-    Pressure 4: 100.0
+    Cartridge Input: 20.0
+    Cartridge Output: 15.0
+    Pump Input: 25.0
+    Pump Output: 30.0
   thermistors:
     CSF: 37.0
     CSF 2: 36.5
@@ -156,43 +156,32 @@ thermistor_sensors:
 # Differential pressure sensors on a third + fourth ADS1115 (up to 4 sensors).
 # Each sensor uses one differential pair (2 analog inputs), so one chip serves
 # two sensors: channels 0-1 on the first address, 2-3 on the second.
+# Linear calibration: mV → psi (same for all sensors).
 pressure_sensors:
   enabled: true
   i2c_addresses:
-  - 50   # third ADS1115 — Pressure 1 (P0-P1), Pressure 2 (P2-P3)
-  - 51   # fourth ADS1115 — Pressure 3 (P0-P1), Pressure 4 (P2-P3)
-  gain: '16'  # ±0.256 V — max amplification (smallest FSR)
-  data_rate: 128
+  - 74   # 0x4A — Cartridge Input (P0-P1), Cartridge Output (P2-P3)
+  - 75   # 0x4B — Pump Input (P0-P1), Pump Output (P2-P3)
+  gain: 16  # ±0.256 V
   channels:
   - 0
   - 1
   - 2
   - 3
+  calibration:
+    mv_lo: -14.858
+    psi_lo: -11.5
+    mv_hi: 96.9
+    psi_hi: 75.0
   channel_configs:
     0:
-      label: Pressure 1
-      voltage_min: 0.5
-      voltage_max: 4.5
-      pressure_min: 0.0
-      pressure_max: 300.0
+      label: Cartridge Input
     1:
-      label: Pressure 2
-      voltage_min: 0.5
-      voltage_max: 4.5
-      pressure_min: 0.0
-      pressure_max: 300.0
+      label: Cartridge Output
     2:
-      label: Pressure 3
-      voltage_min: 0.5
-      voltage_max: 4.5
-      pressure_min: 0.0
-      pressure_max: 300.0
+      label: Pump Input
     3:
-      label: Pressure 4
-      voltage_min: 0.5
-      voltage_max: 4.5
-      pressure_min: 0.0
-      pressure_max: 300.0
+      label: Pump Output
 compressor:
   relay_pin: 6
   heat_ex_label: Heat Ex

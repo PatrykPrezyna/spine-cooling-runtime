@@ -39,11 +39,11 @@ _TEST_CONFIG = {
     },
     "pressure_sensors": {
         "enabled": True,
-        "i2c_addresses": [50, 51],
+        "i2c_addresses": [74, 75],
         "channels": [0, 1],
         "channel_configs": {
-            0: {"label": "Pressure 1"},
-            1: {"label": "Pressure 2"},
+            0: {"label": "Cartridge Input"},
+            1: {"label": "Cartridge Output"},
         },
     },
     "simulation": {
@@ -56,7 +56,7 @@ _TEST_CONFIG = {
             "Level Low": True,
             "Level Critical": True,
         },
-        "pressures": {"Pressure 1": 120.0, "Pressure 2": 95.0},
+        "pressures": {"Cartridge Input": 20.0, "Cartridge Output": 15.0},
         "thermistors": {"CSF 2": 25.0},
     },
 }
@@ -95,9 +95,9 @@ class SensorInjectionTests(unittest.TestCase):
         bundle = build_hardware(_TEST_CONFIG, simulation=True)
         wrapped = controller.wrap_bundle(bundle)
 
-        controller.set_pressure("Pressure 1", 50.0)
+        controller.set_pressure("Cartridge Input", 50.0)
         pressures = wrapped.pressure_reader.read_pressures()
-        self.assertAlmostEqual(pressures["Pressure 1"], 50.0)
+        self.assertAlmostEqual(pressures["Cartridge Input"], 50.0)
 
     def test_clear_override_restores_passthrough(self) -> None:
         controller = SensorInjectionController(_TEST_CONFIG)
