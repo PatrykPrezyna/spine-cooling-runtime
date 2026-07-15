@@ -22,7 +22,7 @@ try:
 except Exception:
     from adafruit_ads1x15.ads1115 import Mode
 
-I2C_ADDRESS = 50
+I2C_ADDRESS = 49
 GAIN = 16  # ±0.256 V
 
 keep_going = True
