@@ -22,7 +22,7 @@ try:
 except Exception:
     from adafruit_ads1x15.ads1115 import Mode  # pyright: ignore[reportMissingImports]
 
-I2C_ADDRESS = 73
+I2C_ADDRESS = 74
 GAIN = 16  # ±0.256 V
 SAMPLE_INTERVAL_S = 0.5  # 2 Hz print loop
 
