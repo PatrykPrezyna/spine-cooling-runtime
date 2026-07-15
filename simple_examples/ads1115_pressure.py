@@ -24,8 +24,17 @@ except Exception:
 
 I2C_ADDRESS = 73
 GAIN = 16  # ±0.256 V
+SAMPLE_INTERVAL_S = 0.5  # 2 Hz print loop
+
+# Linear calibration: mV -> psi
+MV_LO, PSI_LO = -14.858, -11.5
+MV_HI, PSI_HI = 96.9, 75.0
 
 keep_going = True
+
+
+def mv_to_psi(mv: float) -> float:
+    return PSI_LO + (mv - MV_LO) * (PSI_HI - PSI_LO) / (MV_HI - MV_LO)
 
 
 def key_capture_thread() -> None:
@@ -48,20 +57,22 @@ def main() -> None:
 
     print(
         f"Reading Pressure 1 on ADS1115 0x{I2C_ADDRESS:X} "
-        f"(P0-P1 differential, gain={GAIN}). Hit ENTER to exit."
+        f"(P0-P1 differential, gain={GAIN}, "
+        f"{1.0 / SAMPLE_INTERVAL_S:.0f} Hz). Hit ENTER to exit."
     )
     threading.Thread(
         target=key_capture_thread, name="key_capture_thread", daemon=True
     ).start()
 
     while keep_going:
-        now = datetime.now().strftime("%H:%M:%S")
+        now = datetime.now().strftime("%H:%M:%S.%f")[:-3]
         try:
             mv = sensor.voltage * 1000.0
-            print(f"{now}  Pressure 1 -> {mv:.2f} mV  (raw={sensor.value})")
+            psi = mv_to_psi(mv)
+            print(f"{now}  Pressure 1 -> {mv:.2f} mV  {psi:.2f} psi  (raw={sensor.value})")
         except Exception as exc:
             print(f"{now}  Pressure 1 -> ERR ({exc})")
-        time.sleep(1.0)
+        time.sleep(SAMPLE_INTERVAL_S)
 
     print()
 
