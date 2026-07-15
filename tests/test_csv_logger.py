@@ -1,4 +1,4 @@
-"""Tests for CSV logging including pressure columns at the 10 Hz tick rate."""
+"""Tests for CSV logging including pressure columns at the 100 Hz tick rate."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ _CONFIG = {
     },
     "pressure_sensors": {
         "enabled": True,
-        "sample_rate_hz": 10,
+        "sample_rate_hz": 100,
         "channels": [0, 1, 2, 3],
         "channel_configs": {
             0: {"label": "Cartridge Input"},
@@ -63,7 +63,6 @@ class CsvPressureLoggingTests(unittest.TestCase):
         self.assertIn("cartridge_output_psi", self.logger.header)
         self.assertIn("pump_input_psi", self.logger.header)
         self.assertIn("pump_output_psi", self.logger.header)
-        # Existing columns still present.
         self.assertIn("csf_c", self.logger.header)
         self.assertIn("compressor_cooling", self.logger.header)
 
@@ -88,19 +87,18 @@ class CsvPressureLoggingTests(unittest.TestCase):
         self.assertTrue(path.exists())
         with path.open(newline="", encoding="utf-8") as fh:
             rows = list(csv.reader(fh))
-        self.assertEqual(len(rows), 2)  # header + one sample
-        header, row = rows[0], rows[1]
-        by_name = dict(zip(header, row))
+        self.assertEqual(len(rows), 2)
+        by_name = dict(zip(rows[0], rows[1]))
         self.assertEqual(by_name["cartridge_input_psi"], "-11.50")
         self.assertEqual(by_name["cartridge_output_psi"], "75.00")
         self.assertEqual(by_name["pump_input_psi"], "12.35")
-        self.assertEqual(by_name["pump_output_psi"], "")  # nan → blank
+        self.assertEqual(by_name["pump_output_psi"], "")
         self.assertEqual(by_name["csf_c"], "37.000")
 
-    def test_ten_hz_burst_writes_expected_row_count(self) -> None:
-        """Simulate ~10 Hz logging for 0.5 s → about 5 rows (+ header)."""
+    def test_hundred_hz_burst_writes_expected_row_count(self) -> None:
+        """Simulate ~100 Hz logging for 50 ms → 5 rows (+ header)."""
         self.assertTrue(self.logger.start_logging())
-        interval_s = 0.1  # 10 Hz
+        interval_s = 0.01  # 100 Hz
         samples = 5
         t0 = time.perf_counter()
         for i in range(samples):
@@ -125,12 +123,10 @@ class CsvPressureLoggingTests(unittest.TestCase):
         with path.open(newline="", encoding="utf-8") as fh:
             rows = list(csv.reader(fh))
         self.assertEqual(len(rows), samples + 1)
-        # Timing sanity: 5 × 100 ms should be near 0.5 s (allow slack).
-        self.assertGreaterEqual(elapsed, 0.45)
-        self.assertLess(elapsed, 1.5)
+        self.assertGreaterEqual(elapsed, 0.04)
+        self.assertLess(elapsed, 1.0)
 
-        header = rows[0]
-        last = dict(zip(header, rows[-1]))
+        last = dict(zip(rows[0], rows[-1]))
         self.assertEqual(last["cartridge_input_psi"], "14.00")
         self.assertEqual(last["pump_output_psi"], "17.00")
 

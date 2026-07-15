@@ -47,6 +47,7 @@ class ADS1115PressureReader:
         self.channels = [int(ch) for ch in ps_cfg.get("channels", [0, 1, 2, 3])]
         self.channel_configs = ps_cfg.get("channel_configs", {}) or {}
         self.gain = int(ps_cfg.get("gain", 16))
+        self.data_rate = int(ps_cfg.get("data_rate", 860))
         self.last_error: Optional[str] = None
         self.is_initialized = False
 
@@ -87,6 +88,7 @@ class ADS1115PressureReader:
             for address in self.i2c_addresses:
                 ads = ADS.ADS1115(self._i2c, address=address)
                 ads.gain = self.gain
+                ads.data_rate = self.data_rate
                 ads.mode = Mode.SINGLE
                 ads_by_address[address] = ads
 
