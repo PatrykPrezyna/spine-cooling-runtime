@@ -12,15 +12,15 @@ import threading
 import time
 from datetime import datetime
 
-import board
-import busio
-import adafruit_ads1x15.ads1115 as ADS
-from adafruit_ads1x15.analog_in import AnalogIn
+import board  # pyright: ignore[reportMissingImports]
+import busio  # pyright: ignore[reportMissingImports]
+import adafruit_ads1x15.ads1115 as ADS  # pyright: ignore[reportMissingImports]
+from adafruit_ads1x15.analog_in import AnalogIn  # pyright: ignore[reportMissingImports]
 
 try:
-    from adafruit_ads1x15.ads1x15 import Mode
+    from adafruit_ads1x15.ads1x15 import Mode  # pyright: ignore[reportMissingImports]
 except Exception:
-    from adafruit_ads1x15.ads1115 import Mode
+    from adafruit_ads1x15.ads1115 import Mode  # pyright: ignore[reportMissingImports]
 
 I2C_ADDRESS = 73
 GAIN = 16  # ±0.256 V
@@ -41,7 +41,10 @@ def main() -> None:
     ads.mode = Mode.SINGLE
 
     # Differential: channel 0 (+) minus channel 1 (-)
-    sensor = AnalogIn(ads, ADS.P0, ADS.P1)
+    # Newer ads1x15 builds may not export P0/P1; fall back to pin indices.
+    p0 = getattr(ADS, "P0", 0)
+    p1 = getattr(ADS, "P1", 1)
+    sensor = AnalogIn(ads, p0, p1)
 
     print(
         f"Reading Pressure 1 on ADS1115 0x{I2C_ADDRESS:X} "
