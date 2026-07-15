@@ -170,11 +170,12 @@ class SensorOverrideWindow(QMainWindow):
         for index, label in enumerate(self.controller.pressure_labels):
             row = index + 1
             spin = QDoubleSpinBox()
-            spin.setRange(0.0, 400.0)
-            spin.setDecimals(1)
-            spin.setSingleStep(1.0)
-            spin.setFixedWidth(90)
-            spin.setValue(100.0)
+            spin.setRange(-50.0, 400.0)
+            spin.setDecimals(2)
+            spin.setSingleStep(0.1)
+            spin.setSuffix(" psi")
+            spin.setFixedWidth(110)
+            spin.setValue(20.0)
             spin.valueChanged.connect(lambda _v, lbl=label: self._on_pressure_changed(lbl))
 
             simulate_check = QCheckBox("Simulate")

@@ -1413,7 +1413,7 @@ class Service2Tab(QWidget):
         self.pressure_group = QGroupBox("Pressure Sensors")
         self.pressure_group.setStyleSheet(ServiceTab._group_box_style("#8b5cf6", "10px", margin_top=6))
         for name in self.pressure_sensor_names:
-            label = QLabel(f"{name}: --")
+            label = QLabel(f"{name}: --.-- psi")
             label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
             self.pressure_labels[name] = label
 
@@ -1525,7 +1525,7 @@ class Service2Tab(QWidget):
             label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
 
     def update_pressures(self, pressures: Optional[dict] = None):
-        """Update pressure display. Placeholder until real sensors are wired in."""
+        """Update pressure display in psi."""
         if pressures:
             self.pressure_values.update(pressures)
 
@@ -1534,10 +1534,10 @@ class Service2Tab(QWidget):
             if label is None:
                 continue
             if math.isnan(value):
-                label.setText(f"{name}: --")
+                label.setText(f"{name}: --.-- psi")
                 label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
                 continue
-            label.setText(f"{name}: {int(value)}")
+            label.setText(f"{name}: {value:.2f} psi")
             label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color="#8b5cf6"))
 
 
