@@ -157,10 +157,8 @@ thermistor_sensors:
 # Each sensor uses one differential pair (2 analog inputs), so one chip serves
 # two sensors: channels 0-1 on the first address, 2-3 on the second.
 # Linear calibration: mV → psi (same for all sensors).
-# Read rate follows ui.update_interval_ms (100 ms → 10 Hz) and is logged to CSV.
 pressure_sensors:
   enabled: true
-  sample_rate_hz: 10
   i2c_addresses:
   - 74   # 0x4A — Cartridge Input (P0-P1), Cartridge Output (P2-P3)
   - 75   # 0x4B — Pump Input (P0-P1), Pump Output (P2-P3)
@@ -199,7 +197,7 @@ pump_flow_ml_per_min_per_rpm: 0.7823
 ui:
   window_width: 500
   window_height: 450
-  update_interval_ms: 100  # 10 Hz IO / pressure / CSV tick
+  update_interval_ms: 100
   fullscreen: true
 stepper_motor:
   driver: TB6600

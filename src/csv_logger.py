@@ -1,27 +1,23 @@
-"""CSV data logger for temperature, actuators, and pressure readings."""
+"""CSV data logger for digital sensor states and thermocouple readings."""
 
 import csv
-import math
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 
 class CSVLogger:
-    """Append sensor + temperature + pressure samples to a timestamped CSV file."""
+    """Append sensor + temperature samples to a timestamped CSV file."""
 
     def __init__(self, config: dict):
         self.csv_directory = config['logging']['csv_directory']
         self.filename_format = config['logging']['filename_format']
         self.thermocouple_columns = self._thermocouple_columns_from_config(config)
-        self.pressure_columns = self._pressure_columns_from_config(config)
         # Linear pump model: flow_ml_per_s = rpm * slope / 60.
         self.pump_flow_ml_per_min_per_rpm = float(
             config.get('pump_flow_ml_per_min_per_rpm', 0.7823)
         )
-        self.header = self._build_header(
-            self.thermocouple_columns, self.pressure_columns
-        )
+        self.header = self._build_header(self.thermocouple_columns)
 
         self.csv_file: Optional[Path] = None
         self.csv_writer: Optional[csv.writer] = None
@@ -37,21 +33,13 @@ class CSVLogger:
         return thermocouple_labels_from_config(config)
 
     @staticmethod
-    def _pressure_columns_from_config(config: dict) -> list[str]:
-        from sensor_injection import pressure_labels_from_config
-
-        return pressure_labels_from_config(config)
-
-    @staticmethod
     def _csv_slug(label: str) -> str:
         slug = "".join(c.lower() if c.isalnum() else "_" for c in label).strip("_")
         while "__" in slug:
             slug = slug.replace("__", "_")
         return slug or "temp"
 
-    def _build_header(
-        self, thermocouple_columns: list[str], pressure_columns: list[str]
-    ) -> list[str]:
+    def _build_header(self, thermocouple_columns: list[str]) -> list[str]:
         header = ['timestamp']
         for name in thermocouple_columns:
             header.append(f"{self._csv_slug(name)}_c")
@@ -59,8 +47,6 @@ class CSVLogger:
         header.append('peristaltic_pump_set_speed_rpm')
         header.append('pump_flow_ml_per_s')
         header.append('compressor_cooling')
-        for name in pressure_columns:
-            header.append(f"{self._csv_slug(name)}_psi")
         return header
 
     def start_logging(self) -> bool:
@@ -94,9 +80,8 @@ class CSVLogger:
         set_temperature_c: Optional[float] = None,
         compressor_cooling: Optional[int] = None,
         thermistor_temperatures: Optional[dict] = None,
-        pressures: Optional[dict] = None,
     ):
-        """Append a single row with temperature, actuators, and pressures.
+        """Append a single row with the current temperature + actuator state.
 
         ``sensor_states`` is accepted for backwards compatibility but is no
         longer logged — the cartridge level digital sensors are tracked in
@@ -107,7 +92,6 @@ class CSVLogger:
         ``compressor_cooling`` is 1 when the compressor relay is on (cooling),
         0 when off (idle).
         Thermistors are accepted for API compatibility but not logged yet.
-        ``pressures`` maps label → psi (logged to two decimal places).
         """
         del sensor_states  # not logged anymore; kept for API compatibility
         del thermistor_temperatures  # not logged yet
@@ -117,7 +101,6 @@ class CSVLogger:
         try:
             timestamp = datetime.now().isoformat()
             temperatures = temperatures or {}
-            pressures = pressures or {}
             row: list = [timestamp]
             for column in self.thermocouple_columns:
                 value = temperatures.get(column)
@@ -146,14 +129,6 @@ class CSVLogger:
                 if compressor_cooling is not None
                 else ""
             )
-            for column in self.pressure_columns:
-                value = pressures.get(column)
-                if value is None or (
-                    isinstance(value, float) and math.isnan(value)
-                ):
-                    row.append("")
-                else:
-                    row.append(f"{float(value):.2f}")
 
             self.csv_writer.writerow(row)
             self.file_handle.flush()
@@ -208,19 +183,14 @@ if __name__ == "__main__":
         sample_temps = {}
         for idx, name in enumerate(logger.thermocouple_columns):
             sample_temps[name] = 22.0 + i * 0.1 + idx
-        sample_pressures = {
-            name: 10.0 + i + idx * 0.1
-            for idx, name in enumerate(logger.pressure_columns)
-        }
         logger.log(
             sensor_states={},
             temperatures=sample_temps,
             peristaltic_pump_set_speed_rpm=30 + i,
             set_temperature_c=33.0,
             compressor_cooling=i % 2,
-            pressures=sample_pressures,
         )
-        time.sleep(0.1)
+        time.sleep(0.5)
 
     print(f"Log file size: {logger.get_log_file_size()} bytes")
     logger.stop_logging()

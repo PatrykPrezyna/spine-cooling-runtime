@@ -1541,100 +1541,6 @@ class Service2Tab(QWidget):
             label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color="#8b5cf6"))
 
 
-class PressureServiceTab(QWidget):
-    """Service tab focused on pressure sensors and pump speed."""
-
-    _LABEL_NEUTRAL_STYLE = "font-size: 12px; padding: 6px; color: #5c6b79;"
-    _LABEL_STRONG_TEMPLATE = "font-size: 12px; padding: 6px; color: {color}; font-weight: 600;"
-    _DEFAULT_PRESSURE_SENSOR_NAMES = (
-        "Cartridge Input",
-        "Cartridge Output",
-        "Pump Input",
-        "Pump Output",
-    )
-
-    def __init__(self, pressure_sensor_names: Optional[list[str]] = None):
-        super().__init__()
-        self.pressure_sensor_names = list(
-            pressure_sensor_names
-            if pressure_sensor_names is not None
-            else self._DEFAULT_PRESSURE_SENSOR_NAMES
-        )
-        self.pressure_values = {name: float("nan") for name in self.pressure_sensor_names}
-        self.pressure_labels: dict = {}
-        self.pump_speed_rpm = 0
-        self.pump_flow_ml_per_min_per_rpm = DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
-        self._create_widgets()
-        self._setup_layout()
-
-    def _create_widgets(self):
-        self.pressure_group = QGroupBox("Pressure Sensors")
-        self.pressure_group.setStyleSheet(ServiceTab._group_box_style("#8b5cf6", "10px", margin_top=6))
-        for name in self.pressure_sensor_names:
-            label = QLabel(f"{name}: --.-- psi")
-            label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-            self.pressure_labels[name] = label
-
-        self.pump_group = QGroupBox("Pump")
-        self.pump_group.setStyleSheet(ServiceTab._group_box_style("#0e6a76", "10px", margin_top=6))
-        self.pump_speed_label = QLabel("Pump: 0 RPM")
-        self.pump_speed_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-
-    def _setup_layout(self):
-        main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(4)
-
-        pressure_layout = QGridLayout()
-        for index, name in enumerate(self.pressure_sensor_names):
-            row = index // 2
-            col = index % 2
-            pressure_layout.addWidget(self.pressure_labels[name], row, col)
-        self.pressure_group.setLayout(pressure_layout)
-        main_layout.addWidget(self.pressure_group)
-
-        pump_layout = QHBoxLayout()
-        pump_layout.addWidget(self.pump_speed_label)
-        self.pump_group.setLayout(pump_layout)
-        main_layout.addWidget(self.pump_group)
-
-        main_layout.addStretch()
-        self.setLayout(main_layout)
-
-    def update_pressures(self, pressures: Optional[dict] = None):
-        """Update pressure display in psi."""
-        if pressures:
-            self.pressure_values.update(pressures)
-
-        for name, value in self.pressure_values.items():
-            label = self.pressure_labels.get(name)
-            if label is None:
-                continue
-            if math.isnan(value):
-                label.setText(f"{name}: --.-- psi")
-                label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-                continue
-            label.setText(f"{name}: {value:.2f} psi")
-            label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color="#8b5cf6"))
-
-    def update_pump_speed(self, pump_speed_rpm: Optional[int] = None):
-        """Update pump speed / derived flow display."""
-        if pump_speed_rpm is not None:
-            self.pump_speed_rpm = max(0, int(pump_speed_rpm))
-
-        ml_per_min = _pump_flow_ml_per_min(
-            self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
-        )
-        if self.pump_speed_rpm > 0:
-            pump_color = "#16a34a"
-            pump_text = f"Pump: {self.pump_speed_rpm} RPM ({ml_per_min:.1f} ml/min)"
-        else:
-            pump_color = "#6b7280"
-            pump_text = f"Pump: 0 RPM ({ml_per_min:.1f} ml/min, stopped)"
-        self.pump_speed_label.setText(pump_text)
-        self.pump_speed_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=pump_color))
-
-
 class MultiTemperatureGraphWidget(QWidget):
     """Custom graph widget for plotting multiple temperature channels."""
 
@@ -2464,10 +2370,6 @@ class MainScreen(QMainWindow):
             digital_sensor_names=digital_sensor_names,
         )
         self.thermistor_study_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
-        self.pressure_service_tab = PressureServiceTab(
-            pressure_sensor_names=pressure_sensor_names,
-        )
-        self.pressure_service_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
         self.calibration_tab = CalibrationTab(self.temperature_sensor_names)
         self.calibration_tab.on_apply_calibration_callback = (
             self._on_temperature_graph_calibration_apply
@@ -2478,7 +2380,6 @@ class MainScreen(QMainWindow):
         self.advanced_tab_selector.addTab("Temp Graph")
         self.advanced_tab_selector.addTab("Therm Graph")
         self.advanced_tab_selector.addTab("Service")
-        self.advanced_tab_selector.addTab("Pressure")
         self.advanced_tab_selector.addTab("Animal Study")
         self.advanced_tab_selector.addTab("Therm Study")
         self.advanced_tab_selector.addTab("Calibration")
@@ -2488,7 +2389,6 @@ class MainScreen(QMainWindow):
         self.advanced_content_stack.addWidget(self.temperature_graph_tab)
         self.advanced_content_stack.addWidget(self.thermistor_graph_tab)
         self.advanced_content_stack.addWidget(self.service_tab)
-        self.advanced_content_stack.addWidget(self.pressure_service_tab)
         self.advanced_content_stack.addWidget(self.service2_tab)
         self.advanced_content_stack.addWidget(self.thermistor_study_tab)
         self.advanced_content_stack.addWidget(self.calibration_tab)
@@ -2969,7 +2869,6 @@ class MainScreen(QMainWindow):
         self.thermistor_study_tab.update_sensors(sensor_states)
         self.thermistor_study_tab.update_temperatures(thermistor_temperatures)
         self.thermistor_study_tab.update_pressures(pressures)
-        self.pressure_service_tab.update_pressures(pressures)
         self.calibration_tab.update_current_temperatures(raw_temperatures, temperatures)
         
         # Feed first two configured thermocouple channels into the main trend graph.
@@ -3003,7 +2902,6 @@ class MainScreen(QMainWindow):
         self.service_tab.update_outputs()
         self.service2_tab.update_actuators()
         self.thermistor_study_tab.update_actuators()
-        self.pressure_service_tab.update_pump_speed()
     
     def _update_session_timer(self) -> None:
         """Refresh the header session timer (whole minutes since start)."""

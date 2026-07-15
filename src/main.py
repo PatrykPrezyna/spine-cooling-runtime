@@ -112,7 +112,6 @@ class _BackgroundIOWorker(QObject):
                     set_temperature_c=float(set_temperature_c),
                     compressor_cooling=int(compressor_cooling),
                     thermistor_temperatures=thermistor_temperatures,
-                    pressures=pressures,
                 )
         except Exception as exc:
             error_message = f"Error during update: {exc}"
@@ -129,7 +128,6 @@ class _BackgroundIOWorker(QObject):
 class SensorMonitorApp(QObject):
     """Top-level application coordinator (lives on the GUI thread)."""
 
-    # Fallback when config has no ui.update_interval_ms (100 ms → 10 Hz).
     UPDATE_INTERVAL_MS = 100
 
     # Emitted on every UI tick to ask the IO worker thread to do its work.
@@ -148,10 +146,6 @@ class SensorMonitorApp(QObject):
         self.simulation = bool(simulation)
         self.test_ui_enabled = bool(test_ui_enabled)
         self.config = self._load_config(config_path)
-        ui_cfg = self.config.get("ui", {}) or {}
-        self.update_interval_ms = int(
-            ui_cfg.get("update_interval_ms", self.UPDATE_INTERVAL_MS)
-        )
         self.temperature_sensor_names = self._temperature_sensor_names_from_config(self.config)
         self.primary_temperature_label = (
             self.temperature_sensor_names[1]
@@ -713,9 +707,6 @@ class SensorMonitorApp(QObject):
             pump_speed_rpm=actual_pump_speed_rpm,
             compressor_on=self.compressor_on,
         )
-        self.ui.pressure_service_tab.update_pump_speed(
-            pump_speed_rpm=actual_pump_speed_rpm,
-        )
 
     # ------------------------------------------------------------------
     # UI callbacks
@@ -905,7 +896,7 @@ class SensorMonitorApp(QObject):
             # the very first tick can be dispatched right away.
             self._start_io_worker()
 
-            self.ui.update_timer.start(self.update_interval_ms)
+            self.ui.update_timer.start(self.UPDATE_INTERVAL_MS)
             self.ui.show()
 
             if self.test_ui_enabled and self.sensor_injection is not None:
