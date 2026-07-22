@@ -47,7 +47,7 @@ def main() -> None:
     i2c = busio.I2C(board.SCL, board.SDA)
     ads = ADS.ADS1115(i2c, address=I2C_ADDRESS)
     ads.gain = GAIN
-    ads.mode = Mode.SINGLE/sigma delta
+    ads.mode = Mode.SINGLE #sigma delta
 
     # Differential: channel 0 (+) minus channel 1 (-)
     # Newer ads1x15 builds may not export P0/P1; fall back to pin indices.
