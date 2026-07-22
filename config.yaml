@@ -192,6 +192,9 @@ compressor:
 logging:
   csv_directory: data/csv
   filename_format: sensor_log_%Y%m%d_%H%M%S.csv
+  # Toggleable pressure-only capture (Pressure service tab). New file each ON.
+  pressure_csv_directory: data/csv/pressure
+  pressure_filename_format: pressure_log_%Y%m%d_%H%M%S.csv
 # Pump throughput: flow scales linearly with stepper RPM. Slope from a
 # least-squares fit (through the origin) of the measured calibration data.
 # flow_ml_per_s = pump_rpm * pump_flow_ml_per_min_per_rpm / 60

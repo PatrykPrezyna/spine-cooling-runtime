@@ -1564,6 +1564,10 @@ class PressureServiceTab(QWidget):
         self.pressure_labels: dict = {}
         self.pump_speed_rpm = 0
         self.pump_flow_ml_per_min_per_rpm = DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
+        self.pressure_csv_logging_enabled = False
+        self.on_pressure_csv_logging_toggle_callback: Optional[
+            Callable[[bool], None]
+        ] = None
         self._create_widgets()
         self._setup_layout()
 
@@ -1579,6 +1583,22 @@ class PressureServiceTab(QWidget):
         self.pump_group.setStyleSheet(ServiceTab._group_box_style("#0e6a76", "10px", margin_top=6))
         self.pump_speed_label = QLabel("Pump: 0 RPM")
         self.pump_speed_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+
+        self.logging_group = QGroupBox("Pressure CSV Log")
+        self.logging_group.setStyleSheet(
+            ServiceTab._group_box_style("#8b5cf6", "10px", margin_top=6)
+        )
+        self.pressure_csv_logging_button = QPushButton("Logging OFF")
+        self.pressure_csv_logging_button.setMinimumHeight(44)
+        self.pressure_csv_logging_button.clicked.connect(
+            self._on_pressure_csv_logging_toggle_clicked
+        )
+        self._apply_pressure_csv_logging_button_style(False)
+        self.pressure_csv_status_label = QLabel(
+            "Toggle ON to start a new pressure CSV file (10 Hz)."
+        )
+        self.pressure_csv_status_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+        self.pressure_csv_status_label.setWordWrap(True)
 
     def _setup_layout(self):
         main_layout = QVBoxLayout()
@@ -1598,8 +1618,66 @@ class PressureServiceTab(QWidget):
         self.pump_group.setLayout(pump_layout)
         main_layout.addWidget(self.pump_group)
 
+        logging_layout = QVBoxLayout()
+        logging_layout.setSpacing(6)
+        logging_layout.addWidget(self.pressure_csv_logging_button)
+        logging_layout.addWidget(self.pressure_csv_status_label)
+        self.logging_group.setLayout(logging_layout)
+        main_layout.addWidget(self.logging_group)
+
         main_layout.addStretch()
         self.setLayout(main_layout)
+
+    def _on_pressure_csv_logging_toggle_clicked(self):
+        self.set_pressure_csv_logging(not self.pressure_csv_logging_enabled)
+        if self.on_pressure_csv_logging_toggle_callback:
+            self.on_pressure_csv_logging_toggle_callback(
+                self.pressure_csv_logging_enabled
+            )
+
+    def set_pressure_csv_logging(self, enabled: bool) -> None:
+        """Update toggle state/UI without emitting the callback."""
+        self.pressure_csv_logging_enabled = bool(enabled)
+        self._apply_pressure_csv_logging_button_style(self.pressure_csv_logging_enabled)
+        if self.pressure_csv_logging_enabled:
+            self.pressure_csv_status_label.setText(
+                "Logging ON — writing a new pressure CSV at 10 Hz."
+            )
+            self.pressure_csv_status_label.setStyleSheet(
+                self._LABEL_STRONG_TEMPLATE.format(color="#16a34a")
+            )
+        else:
+            self.pressure_csv_status_label.setText(
+                "Toggle ON to start a new pressure CSV file (10 Hz)."
+            )
+            self.pressure_csv_status_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+
+    def _apply_pressure_csv_logging_button_style(self, logging_enabled: bool):
+        if logging_enabled:
+            text = "Logging ON"
+            bg = "#22c55e"
+            hover = "#16a34a"
+            border = "#15803d"
+        else:
+            text = "Logging OFF"
+            bg = "#6b7280"
+            hover = "#4b5563"
+            border = "#4b5563"
+        self.pressure_csv_logging_button.setText(text)
+        self.pressure_csv_logging_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: white;
+                font-size: 14px;
+                font-weight: 700;
+                border-radius: 10px;
+                padding: 8px 12px;
+                border: 2px solid {border};
+            }}
+            QPushButton:hover {{
+                background-color: {hover};
+            }}
+        """)
 
     def update_pressures(self, pressures: Optional[dict] = None):
         """Update pressure display in psi."""
@@ -2248,6 +2326,7 @@ class MainScreen(QMainWindow):
         self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_control_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_thresholds_change_callback: Optional[Callable[[float, float], None]] = None
+        self.on_pressure_csv_logging_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_temperature_calibration_callback: Optional[
             Callable[[str, float, float], tuple[bool, str]]
         ] = None
@@ -2468,6 +2547,9 @@ class MainScreen(QMainWindow):
             pressure_sensor_names=pressure_sensor_names,
         )
         self.pressure_service_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
+        self.pressure_service_tab.on_pressure_csv_logging_toggle_callback = (
+            self._on_pressure_csv_logging_toggle
+        )
         self.calibration_tab = CalibrationTab(self.temperature_sensor_names)
         self.calibration_tab.on_apply_calibration_callback = (
             self._on_temperature_graph_calibration_apply
@@ -2749,6 +2831,11 @@ class MainScreen(QMainWindow):
     def _on_service_compressor_thresholds_change(self, off_temp_c: float, on_temp_c: float):
         if self.on_compressor_thresholds_change_callback:
             self.on_compressor_thresholds_change_callback(off_temp_c, on_temp_c)
+
+    def _on_pressure_csv_logging_toggle(self, enabled: bool):
+        """Forward Pressure-tab CSV capture toggle to the app callback."""
+        if self.on_pressure_csv_logging_toggle_callback:
+            self.on_pressure_csv_logging_toggle_callback(enabled)
 
     def _toggle_window_mode(self) -> None:
         """Toggle between fullscreen and fixed-size windowed mode."""
