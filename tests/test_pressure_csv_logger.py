@@ -5,8 +5,10 @@ from __future__ import annotations
 import csv
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -14,7 +16,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from pressure_csv_logger import PressureCSVLogger  # noqa: E402
+from pressure_csv_logger import PressureCSVLogger, PressureCaptureLoop  # noqa: E402
 
 
 _CONFIG = {
@@ -27,6 +29,7 @@ _CONFIG = {
     "pressure_sensors": {
         "enabled": True,
         "sample_rate_hz": 10,
+        "capture_rate_hz": 100,
         "channels": [0, 1, 2, 3],
         "channel_configs": {
             0: {"label": "Cartridge Input"},
@@ -121,6 +124,49 @@ class PressureCsvLoggerTests(unittest.TestCase):
         with first.open(newline="") as handle:
             first_rows = list(csv.reader(handle))
         self.assertEqual(len(first_rows), 2)
+
+    def test_capture_rate_hz_defaults_to_100(self) -> None:
+        self.assertEqual(self.logger.capture_rate_hz, 100.0)
+
+
+class PressureCaptureLoopTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.config = dict(_CONFIG)
+        self.config["logging"] = {
+            **_CONFIG["logging"],
+            "pressure_csv_directory": self._tmpdir.name,
+        }
+        self.logger = PressureCSVLogger(self.config)
+        self.reads = 0
+
+        def _read_pressures() -> dict:
+            self.reads += 1
+            return {
+                "Cartridge Input": float(self.reads),
+                "Cartridge Output": 0.0,
+                "Pump Input": 0.0,
+                "Pump Output": 0.0,
+            }
+
+        self.reader = SimpleNamespace(read_pressures=_read_pressures)
+
+    def tearDown(self) -> None:
+        if self.logger.is_logging:
+            self.logger.stop_logging()
+        self._tmpdir.cleanup()
+
+    def test_loop_runs_near_configured_rate(self) -> None:
+        self.assertTrue(self.logger.start_logging())
+        loop = PressureCaptureLoop(self.reader, self.logger, rate_hz=100.0)
+        loop.start()
+        time.sleep(0.25)
+        loop.stop()
+        self.logger.stop_logging()
+
+        # Allow some scheduling jitter; expect roughly 100 Hz over 0.25 s.
+        self.assertGreaterEqual(self.reads, 15)
+        self.assertLessEqual(self.reads, 40)
 
 
 try:

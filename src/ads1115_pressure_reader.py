@@ -13,6 +13,7 @@ Conversion matches the simple example: linear mV → psi.
 
 from __future__ import annotations
 
+import threading
 from typing import Dict, List, Optional
 
 # Default calibration (same as simple_examples/ads1115_pressure.py).
@@ -24,6 +25,9 @@ _DIFF_PAIRS = (
     (0, 1),  # P0 - P1
     (2, 3),  # P2 - P3
 )
+
+# Fast enough for ~100 Hz × 4 single-shot channels (~400 conv/s).
+_DEFAULT_DATA_RATE = 860
 
 
 def mv_to_psi(
@@ -47,6 +51,7 @@ class ADS1115PressureReader:
         self.channels = [int(ch) for ch in ps_cfg.get("channels", [0, 1, 2, 3])]
         self.channel_configs = ps_cfg.get("channel_configs", {}) or {}
         self.gain = int(ps_cfg.get("gain", 16))
+        self.data_rate = int(ps_cfg.get("data_rate", _DEFAULT_DATA_RATE))
         self.last_error: Optional[str] = None
         self.is_initialized = False
 
@@ -58,6 +63,8 @@ class ADS1115PressureReader:
 
         self._i2c = None
         self._analog_inputs: Dict[int, object] = {}
+        # Protects concurrent UI-tick + high-rate capture-thread reads.
+        self._read_lock = threading.Lock()
 
         if not self.enabled:
             self.last_error = "ADS1115 pressure reader disabled by config"
@@ -88,6 +95,10 @@ class ADS1115PressureReader:
                 ads = ADS.ADS1115(self._i2c, address=address)
                 ads.gain = self.gain
                 ads.mode = Mode.SINGLE
+                try:
+                    ads.data_rate = self.data_rate
+                except Exception:
+                    pass
                 ads_by_address[address] = ads
 
             for channel in self.channels:
@@ -139,20 +150,22 @@ class ADS1115PressureReader:
     def read_pressures(self) -> Dict[str, float]:
         if not self.is_initialized:
             return {}
-        values: Dict[str, float] = {}
-        for channel, analog in self._analog_inputs.items():
-            label = self._channel_label(channel)
-            try:
-                mv = float(analog.voltage) * 1000.0
-                values[label] = mv_to_psi(
-                    mv, self._mv_lo, self._psi_lo, self._mv_hi, self._psi_hi
-                )
-            except Exception as exc:
-                self.last_error = f"Pressure read failed on channel {channel}: {exc}"
-                values[label] = float("nan")
-        return values
+        with self._read_lock:
+            values: Dict[str, float] = {}
+            for channel, analog in self._analog_inputs.items():
+                label = self._channel_label(channel)
+                try:
+                    mv = float(analog.voltage) * 1000.0
+                    values[label] = mv_to_psi(
+                        mv, self._mv_lo, self._psi_lo, self._mv_hi, self._psi_hi
+                    )
+                except Exception as exc:
+                    self.last_error = f"Pressure read failed on channel {channel}: {exc}"
+                    values[label] = float("nan")
+            return values
 
     def cleanup(self) -> None:
-        self._analog_inputs = {}
-        self._i2c = None
-        self.is_initialized = False
+        with self._read_lock:
+            self._analog_inputs = {}
+            self._i2c = None
+            self.is_initialized = False

@@ -28,7 +28,7 @@ except Exception:  # pragma: no cover - non-RPi environments
 
 from cooling_tracker import CoolingEffectivenessTracker
 from csv_logger import CSVLogger
-from pressure_csv_logger import PressureCSVLogger
+from pressure_csv_logger import PressureCSVLogger, PressureCaptureLoop
 from leak_debounce import LeakDebounceTracker
 from fault_catalog import FaultCode, Severity, get_fault, stop_priority
 from gui import MainScreen
@@ -57,7 +57,6 @@ class _BackgroundIOWorker(QObject):
         thermistor_reader: Any,
         pressure_reader: Any,
         csv_logger: Optional[CSVLogger],
-        pressure_csv_logger: Optional[PressureCSVLogger] = None,
     ):
         super().__init__()
         self._sensor_reader = sensor_reader
@@ -65,7 +64,6 @@ class _BackgroundIOWorker(QObject):
         self._thermistor_reader = thermistor_reader
         self._pressure_reader = pressure_reader
         self._csv_logger = csv_logger
-        self._pressure_csv_logger = pressure_csv_logger
 
     @pyqtSlot(bool, int, float, int)
     def tick(
@@ -117,8 +115,6 @@ class _BackgroundIOWorker(QObject):
                     thermistor_temperatures=thermistor_temperatures,
                     pressures=pressures,
                 )
-            if self._pressure_csv_logger is not None:
-                self._pressure_csv_logger.log(pressures)
         except Exception as exc:
             error_message = f"Error during update: {exc}"
         self.tick_complete.emit(
@@ -170,6 +166,7 @@ class SensorMonitorApp(QObject):
         self.override_ui: Optional[SensorOverrideWindow] = None
         self.csv_logger: Optional[CSVLogger] = None
         self.pressure_csv_logger: Optional[PressureCSVLogger] = None
+        self._pressure_capture_loop: Optional[PressureCaptureLoop] = None
         self.ui: Optional[MainScreen] = None
         self.state_machine: Optional[StateMachine] = None
         self.stepper_driver: Any = None
@@ -382,6 +379,7 @@ class SensorMonitorApp(QObject):
         if self.is_running and self.csv_logger:
             self.csv_logger.stop_logging()
             print("CSV logging stopped")
+        self._stop_pressure_capture()
         if self.pressure_csv_logger is not None:
             self.pressure_csv_logger.stop_logging()
 
@@ -430,7 +428,6 @@ class SensorMonitorApp(QObject):
             self.thermistor_reader,
             self.pressure_reader,
             self.csv_logger,
-            self.pressure_csv_logger,
         )
         thread = QThread()
         thread.setObjectName("io_worker")
@@ -786,22 +783,38 @@ class SensorMonitorApp(QObject):
         if self.ui:
             self._update_stepper_ui_status()
 
+    def _stop_pressure_capture(self) -> None:
+        """Stop the high-rate pressure capture thread if it is running."""
+        if self._pressure_capture_loop is not None:
+            self._pressure_capture_loop.stop()
+            self._pressure_capture_loop = None
+
     def on_pressure_csv_logging_toggle(self, enabled: bool) -> None:
-        """Start/stop dedicated pressure CSV capture from the Pressure tab.
+        """Start/stop dedicated high-rate pressure CSV capture from the Pressure tab.
 
         Each ON opens a new timestamped file under
-        ``logging.pressure_csv_directory``. OFF closes the current file.
+        ``logging.pressure_csv_directory`` and starts a capture thread at
+        ``pressure_sensors.capture_rate_hz``. OFF stops the thread and closes
+        the file.
         """
         if self.pressure_csv_logger is None:
             return
         if enabled:
+            self._stop_pressure_capture()
             started = self.pressure_csv_logger.start_logging()
-            if not started and self.ui is not None:
-                # Revert the button if the file could not be opened.
-                tab = getattr(self.ui, "pressure_service_tab", None)
-                if tab is not None:
-                    tab.set_pressure_csv_logging(False)
+            if not started:
+                if self.ui is not None:
+                    tab = getattr(self.ui, "pressure_service_tab", None)
+                    if tab is not None:
+                        tab.set_pressure_csv_logging(False)
+                return
+            self._pressure_capture_loop = PressureCaptureLoop(
+                self.pressure_reader,
+                self.pressure_csv_logger,
+            )
+            self._pressure_capture_loop.start()
         else:
+            self._stop_pressure_capture()
             self.pressure_csv_logger.stop_logging()
 
     def on_compressor_thresholds_changed(self, off_temp_c: float, on_temp_c: float) -> None:

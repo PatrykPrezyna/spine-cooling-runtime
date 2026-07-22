@@ -1,8 +1,8 @@
-"""Fast pressure-only CSV logger.
+"""Fast pressure-only CSV logger with a dedicated capture thread.
 
-Writes timestamp + psi columns with buffered I/O (no per-row flush) so the
-10 Hz IO tick is not blocked by disk sync. A new timestamped file is created
-on every ``start_logging()`` call.
+While capture is ON, a background loop reads pressures and appends CSV rows at
+``pressure_sensors.capture_rate_hz`` (default 100 Hz). A new timestamped file
+is created on every ``start_logging()`` call.
 """
 
 from __future__ import annotations
@@ -10,20 +10,22 @@ from __future__ import annotations
 import csv
 import math
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 
 class PressureCSVLogger:
     """Append pressure samples to a dedicated CSV file while capture is on."""
 
     # Flush every N rows so a crash loses at most a short burst, without
-    # paying fsync cost on every 10 Hz sample.
-    _FLUSH_EVERY_N_ROWS = 10
+    # paying fsync cost on every high-rate sample.
+    _FLUSH_EVERY_N_ROWS = 50
 
     def __init__(self, config: dict):
         logging_cfg = config.get("logging", {})
+        ps_cfg = config.get("pressure_sensors", {}) or {}
         self.csv_directory = str(
             logging_cfg.get(
                 "pressure_csv_directory",
@@ -35,6 +37,9 @@ class PressureCSVLogger:
                 "pressure_filename_format",
                 "pressure_log_%Y%m%d_%H%M%S.csv",
             )
+        )
+        self.capture_rate_hz = max(
+            1.0, float(ps_cfg.get("capture_rate_hz", 100.0))
         )
         self.pressure_columns = self._pressure_columns_from_config(config)
         self.header = self._build_header(self.pressure_columns)
@@ -106,7 +111,10 @@ class PressureCSVLogger:
                 self.file_handle.flush()
                 self._rows_since_flush = 0
                 self.is_logging = True
-                print(f"Started pressure logging to: {self.csv_file}")
+                print(
+                    f"Started pressure logging "
+                    f"({self.capture_rate_hz:.0f} Hz) to: {self.csv_file}"
+                )
                 return True
             except Exception as e:
                 print(f"Error starting pressure logging: {e}")
@@ -171,3 +179,67 @@ class PressureCSVLogger:
             self.stop_logging()
         except Exception:
             pass
+
+
+class PressureCaptureLoop:
+    """Background read+log loop at ``capture_rate_hz`` while CSV capture is ON."""
+
+    def __init__(
+        self,
+        pressure_reader: Any,
+        logger: PressureCSVLogger,
+        rate_hz: Optional[float] = None,
+    ):
+        self._pressure_reader = pressure_reader
+        self._logger = logger
+        self._rate_hz = max(
+            1.0, float(rate_hz if rate_hz is not None else logger.capture_rate_hz)
+        )
+        self._interval_s = 1.0 / self._rate_hz
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    @property
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def start(self) -> None:
+        """Start the capture thread (no-op if already running)."""
+        if self.is_running:
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(
+            target=self._run,
+            name="pressure_capture",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        """Stop the capture thread and wait briefly for it to exit."""
+        self._stop.set()
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=2.0)
+        self._thread = None
+
+    def _run(self) -> None:
+        next_t = time.perf_counter()
+        while not self._stop.is_set():
+            try:
+                if self._pressure_reader is not None:
+                    pressures = self._pressure_reader.read_pressures()
+                else:
+                    pressures = {}
+                self._logger.log(pressures)
+            except Exception as exc:
+                print(f"Pressure capture loop error: {exc}")
+
+            next_t += self._interval_s
+            delay = next_t - time.perf_counter()
+            if delay > 0:
+                if self._stop.wait(delay):
+                    break
+            else:
+                # Fell behind (I2C / disk); resync so we don't busy-spin catch-up.
+                next_t = time.perf_counter()

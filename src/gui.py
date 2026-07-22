@@ -1553,13 +1553,18 @@ class PressureServiceTab(QWidget):
         "Pump Output",
     )
 
-    def __init__(self, pressure_sensor_names: Optional[list[str]] = None):
+    def __init__(
+        self,
+        pressure_sensor_names: Optional[list[str]] = None,
+        capture_rate_hz: float = 100.0,
+    ):
         super().__init__()
         self.pressure_sensor_names = list(
             pressure_sensor_names
             if pressure_sensor_names is not None
             else self._DEFAULT_PRESSURE_SENSOR_NAMES
         )
+        self.capture_rate_hz = max(1.0, float(capture_rate_hz))
         self.pressure_values = {name: float("nan") for name in self.pressure_sensor_names}
         self.pressure_labels: dict = {}
         self.pump_speed_rpm = 0
@@ -1594,8 +1599,9 @@ class PressureServiceTab(QWidget):
             self._on_pressure_csv_logging_toggle_clicked
         )
         self._apply_pressure_csv_logging_button_style(False)
+        rate_txt = f"{self.capture_rate_hz:.0f} Hz"
         self.pressure_csv_status_label = QLabel(
-            "Toggle ON to start a new pressure CSV file (10 Hz)."
+            f"Toggle ON to start a new pressure CSV file ({rate_txt})."
         )
         self.pressure_csv_status_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
         self.pressure_csv_status_label.setWordWrap(True)
@@ -1639,16 +1645,17 @@ class PressureServiceTab(QWidget):
         """Update toggle state/UI without emitting the callback."""
         self.pressure_csv_logging_enabled = bool(enabled)
         self._apply_pressure_csv_logging_button_style(self.pressure_csv_logging_enabled)
+        rate_txt = f"{self.capture_rate_hz:.0f} Hz"
         if self.pressure_csv_logging_enabled:
             self.pressure_csv_status_label.setText(
-                "Logging ON — writing a new pressure CSV at 10 Hz."
+                f"Logging ON — writing a new pressure CSV at {rate_txt}."
             )
             self.pressure_csv_status_label.setStyleSheet(
                 self._LABEL_STRONG_TEMPLATE.format(color="#16a34a")
             )
         else:
             self.pressure_csv_status_label.setText(
-                "Toggle ON to start a new pressure CSV file (10 Hz)."
+                f"Toggle ON to start a new pressure CSV file ({rate_txt})."
             )
             self.pressure_csv_status_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
 
@@ -2543,8 +2550,12 @@ class MainScreen(QMainWindow):
             digital_sensor_names=digital_sensor_names,
         )
         self.thermistor_study_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
+        capture_rate_hz = float(
+            (self.config.get("pressure_sensors") or {}).get("capture_rate_hz", 100)
+        )
         self.pressure_service_tab = PressureServiceTab(
             pressure_sensor_names=pressure_sensor_names,
+            capture_rate_hz=capture_rate_hz,
         )
         self.pressure_service_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
         self.pressure_service_tab.on_pressure_csv_logging_toggle_callback = (
