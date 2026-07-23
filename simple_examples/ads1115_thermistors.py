@@ -8,9 +8,11 @@ Hit ENTER to stop.
 
 from __future__ import annotations
 
+import csv
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 
 import board  # pyright: ignore[reportMissingImports]
 import busio  # pyright: ignore[reportMissingImports]
@@ -26,25 +28,55 @@ I2C_ADDRESSES = (0x48, 0x49)
 GAIN = 1
 SAMPLE_INTERVAL_S = 0.5
 
-# Piecewise-linear mV -> °C (NTC-style)
-MV_C = ((616.0, 0.0), (142.0, 37.0), (87.0, 50.0))
+# Voltage divider: V = Vref * R / (Rs + R), NTC to ground, Rs pull-up.
+VREF_V = 2.5
+RS_OHM = 100_000.0
+THERMISTOR_CSV = Path(__file__).with_name("Thermistor_MA300TA103C.csv")
+R_COL = "10k_Ohm"
 
 keep_going = True
 
 
-def mv_to_c(mv: float) -> float:
-    pts = sorted(MV_C, key=lambda p: -p[0])
-    if mv >= pts[0][0]:
+def load_rt_table(path: Path) -> list[tuple[float, float]]:
+    """Return (R_ohm, T_C) pairs sorted by descending R (NTC)."""
+    rows: list[tuple[float, float]] = []
+    with path.open(newline="") as f:
+        for row in csv.DictReader(f):
+            rows.append((float(row[R_COL]), float(row["Temperature_C"])))
+    rows.sort(key=lambda p: -p[0])
+    return rows
+
+
+RT_TABLE = load_rt_table(THERMISTOR_CSV)
+
+
+def voltage_to_r(v: float) -> float:
+    """Invert V = Vref * R / (Rs + R)."""
+    if v <= 0.0:
+        return 0.0
+    if v >= VREF_V:
+        return float("inf")
+    return RS_OHM * v / (VREF_V - v)
+
+
+def r_to_c(r: float) -> float:
+    """Linear interpolate °C from resistance using the MA300TA103C 10k table."""
+    pts = RT_TABLE
+    if r >= pts[0][0]:
         a, b = pts[0], pts[1]
-    elif mv <= pts[-1][0]:
+    elif r <= pts[-1][0]:
         a, b = pts[-2], pts[-1]
     else:
         a = b = pts[0]
         for left, right in zip(pts, pts[1:]):
-            if right[0] <= mv <= left[0]:
+            if right[0] <= r <= left[0]:
                 a, b = left, right
                 break
-    return a[1] + (mv - a[0]) * (b[1] - a[1]) / (b[0] - a[0])
+    return a[1] + (r - a[0]) * (b[1] - a[1]) / (b[0] - a[0])
+
+
+def voltage_to_c(v: float) -> float:
+    return r_to_c(voltage_to_r(v))
 
 
 def key_capture_thread() -> None:
@@ -68,7 +100,7 @@ def main() -> None:
     print(
         f"Reading 8 thermistors on ADS1115 "
         f"{', '.join(f'0x{a:X}' for a in I2C_ADDRESSES)} "
-        f"(gain={GAIN}). Hit ENTER to exit."
+        f"(gain={GAIN}, Vref={VREF_V}V, Rs={RS_OHM:.0f}Ω). Hit ENTER to exit."
     )
     threading.Thread(
         target=key_capture_thread, name="key_capture_thread", daemon=True
@@ -79,11 +111,11 @@ def main() -> None:
         parts = []
         for i, ch in enumerate(channels):
             try:
-                mv = ch.voltage * 1000.0
-                parts.append(f"T{i + 1}={mv_to_c(mv):.1f}C({mv:.0f}mV)")
+                v = ch.voltage
+                parts.append(f"T{i + 1}={voltage_to_c(v):.1f}C({v * 1000.0:.0f}mV)")
             except Exception as exc:
                 parts.append(f"T{i + 1}=ERR({exc})")
-        print(f"{now}  " + "  ".join(parts))
+        print(f"{now}\n" + "  ".join(parts))
         time.sleep(SAMPLE_INTERVAL_S)
 
     print()
