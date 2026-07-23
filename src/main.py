@@ -34,7 +34,7 @@ from fault_catalog import FaultCode, Severity, get_fault, stop_priority
 from gui import MainScreen
 from hardware_factory import build_hardware
 from safety_rules import RuleContext, TelemetrySnapshot, evaluate, is_fault_still_active
-from sensor_injection import SensorInjectionController
+from sensor_injection import SensorInjectionController, select_temperatures
 from sensor_override_ui import SensorOverrideWindow
 from state_machine import State, StateMachine
 
@@ -48,7 +48,7 @@ class _BackgroundIOWorker(QObject):
 
     tick_complete = pyqtSignal(object, object, object, object, object, object)
     # payload: (sensor_states, temperatures, raw_temperatures,
-    #           thermistor_temperatures, pressures, error_message)
+    #           thermocouple_temperatures, pressures, error_message)
 
     def __init__(
         self,
@@ -57,6 +57,7 @@ class _BackgroundIOWorker(QObject):
         thermistor_reader: Any,
         pressure_reader: Any,
         csv_logger: Optional[CSVLogger],
+        config: Optional[dict] = None,
     ):
         super().__init__()
         self._sensor_reader = sensor_reader
@@ -64,6 +65,7 @@ class _BackgroundIOWorker(QObject):
         self._thermistor_reader = thermistor_reader
         self._pressure_reader = pressure_reader
         self._csv_logger = csv_logger
+        self._config = config or {}
 
     @pyqtSlot(bool, int, float, int)
     def tick(
@@ -74,6 +76,7 @@ class _BackgroundIOWorker(QObject):
         compressor_cooling: int,
     ) -> None:
         sensor_states: dict = {}
+        thermocouple_temperatures: dict = {}
         temperatures: dict = {}
         raw_temperatures: dict = {}
         thermistor_temperatures: dict = {}
@@ -96,13 +99,16 @@ class _BackgroundIOWorker(QObject):
                         stepper_motor_running,
                         logged_stepper_speed_rpm,
                     )
-                temperatures = self._thermocouple_reader.read_temperatures()
+                thermocouple_temperatures = self._thermocouple_reader.read_temperatures()
                 raw_getter = getattr(
                     self._thermocouple_reader, "get_last_raw_temperatures", None
                 )
                 raw_temperatures = raw_getter() if raw_getter is not None else {}
             if self._thermistor_reader is not None:
                 thermistor_temperatures = self._thermistor_reader.read_temperatures()
+            temperatures = select_temperatures(
+                thermocouple_temperatures, thermistor_temperatures, self._config
+            )
             if self._pressure_reader is not None:
                 pressures = self._pressure_reader.read_pressures()
             if self._csv_logger is not None:
@@ -112,7 +118,6 @@ class _BackgroundIOWorker(QObject):
                     peristaltic_pump_set_speed_rpm=logged_stepper_speed_rpm,
                     set_temperature_c=float(set_temperature_c),
                     compressor_cooling=int(compressor_cooling),
-                    thermistor_temperatures=thermistor_temperatures,
                     pressures=pressures,
                 )
         except Exception as exc:
@@ -121,7 +126,7 @@ class _BackgroundIOWorker(QObject):
             sensor_states,
             temperatures,
             raw_temperatures,
-            thermistor_temperatures,
+            thermocouple_temperatures,
             pressures,
             error_message,
         )
@@ -221,9 +226,9 @@ class SensorMonitorApp(QObject):
 
     @staticmethod
     def _temperature_sensor_names_from_config(config: dict) -> list[str]:
-        from sensor_injection import thermocouple_labels_from_config
+        from sensor_injection import temperature_labels_from_config
 
-        return thermocouple_labels_from_config(config)
+        return temperature_labels_from_config(config)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -428,6 +433,7 @@ class SensorMonitorApp(QObject):
             self.thermistor_reader,
             self.pressure_reader,
             self.csv_logger,
+            self.config,
         )
         thread = QThread()
         thread.setObjectName("io_worker")
@@ -652,7 +658,7 @@ class SensorMonitorApp(QObject):
         sensor_states,
         temperatures,
         raw_temperatures,
-        thermistor_temperatures,
+        thermocouple_temperatures,
         pressures,
         error_message,
     ):
@@ -669,7 +675,7 @@ class SensorMonitorApp(QObject):
             sensor_states = sensor_states or {}
             temperatures = temperatures or {}
             raw_temperatures = raw_temperatures or {}
-            thermistor_temperatures = thermistor_temperatures or {}
+            thermocouple_temperatures = thermocouple_temperatures or {}
             pressures = pressures or {}
             self._last_temperatures = temperatures
             self._last_sensor_states = sensor_states
@@ -694,7 +700,7 @@ class SensorMonitorApp(QObject):
                     temperatures,
                     raw_temperatures,
                     pressures,
-                    thermistor_temperatures=thermistor_temperatures,
+                    calibration_temperatures=thermocouple_temperatures,
                 )
                 self._refresh_acknowledge_button(sensor_states, temperatures, pressures)
                 if self.stepper_driver:
@@ -720,10 +726,6 @@ class SensorMonitorApp(QObject):
             stepper_speed_rpm=self.stepper_speed_rpm,
         )
         self.ui.service2_tab.update_actuators(
-            pump_speed_rpm=actual_pump_speed_rpm,
-            compressor_on=self.compressor_on,
-        )
-        self.ui.thermistor_study_tab.update_actuators(
             pump_speed_rpm=actual_pump_speed_rpm,
             compressor_on=self.compressor_on,
         )

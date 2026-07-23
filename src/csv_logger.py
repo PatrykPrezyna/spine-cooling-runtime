@@ -32,9 +32,9 @@ class CSVLogger:
 
     @staticmethod
     def _thermocouple_columns_from_config(config: dict) -> list[str]:
-        from sensor_injection import thermocouple_labels_from_config
+        from sensor_injection import temperature_labels_from_config
 
-        return thermocouple_labels_from_config(config)
+        return temperature_labels_from_config(config)
 
     @staticmethod
     def _pressure_columns_from_config(config: dict) -> list[str]:
@@ -93,7 +93,6 @@ class CSVLogger:
         peristaltic_pump_set_speed_rpm: Optional[float] = None,
         set_temperature_c: Optional[float] = None,
         compressor_cooling: Optional[int] = None,
-        thermistor_temperatures: Optional[dict] = None,
         pressures: Optional[dict] = None,
     ):
         """Append a single row with temperature, actuators, and pressures.
@@ -106,11 +105,9 @@ class CSVLogger:
         ``set_temperature_c`` is the user-selected target temperature.
         ``compressor_cooling`` is 1 when the compressor relay is on (cooling),
         0 when off (idle).
-        Thermistors are accepted for API compatibility but not logged yet.
         ``pressures`` maps label → psi (logged to two decimal places).
         """
         del sensor_states  # not logged anymore; kept for API compatibility
-        del thermistor_temperatures  # not logged yet
         if not self.is_logging:
             return
 

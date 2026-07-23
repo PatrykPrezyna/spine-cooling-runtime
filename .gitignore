@@ -22,7 +22,8 @@ logs/
 *.sqlite3
 *.sqlite
 *.csv
-!simple_examples/Thermistor_MA300TA103C.csv
+!data/calibration/
+!data/calibration/**/*.csv
 
 # PyCharm / VS Code
 .idea/

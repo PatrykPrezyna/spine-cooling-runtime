@@ -1,4 +1,16 @@
 control_temp_label: CSF
+# Logical temperatures shown in the UI / control / CSV.
+# For each name, read that same label from the chosen board:
+#   CSF: thermocouple  → thermocouples.labels value named "CSF"
+#   Cart In: thermistor → thermistor_sensors.labels value named "Cart In"
+# Only listed names appear; order is display order.
+temperature_sources:
+  CSF: thermocouple
+  Cart In: thermistor
+  Cart Out: thermistor
+  Heat Ex: thermistor
+  Heat Ex 2: thermistor
+  Room Temp: thermistor
 alarms:
   csf_label: CSF
   csf_low_temp_c: 28.0
@@ -41,14 +53,14 @@ simulation:
     Pump Input: 25.0
     Pump Output: 30.0
   thermistors:
-    CSF: 37.0
-    CSF 2: 36.5
     Cart In: 22.0
     Cart Out: 22.0
+    defect: 25.0
+    defect2: 25.0
     Heat Ex: 22.0
     Heat Ex 2: 22.0
-    Temp 7: 22.0
-    Temp 8: 22.0
+    Room Temp: 22.0
+    defect3: 25.0
 acustic_signal_gpio_pin: 16
 sensors:
 - name: Level Low
@@ -122,7 +134,7 @@ thermocouples:
         measured_at_100c: 89.5
 # Thermistor temperatures on two ADS1115 chips (up to 8 channels).
 # Channels 0-3 → first address, 4-7 → second. Labels match thermocouples.
-# Conversion is piecewise-linear in mV.
+# Conversion: V = Vref * R / (Rs + R), then R→°C from MA300TA103C table.
 thermistor_sensors:
   enabled: true
   i2c_addresses:
@@ -140,19 +152,19 @@ thermistor_sensors:
   - 6
   - 7
   labels:
-    0: CSF
-    1: CSF 2
-    2: Cart In
-    3: Cart Out
+    0: Cart In
+    1: Cart Out
+    2: defect
+    3: defect2
     4: Heat Ex
     5: Heat Ex 2
-    6: Temp 7
-    7: Temp 8
+    6: Room Temp
+    7: defect3
   conversion:
-    points_mv_c:
-    - [616.0, 0.0]
-    - [142.0, 37.0]
-    - [87.0, 50.0]
+    vref_v: 2.5
+    rs_ohm: 100000
+    resistance_column: 10k_Ohm
+    table_csv: data/calibration/Thermistor_MA300TA103C.csv
 # Differential pressure sensors on a third + fourth ADS1115 (up to 4 sensors).
 # Each sensor uses one differential pair (2 analog inputs), so one chip serves
 # two sensors: channels 0-1 on the first address, 2-3 on the second.

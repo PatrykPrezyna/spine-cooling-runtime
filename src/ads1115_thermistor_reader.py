@@ -1,12 +1,7 @@
 """ADS1115-based thermistor temperature reader.
 
-Reads single-ended ADC channels and converts millivolts to Celsius using a
-piecewise-linear curve. Default calibration points (NTC-style, mV falls as
-temperature rises):
-
-    0 °C  -> 616 mV
-   37 °C  -> 142 mV
-   50 °C  ->  87 mV
+Reads single-ended ADC channels and converts voltage to Celsius using the
+MA300TA103C R–T table and the divider ``V = Vref * R / (Rs + R)``.
 
 Up to 8 channels are supported by spanning multiple ADS1115 chips: channel N
 maps to ``i2c_addresses[N // 4]`` and pin ``N % 4``.
@@ -16,68 +11,17 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Sequence, Tuple
 
-# (millivolts, celsius) — sorted high-mV → low-mV for NTC-style sensors.
-DEFAULT_MV_C_POINTS: Tuple[Tuple[float, float], ...] = (
-    (616.0, 0.0),
-    (142.0, 37.0),
-    (87.0, 50.0),
+from thermistor_conversion import (
+    DEFAULT_RS_OHM,
+    DEFAULT_R_COL,
+    DEFAULT_TABLE_CSV,
+    DEFAULT_VREF_V,
+    load_rt_table,
+    millivolts_to_celsius,
+    resolve_table_path,
 )
 
-
-def millivolts_to_celsius(
-    millivolts: float,
-    points: Sequence[Tuple[float, float]] = DEFAULT_MV_C_POINTS,
-) -> float:
-    """Piecewise-linear mV → °C conversion with endpoint extrapolation."""
-    if not points:
-        return float("nan")
-    ordered = sorted(((float(mv), float(c)) for mv, c in points), key=lambda p: -p[0])
-    mv = float(millivolts)
-
-    if len(ordered) == 1:
-        return ordered[0][1]
-
-    # Above the highest-mV point (coldest): extrapolate using the first segment.
-    if mv >= ordered[0][0]:
-        return _lerp_mv_c(mv, ordered[0], ordered[1])
-
-    # Below the lowest-mV point (hottest): extrapolate using the last segment.
-    if mv <= ordered[-1][0]:
-        return _lerp_mv_c(mv, ordered[-2], ordered[-1])
-
-    for left, right in zip(ordered, ordered[1:]):
-        if right[0] <= mv <= left[0]:
-            return _lerp_mv_c(mv, left, right)
-
-    return float("nan")
-
-
-def _lerp_mv_c(
-    mv: float,
-    a: Tuple[float, float],
-    b: Tuple[float, float],
-) -> float:
-    mv_a, c_a = a
-    mv_b, c_b = b
-    if abs(mv_b - mv_a) < 1e-9:
-        return c_a
-    ratio = (mv - mv_a) / (mv_b - mv_a)
-    return c_a + ratio * (c_b - c_a)
-
-
-def _parse_conversion_points(raw) -> Tuple[Tuple[float, float], ...]:
-    if not raw:
-        return DEFAULT_MV_C_POINTS
-    points: List[Tuple[float, float]] = []
-    for item in raw:
-        try:
-            if isinstance(item, (list, tuple)) and len(item) >= 2:
-                points.append((float(item[0]), float(item[1])))
-            elif isinstance(item, dict):
-                points.append((float(item["mv"]), float(item["c"])))
-        except (TypeError, ValueError, KeyError):
-            continue
-    return tuple(points) if points else DEFAULT_MV_C_POINTS
+RtPoint = Tuple[float, float]
 
 
 class ADS1115ThermistorReader:
@@ -99,9 +43,10 @@ class ADS1115ThermistorReader:
         self.i2c_addresses = self._parse_addresses(ts_cfg)
         self.channels = [int(ch) for ch in ts_cfg.get("channels", [0, 1, 2, 3])]
         self.channel_labels = self._parse_labels(ts_cfg)
-        self.conversion_points = _parse_conversion_points(
-            (ts_cfg.get("conversion", {}) or {}).get("points_mv_c")
-        )
+        conv = ts_cfg.get("conversion", {}) or {}
+        self.vref_v = float(conv.get("vref_v", DEFAULT_VREF_V))
+        self.rs_ohm = float(conv.get("rs_ohm", DEFAULT_RS_OHM))
+        self.rt_table: Sequence[RtPoint] = self._load_conversion_table(conv)
         self.last_error: Optional[str] = None
         self.is_initialized = False
 
@@ -161,6 +106,12 @@ class ADS1115ThermistorReader:
             self.last_error = f"ADS1115 thermistor initialization failed: {exc}"
 
     @staticmethod
+    def _load_conversion_table(conv: dict) -> Sequence[RtPoint]:
+        path = resolve_table_path(conv.get("table_csv", DEFAULT_TABLE_CSV))
+        r_col = str(conv.get("resistance_column", DEFAULT_R_COL))
+        return load_rt_table(path, r_col=r_col)
+
+    @staticmethod
     def _parse_addresses(ts_cfg: dict) -> List[int]:
         raw = ts_cfg.get("i2c_addresses")
         if raw is None:
@@ -209,7 +160,10 @@ class ADS1115ThermistorReader:
             try:
                 millivolts = float(analog.voltage) * 1000.0
                 values[self._channel_label(channel)] = millivolts_to_celsius(
-                    millivolts, self.conversion_points
+                    millivolts,
+                    self.rt_table,
+                    vref_v=self.vref_v,
+                    rs_ohm=self.rs_ohm,
                 )
             except Exception as exc:
                 self.last_error = f"Thermistor read failed on channel {channel}: {exc}"

@@ -3,12 +3,14 @@
 Two ADS1115 chips: 0x48 (ch 0-3), 0x49 (ch 4-7), single-ended.
 Hit ENTER to stop.
 
+Uses the shared MA300TA103C table from ``data/calibration/``.
+
     python simple_examples/ads1115_thermistors.py
 """
 
 from __future__ import annotations
 
-import csv
+import sys
 import threading
 import time
 from datetime import datetime
@@ -24,59 +26,24 @@ try:
 except Exception:
     from adafruit_ads1x15.ads1115 import Mode  # pyright: ignore[reportMissingImports]
 
+_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_ROOT / "src"))
+from thermistor_conversion import (  # noqa: E402  # pyright: ignore[reportMissingImports]
+    DEFAULT_RS_OHM,
+    DEFAULT_VREF_V,
+    voltage_to_celsius,
+)
+
 I2C_ADDRESSES = (0x48, 0x49)
 GAIN = 1
 SAMPLE_INTERVAL_S = 0.5
+VREF_V = DEFAULT_VREF_V
+RS_OHM = DEFAULT_RS_OHM
 
-# Voltage divider: V = Vref * R / (Rs + R), NTC to ground, Rs pull-up.
-VREF_V = 2.5
-RS_OHM = 100_000.0
-THERMISTOR_CSV = Path(__file__).with_name("Thermistor_MA300TA103C.csv")
-R_COL = "10k_Ohm"
+# Re-export for calibrate script / callers that import voltage_to_c.
+voltage_to_c = voltage_to_celsius
 
 keep_going = True
-
-
-def load_rt_table(path: Path) -> list[tuple[float, float]]:
-    """Return (R_ohm, T_C) pairs sorted by descending R (NTC)."""
-    rows: list[tuple[float, float]] = []
-    with path.open(newline="") as f:
-        for row in csv.DictReader(f):
-            rows.append((float(row[R_COL]), float(row["Temperature_C"])))
-    rows.sort(key=lambda p: -p[0])
-    return rows
-
-
-RT_TABLE = load_rt_table(THERMISTOR_CSV)
-
-
-def voltage_to_r(v: float) -> float:
-    """Invert V = Vref * R / (Rs + R)."""
-    if v <= 0.0:
-        return 0.0
-    if v >= VREF_V:
-        return float("inf")
-    return RS_OHM * v / (VREF_V - v)
-
-
-def r_to_c(r: float) -> float:
-    """Linear interpolate °C from resistance using the MA300TA103C 10k table."""
-    pts = RT_TABLE
-    if r >= pts[0][0]:
-        a, b = pts[0], pts[1]
-    elif r <= pts[-1][0]:
-        a, b = pts[-2], pts[-1]
-    else:
-        a = b = pts[0]
-        for left, right in zip(pts, pts[1:]):
-            if right[0] <= r <= left[0]:
-                a, b = left, right
-                break
-    return a[1] + (r - a[0]) * (b[1] - a[1]) / (b[0] - a[0])
-
-
-def voltage_to_c(v: float) -> float:
-    return r_to_c(voltage_to_r(v))
 
 
 def key_capture_thread() -> None:

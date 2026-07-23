@@ -77,13 +77,57 @@ def thermistor_labels_from_config(config: dict) -> list[str]:
     return names
 
 
-def temperature_labels_from_config(config: dict) -> list[str]:
-    """Return thermocouple labels (control / calibration / primary UI).
+def temperature_sources_from_config(config: dict) -> list[tuple[str, str]]:
+    """Return ``(label, source)`` pairs for logical temperatures.
 
-    Thermistors may reuse the same display names and are listed separately via
-    ``thermistor_labels_from_config``.
+    ``config["temperature_sources"]`` maps display name → ``thermocouple`` or
+    ``thermistor``. Order is preserved (YAML insertion order). When absent,
+    fall back to all thermocouple labels as ``thermocouple``.
     """
-    return thermocouple_labels_from_config(config)
+    raw = config.get("temperature_sources")
+    if isinstance(raw, dict) and raw:
+        pairs: list[tuple[str, str]] = []
+        for label, source in raw.items():
+            name = str(label).strip()
+            if not name:
+                continue
+            src = str(source or "").strip().lower()
+            if src in ("thermistor", "therm", "ntc"):
+                pairs.append((name, "thermistor"))
+            else:
+                pairs.append((name, "thermocouple"))
+        if pairs:
+            return pairs
+    return [(name, "thermocouple") for name in thermocouple_labels_from_config(config)]
+
+
+def temperature_labels_from_config(config: dict) -> list[str]:
+    """Return ordered logical temperature labels for control / UI / CSV."""
+    return [name for name, _source in temperature_sources_from_config(config)]
+
+
+def select_temperatures(
+    thermocouple_temps: Optional[dict],
+    thermistor_temps: Optional[dict],
+    config: dict,
+) -> dict[str, float]:
+    """Resolve each ``temperature_sources`` name to a °C value.
+
+    For every entry ``Name: thermocouple|thermistor`` in config, look up
+    ``Name`` in that board's reading dict (same label string). Missing or
+    unread channels become ``nan`` so the UI still shows the row.
+    """
+    tc = thermocouple_temps or {}
+    th = thermistor_temps or {}
+    selected: dict[str, float] = {}
+    for label, source in temperature_sources_from_config(config):
+        board = th if source == "thermistor" else tc
+        value = board.get(label)
+        try:
+            selected[label] = float(value) if value is not None else float("nan")
+        except (TypeError, ValueError):
+            selected[label] = float("nan")
+    return selected
 
 
 def pressure_labels_from_config(config: dict) -> list[str]:
