@@ -5,11 +5,10 @@ control_temp_label: CSF
 #   Cart In: thermistor → thermistor_sensors.labels value named "Cart In"
 # Only listed names appear; order is display order.
 temperature_sources:
-  CSF: thermocouple
-  Cart In: thermistor
-  Cart Out: thermistor
-  Heat Ex: thermistor
-  Heat Ex 2: thermistor
+  Tank: thermistor
+  Cath In: thermistor
+  Cath Out: thermistor  
+  Tubing: thermistor
   Room Temp: thermistor
 alarms:
   csf_label: CSF
@@ -152,12 +151,12 @@ thermistor_sensors:
   - 6
   - 7
   labels:
-    0: Cart In
-    1: Cart Out
+    0: Tank
+    1: Cath In
     2: defect
     3: defect2
-    4: Heat Ex
-    5: Heat Ex 2
+    4: Cath Out
+    5: Tubing
     6: Room Temp
     7: defect3
   conversion:
