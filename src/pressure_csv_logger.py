@@ -13,7 +13,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 
 class PressureCSVLogger:
@@ -67,7 +67,7 @@ class PressureCSVLogger:
         return slug or "pressure"
 
     def _build_header(self, pressure_columns: list[str]) -> list[str]:
-        header = ["timestamp"]
+        header = ["timestamp", "peristaltic_pump_set_speed_rpm"]
         for name in pressure_columns:
             header.append(f"{self._csv_slug(name)}_psi")
         return header
@@ -121,8 +121,16 @@ class PressureCSVLogger:
                 self._reset_unlocked()
                 return False
 
-    def log(self, pressures: Optional[dict] = None) -> None:
-        """Append one pressure row (no-op when capture is off)."""
+    def log(
+        self,
+        pressures: Optional[dict] = None,
+        peristaltic_pump_set_speed_rpm: Optional[float] = None,
+    ) -> None:
+        """Append one pressure row (no-op when capture is off).
+
+        ``peristaltic_pump_set_speed_rpm`` is the latest stepper setpoint
+        (0 when the pump is not running), matching the session CSV column.
+        """
         with self._lock:
             if not self.is_logging or self.csv_writer is None or self.file_handle is None:
                 return
@@ -130,6 +138,11 @@ class PressureCSVLogger:
             try:
                 pressures = pressures or {}
                 row: list = [datetime.now().isoformat()]
+                row.append(
+                    f"{float(peristaltic_pump_set_speed_rpm):.2f}"
+                    if peristaltic_pump_set_speed_rpm is not None
+                    else ""
+                )
                 for column in self.pressure_columns:
                     value = pressures.get(column)
                     if value is None or (
@@ -189,9 +202,11 @@ class PressureCaptureLoop:
         pressure_reader: Any,
         logger: PressureCSVLogger,
         rate_hz: Optional[float] = None,
+        pump_set_speed_rpm_getter: Optional[Callable[[], float]] = None,
     ):
         self._pressure_reader = pressure_reader
         self._logger = logger
+        self._pump_set_speed_rpm_getter = pump_set_speed_rpm_getter
         self._rate_hz = max(
             1.0, float(rate_hz if rate_hz is not None else logger.capture_rate_hz)
         )
@@ -231,7 +246,13 @@ class PressureCaptureLoop:
                     pressures = self._pressure_reader.read_pressures()
                 else:
                     pressures = {}
-                self._logger.log(pressures)
+                pump_speed: Optional[float] = None
+                if self._pump_set_speed_rpm_getter is not None:
+                    pump_speed = float(self._pump_set_speed_rpm_getter())
+                self._logger.log(
+                    pressures,
+                    peristaltic_pump_set_speed_rpm=pump_speed,
+                )
             except Exception as exc:
                 print(f"Pressure capture loop error: {exc}")
 

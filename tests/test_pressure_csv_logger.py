@@ -56,11 +56,12 @@ class PressureCsvLoggerTests(unittest.TestCase):
             self.logger.stop_logging()
         self._tmpdir.cleanup()
 
-    def test_header_is_pressure_only(self) -> None:
+    def test_header_includes_pump_set_speed(self) -> None:
         self.assertEqual(
             self.logger.header,
             [
                 "timestamp",
+                "peristaltic_pump_set_speed_rpm",
                 "cartridge_input_psi",
                 "cartridge_output_psi",
                 "pump_input_psi",
@@ -84,7 +85,8 @@ class PressureCsvLoggerTests(unittest.TestCase):
                 "Cartridge Output": 75.0,
                 "Pump Input": 12.34,
                 "Pump Output": 45.67,
-            }
+            },
+            peristaltic_pump_set_speed_rpm=60,
         )
         self.logger.stop_logging()
 
@@ -92,7 +94,10 @@ class PressureCsvLoggerTests(unittest.TestCase):
             rows = list(csv.reader(handle))
         self.assertEqual(rows[0], self.logger.header)
         self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[1][1:], ["-11.50", "75.00", "12.34", "45.67"])
+        self.assertEqual(
+            rows[1][1:],
+            ["60.00", "-11.50", "75.00", "12.34", "45.67"],
+        )
 
     def test_each_start_creates_a_new_file(self) -> None:
         self.assertTrue(self.logger.start_logging())
@@ -158,7 +163,12 @@ class PressureCaptureLoopTests(unittest.TestCase):
 
     def test_loop_runs_near_configured_rate(self) -> None:
         self.assertTrue(self.logger.start_logging())
-        loop = PressureCaptureLoop(self.reader, self.logger, rate_hz=100.0)
+        loop = PressureCaptureLoop(
+            self.reader,
+            self.logger,
+            rate_hz=100.0,
+            pump_set_speed_rpm_getter=lambda: 45,
+        )
         loop.start()
         time.sleep(0.25)
         loop.stop()
@@ -167,6 +177,13 @@ class PressureCaptureLoopTests(unittest.TestCase):
         # Allow some scheduling jitter; expect roughly 100 Hz over 0.25 s.
         self.assertGreaterEqual(self.reads, 15)
         self.assertLessEqual(self.reads, 40)
+
+        path = Path(self.logger.get_log_file_path() or "")
+        with path.open(newline="") as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(rows[0][1], "peristaltic_pump_set_speed_rpm")
+        self.assertGreaterEqual(len(rows), 2)
+        self.assertEqual(rows[1][1], "45.00")
 
 
 try:

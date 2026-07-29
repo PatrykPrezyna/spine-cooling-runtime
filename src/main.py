@@ -813,11 +813,16 @@ class SensorMonitorApp(QObject):
             self._pressure_capture_loop = PressureCaptureLoop(
                 self.pressure_reader,
                 self.pressure_csv_logger,
+                pump_set_speed_rpm_getter=self._logged_pump_set_speed_rpm,
             )
             self._pressure_capture_loop.start()
         else:
             self._stop_pressure_capture()
             self.pressure_csv_logger.stop_logging()
+
+    def _logged_pump_set_speed_rpm(self) -> int:
+        """Stepper setpoint for CSV: speed when running, else 0."""
+        return int(self.stepper_speed_rpm) if self.stepper_motor_running else 0
 
     def on_compressor_thresholds_changed(self, off_temp_c: float, on_temp_c: float) -> None:
         off_c = round(float(off_temp_c), 1)
