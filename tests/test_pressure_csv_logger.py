@@ -31,11 +31,11 @@ _CONFIG = {
         "sample_rate_hz": 10,
         "capture_rate_hz": 100,
         "channels": [0, 1, 2, 3],
-        "channel_configs": {
-            0: {"label": "Cartridge Input"},
-            1: {"label": "Cartridge Output"},
-            2: {"label": "Pump Input"},
-            3: {"label": "Pump Output"},
+        "labels": {
+            0: "Cartridge Input",
+            1: "Cartridge Output",
+            2: "Pump Input",
+            3: "Pump Output",
         },
     },
 }

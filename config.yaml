@@ -167,6 +167,8 @@ thermistor_sensors:
 # Differential pressure sensors on a third + fourth ADS1115 (up to 4 sensors).
 # Each sensor uses one differential pair (2 analog inputs), so one chip serves
 # two sensors: channels 0-1 on the first address, 2-3 on the second.
+# Labels match thermistor_sensors.labels (channel → display name).
+# Optional channel_configs[].label overrides the flat labels map.
 # Linear calibration: mV → psi (same for all sensors).
 # UI / session CSV follow ui.update_interval_ms (100 ms → 10 Hz).
 # Pressure-tab CSV toggle runs a dedicated capture thread at capture_rate_hz.
@@ -176,28 +178,24 @@ pressure_sensors:
   capture_rate_hz: 100  # pressure CSV toggle target rate
   data_rate: 860        # ADS1115 SPS; needed for ~100 Hz × 4 channels
   i2c_addresses:
-  - 74   # 0x4A — Cartridge Input (P0-P1), Cartridge Output (P2-P3)
-  - 75   # 0x4B — Pump Input (P0-P1), Pump Output (P2-P3)
+  - 74   # 0x4A — channels 0 (P0-P1), 1 (P2-P3)
+  - 75   # 0x4B — channels 2 (P0-P1), 3 (P2-P3)
   gain: 16  # ±0.256 V
   channels:
   - 0
   - 1
   - 2
   - 3
+  labels:
+    0: Pump Input
+    1: Pump Input
+    2: System output
+    3: Catheder Input
   calibration:
     mv_lo: -14.858
     psi_lo: -11.5
     mv_hi: 96.9
     psi_hi: 75.0
-  channel_configs:
-    0:
-      label: Cartridge Input
-    1:
-      label: Cartridge Output
-    2:
-      label: Pump Input
-    3:
-      label: Pump Output
 compressor:
   relay_pin: 6
   heat_ex_label: Heat Ex

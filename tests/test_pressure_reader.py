@@ -49,11 +49,11 @@ _PRESSURE_CONFIG = {
             "mv_hi": MV_HI,
             "psi_hi": PSI_HI,
         },
-        "channel_configs": {
-            0: {"label": "Cartridge Input"},
-            1: {"label": "Cartridge Output"},
-            2: {"label": "Pump Input"},
-            3: {"label": "Pump Output"},
+        "labels": {
+            0: "Cartridge Input",
+            1: "Cartridge Output",
+            2: "Pump Input",
+            3: "Pump Output",
         },
     }
 }
@@ -120,9 +120,8 @@ class ConfigCalibrationTests(unittest.TestCase):
         self.assertAlmostEqual(float(cal["mv_hi"]), MV_HI)
         self.assertAlmostEqual(float(cal["psi_hi"]), PSI_HI)
 
-        labels = [
-            config["pressure_sensors"]["channel_configs"][i]["label"] for i in range(4)
-        ]
+        labels_map = config["pressure_sensors"]["labels"]
+        labels = [labels_map[i] for i in range(4)]
         self.assertEqual(
             labels,
             [
@@ -181,7 +180,7 @@ class ReaderMeasuringChainTests(unittest.TestCase):
                     "mv_hi": 100.0,
                     "psi_hi": 50.0,
                 },
-                "channel_configs": {0: {"label": "Cartridge Input"}},
+                "labels": {0: "Cartridge Input"},
             }
         }
         reader = ADS1115PressureReader(config)
@@ -190,6 +189,24 @@ class ReaderMeasuringChainTests(unittest.TestCase):
 
         pressures = reader.read_pressures()
         self.assertAlmostEqual(pressures["Cartridge Input"], 25.0, places=6)
+
+    def test_flat_labels_and_channel_configs_override(self) -> None:
+        config = {
+            "pressure_sensors": {
+                "enabled": True,
+                "channels": [0, 1],
+                "labels": {0: "From Labels", 1: "Also Labels"},
+                "channel_configs": {1: {"label": "From Channel Config"}},
+            }
+        }
+        reader = ADS1115PressureReader(config)
+        reader._analog_inputs = {0: _fake_analog(0.0), 1: _fake_analog(0.0)}
+        reader.is_initialized = True
+
+        pressures = reader.read_pressures()
+        self.assertIn("From Labels", pressures)
+        self.assertIn("From Channel Config", pressures)
+        self.assertNotIn("Also Labels", pressures)
 
     def test_display_roundtrip_two_decimals(self) -> None:
         """Values the UI will show must match conversion to 2 decimal places."""

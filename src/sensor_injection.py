@@ -130,21 +130,43 @@ def select_temperatures(
     return selected
 
 
+def pressure_channel_labels_from_config(config: dict) -> dict[int, str]:
+    """Return channel → label for pressure sensors.
+
+    Prefers flat ``pressure_sensors.labels`` (same shape as thermistors).
+    ``channel_configs[].label`` overrides when present.
+    """
+    ps_cfg = config.get("pressure_sensors", {}) or {}
+    labels: dict[int, str] = {}
+    raw_labels = ps_cfg.get("labels", {}) or {}
+    for key, value in raw_labels.items():
+        try:
+            labels[int(key)] = str(value)
+        except (TypeError, ValueError):
+            continue
+    channel_configs = ps_cfg.get("channel_configs", {}) or {}
+    for key, cfg in channel_configs.items():
+        if not isinstance(cfg, dict) or not cfg.get("label"):
+            continue
+        try:
+            labels[int(key)] = str(cfg["label"])
+        except (TypeError, ValueError):
+            continue
+    return labels
+
+
 def pressure_labels_from_config(config: dict) -> list[str]:
-    ps_cfg = config.get("pressure_sensors", {})
+    """Return ordered pressure channel labels from config."""
+    ps_cfg = config.get("pressure_sensors", {}) or {}
     channels = ps_cfg.get("channels", [])
-    raw_channel_cfg = ps_cfg.get("channel_configs", {}) or {}
+    labels = pressure_channel_labels_from_config(config)
     names: list[str] = []
     for channel in channels:
         try:
             ch = int(channel)
         except (TypeError, ValueError):
             continue
-        cfg = raw_channel_cfg.get(str(ch), raw_channel_cfg.get(ch, {}))
-        if isinstance(cfg, dict) and cfg.get("label"):
-            names.append(str(cfg["label"]))
-        else:
-            names.append(f"Pressure {ch + 1}")
+        names.append(labels.get(ch, f"Pressure {ch + 1}"))
     return names
 
 

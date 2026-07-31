@@ -1550,10 +1550,10 @@ class PressureServiceTab(QWidget):
     _LABEL_NEUTRAL_STYLE = "font-size: 12px; padding: 6px; color: #5c6b79;"
     _LABEL_STRONG_TEMPLATE = "font-size: 12px; padding: 6px; color: {color}; font-weight: 600;"
     _DEFAULT_PRESSURE_SENSOR_NAMES = (
-        "Cartridge Input",
-        "Cartridge Output",
-        "Pump Input",
-        "Pump Output",
+        "Pressure 1",
+        "Pressure 2",
+        "Pressure 3",
+        "Pressure 4",
     )
 
     def __init__(
@@ -2386,21 +2386,10 @@ class MainScreen(QMainWindow):
 
     @staticmethod
     def _pressure_sensor_names_from_config(config: dict) -> list[str]:
-        ps_cfg = config.get("pressure_sensors", {})
-        channels = ps_cfg.get("channels", [])
-        raw_channel_cfg = ps_cfg.get("channel_configs", {})
-        names: list[str] = []
-        for channel in channels:
-            try:
-                ch = int(channel)
-            except (TypeError, ValueError):
-                continue
-            cfg = raw_channel_cfg.get(str(ch), raw_channel_cfg.get(ch, {}))
-            if isinstance(cfg, dict) and cfg.get("label"):
-                names.append(str(cfg.get("label")))
-            else:
-                names.append(f"Pressure {ch + 1}")
-        return names
+        from sensor_injection import pressure_labels_from_config
+
+        return pressure_labels_from_config(config)
+
     
     def _setup_window(self):
         """Setup main window properties.

@@ -41,9 +41,9 @@ _TEST_CONFIG = {
         "enabled": True,
         "i2c_addresses": [74, 75],
         "channels": [0, 1],
-        "channel_configs": {
-            0: {"label": "Cartridge Input"},
-            1: {"label": "Cartridge Output"},
+        "labels": {
+            0: "Cartridge Input",
+            1: "Cartridge Output",
         },
     },
     "simulation": {

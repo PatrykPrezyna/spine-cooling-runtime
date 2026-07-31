@@ -49,7 +49,7 @@ class ADS1115PressureReader:
         self.enabled = bool(ps_cfg.get("enabled", False))
         self.i2c_addresses = self._parse_addresses(ps_cfg)
         self.channels = [int(ch) for ch in ps_cfg.get("channels", [0, 1, 2, 3])]
-        self.channel_configs = ps_cfg.get("channel_configs", {}) or {}
+        self.channel_labels = self._parse_labels(ps_cfg)
         self.gain = int(ps_cfg.get("gain", 16))
         self.data_rate = int(ps_cfg.get("data_rate", _DEFAULT_DATA_RATE))
         self.last_error: Optional[str] = None
@@ -133,6 +133,25 @@ class ADS1115PressureReader:
                 continue
         return addresses or [74, 75]
 
+    @staticmethod
+    def _parse_labels(ps_cfg: dict) -> Dict[int, str]:
+        raw = ps_cfg.get("labels", {}) or {}
+        labels: Dict[int, str] = {}
+        for key, value in raw.items():
+            try:
+                labels[int(key)] = str(value)
+            except (TypeError, ValueError):
+                continue
+        channel_configs = ps_cfg.get("channel_configs", {}) or {}
+        for key, cfg in channel_configs.items():
+            if not isinstance(cfg, dict) or not cfg.get("label"):
+                continue
+            try:
+                labels[int(key)] = str(cfg["label"])
+            except (TypeError, ValueError):
+                continue
+        return labels
+
     def _address_for_channel(self, channel: int) -> int:
         chip_index = channel // 2
         if chip_index >= len(self.i2c_addresses):
@@ -140,12 +159,7 @@ class ADS1115PressureReader:
         return self.i2c_addresses[chip_index]
 
     def _channel_label(self, channel: int) -> str:
-        cfg = self.channel_configs.get(
-            str(channel), self.channel_configs.get(channel, {})
-        )
-        if isinstance(cfg, dict) and cfg.get("label"):
-            return str(cfg["label"])
-        return f"Pressure {channel + 1}"
+        return self.channel_labels.get(channel, f"Pressure {channel + 1}")
 
     def read_pressures(self) -> Dict[str, float]:
         if not self.is_initialized:
