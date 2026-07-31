@@ -187,10 +187,10 @@ pressure_sensors:
   - 2
   - 3
   labels:
-    0: Pump Input
-    1: Pump Output
-    2: Catheder Output
-    3: Catheder Input
+    0: Pump Output
+    1: Pump Input
+    2: Catheder Input
+    3: Catheder Output
   calibration:
     mv_lo: -14.858
     psi_lo: -11.5
