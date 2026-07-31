@@ -188,7 +188,7 @@ pressure_sensors:
   - 3
   labels:
     0: Pump Input
-    1: Pump Input
+    1: Pump Output
     2: Catheder input
     3: Catheder output
   calibration:
