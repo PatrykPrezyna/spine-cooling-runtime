@@ -88,6 +88,10 @@ _GRAPH_WINDOW_COMBO_STYLE = """
 DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.7823
 # Discrete setpoints on the service-tab flow slider (10, 20, 30, ... ml/min).
 PUMP_FLOW_SLIDER_STEP_ML_PER_MIN = 10
+# Service-tab flow ramp test: start at 10 ml/min, +10 every 2 minutes.
+FLOW_RAMP_TEST_START_ML_PER_MIN = 10
+FLOW_RAMP_TEST_STEP_ML_PER_MIN = 10
+FLOW_RAMP_TEST_INTERVAL_MS = 2 * 60 * 1000
 
 
 def _pump_flow_ml_per_min(rpm: float, slope: float) -> float:
@@ -1008,6 +1012,11 @@ class ServiceTab(QWidget):
             int(stepper_cfg.get("min_speed_rpm", 1) or 1),
         )
         self.stepper_continuous_on: bool = False
+        self.flow_ramp_test_active: bool = False
+        self._flow_ramp_test_ml_per_min: int = FLOW_RAMP_TEST_START_ML_PER_MIN
+        self._flow_ramp_test_timer = QTimer(self)
+        self._flow_ramp_test_timer.setInterval(FLOW_RAMP_TEST_INTERVAL_MS)
+        self._flow_ramp_test_timer.timeout.connect(self._on_flow_ramp_test_tick)
 
         # Callbacks (set by the host window).
         self.on_compressor_control_toggle_callback: Optional[Callable[[bool], None]] = None
@@ -1016,6 +1025,7 @@ class ServiceTab(QWidget):
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
+        self.on_flow_ramp_test_logging_callback: Optional[Callable[[bool], None]] = None
 
         self._create_widgets()
         self._setup_layout()
@@ -1151,6 +1161,11 @@ class ServiceTab(QWidget):
         self.stepper_continuous_button.setMinimumHeight(48)
         self.stepper_continuous_button.clicked.connect(self._on_stepper_continuous_toggle_clicked)
         self._apply_continuous_button_style(False)
+
+        self.flow_ramp_test_button = QPushButton("Start Test")
+        self.flow_ramp_test_button.setMinimumHeight(48)
+        self.flow_ramp_test_button.clicked.connect(self._on_flow_ramp_test_clicked)
+        self._apply_flow_ramp_test_button_style(False)
         
     def _setup_layout(self):
         """Setup service tab layout"""
@@ -1205,6 +1220,7 @@ class ServiceTab(QWidget):
         jog_layout.addWidget(self.jog_forward_button)
         jog_layout.addWidget(self.stepper_continuous_button)
         outputs_layout.addLayout(jog_layout)
+        outputs_layout.addWidget(self.flow_ramp_test_button)
         self.outputs_group.setLayout(outputs_layout)
         main_layout.addWidget(self.outputs_group)
         
@@ -1400,7 +1416,14 @@ class ServiceTab(QWidget):
 
     def _on_stepper_continuous_toggle_clicked(self):
         """Toggle continuous forward motion ON/OFF."""
-        self.stepper_continuous_on = not self.stepper_continuous_on
+        self._set_continuous_run(not self.stepper_continuous_on)
+
+    def _set_continuous_run(self, enabled: bool):
+        """Set continuous run state and notify the host if it changed."""
+        enabled = bool(enabled)
+        if self.stepper_continuous_on == enabled:
+            return
+        self.stepper_continuous_on = enabled
         self._apply_continuous_button_style(self.stepper_continuous_on)
         self._update_stepper_control_enabled_state()
         if self.on_stepper_continuous_toggle_callback:
@@ -1436,6 +1459,79 @@ class ServiceTab(QWidget):
         jog_enabled = not self.stepper_continuous_on
         self.jog_reverse_button.setEnabled(jog_enabled)
         self.jog_forward_button.setEnabled(jog_enabled)
+
+    def _on_flow_ramp_test_clicked(self):
+        """Toggle the timed flow-ramp + pressure-log test."""
+        if self.flow_ramp_test_active:
+            self.stop_flow_ramp_test()
+        else:
+            self.start_flow_ramp_test()
+
+    def start_flow_ramp_test(self):
+        """Start at 10 ml/min, run pump, start pressure log, ramp +10 every 2 min."""
+        if self.flow_ramp_test_active:
+            return
+        lo, hi = self._flow_setpoint_bounds()
+        start_ml = max(lo, min(hi, FLOW_RAMP_TEST_START_ML_PER_MIN))
+        self.flow_ramp_test_active = True
+        self._flow_ramp_test_ml_per_min = start_ml
+        self._apply_flow_ramp_test_button_style(True)
+        self._set_stepper_speed_rpm(self._flow_setpoint_to_rpm(start_ml), emit_callback=True)
+        self._set_continuous_run(True)
+        if self.on_flow_ramp_test_logging_callback:
+            self.on_flow_ramp_test_logging_callback(True)
+        self._flow_ramp_test_timer.start()
+
+    def stop_flow_ramp_test(self):
+        """Stop the ramp timer, pressure log, and continuous pump run."""
+        if not self.flow_ramp_test_active and not self._flow_ramp_test_timer.isActive():
+            return
+        self.flow_ramp_test_active = False
+        self._flow_ramp_test_timer.stop()
+        self._apply_flow_ramp_test_button_style(False)
+        if self.on_flow_ramp_test_logging_callback:
+            self.on_flow_ramp_test_logging_callback(False)
+        self._set_continuous_run(False)
+
+    def _on_flow_ramp_test_tick(self):
+        """Increase flow by 10 ml/min; stop automatically at the max setpoint."""
+        if not self.flow_ramp_test_active:
+            return
+        _lo, hi = self._flow_setpoint_bounds()
+        next_ml = self._flow_ramp_test_ml_per_min + FLOW_RAMP_TEST_STEP_ML_PER_MIN
+        if next_ml > hi:
+            self.stop_flow_ramp_test()
+            return
+        self._flow_ramp_test_ml_per_min = next_ml
+        self._set_stepper_speed_rpm(self._flow_setpoint_to_rpm(next_ml), emit_callback=True)
+        self._apply_flow_ramp_test_button_style(True)
+
+    def _apply_flow_ramp_test_button_style(self, active: bool):
+        if active:
+            text = f"Stop Test ({self._flow_ramp_test_ml_per_min} ml/min)"
+            bg = "#dc2626"
+            hover = "#b91c1c"
+            border = "#991b1b"
+        else:
+            text = "Start Test"
+            bg = "#0e6a76"
+            hover = "#0b565f"
+            border = "#0b565f"
+        self.flow_ramp_test_button.setText(text)
+        self.flow_ramp_test_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: white;
+                font-size: 15px;
+                font-weight: 700;
+                border-radius: 16px;
+                padding: 12px 16px;
+                border: 1px solid {border};
+            }}
+            QPushButton:hover {{
+                background-color: {hover};
+            }}
+        """)
 
     @staticmethod
     def _group_box_style(border_color: str, font_size: str, bg_color: str = "white", margin_top: int = 10) -> str:
@@ -2627,6 +2723,7 @@ class MainScreen(QMainWindow):
         self.service_tab.on_stepper_continuous_toggle_callback = self._on_service_stepper_continuous_toggle
         self.service_tab.on_compressor_control_toggle_callback = self._on_service_compressor_control_toggle
         self.service_tab.on_compressor_thresholds_change_callback = self._on_service_compressor_thresholds_change
+        self.service_tab.on_flow_ramp_test_logging_callback = self._on_service_flow_ramp_test_logging
 
         # Animal Study tab (selected logical temperatures)
         pressure_sensor_names = self._pressure_sensor_names_from_config(self.config)
@@ -2930,6 +3027,24 @@ class MainScreen(QMainWindow):
         """Forward Pressure-tab CSV capture toggle to the app callback."""
         if self.on_pressure_csv_logging_toggle_callback:
             self.on_pressure_csv_logging_toggle_callback(enabled)
+
+    def _set_pressure_csv_logging(self, enabled: bool, *, restart: bool = False) -> None:
+        """Set pressure CSV logging and keep the Pressure tab toggle in sync."""
+        tab = self.pressure_service_tab
+        enabled = bool(enabled)
+        if enabled and restart and tab.pressure_csv_logging_enabled:
+            tab.set_pressure_csv_logging(False)
+            if self.on_pressure_csv_logging_toggle_callback:
+                self.on_pressure_csv_logging_toggle_callback(False)
+        if tab.pressure_csv_logging_enabled == enabled:
+            return
+        tab.set_pressure_csv_logging(enabled)
+        if self.on_pressure_csv_logging_toggle_callback:
+            self.on_pressure_csv_logging_toggle_callback(enabled)
+
+    def _on_service_flow_ramp_test_logging(self, enabled: bool):
+        """Start/stop pressure CSV capture for the Service-tab flow ramp test."""
+        self._set_pressure_csv_logging(bool(enabled), restart=bool(enabled))
 
     def _toggle_window_mode(self) -> None:
         """Toggle between fullscreen and fixed-size windowed mode."""
@@ -3242,6 +3357,8 @@ class MainScreen(QMainWindow):
     def closeEvent(self, event):
         """Handle window close event."""
         self.update_timer.stop()
+        if getattr(self, "service_tab", None) is not None:
+            self.service_tab.stop_flow_ramp_test()
         event.accept()
 
 
