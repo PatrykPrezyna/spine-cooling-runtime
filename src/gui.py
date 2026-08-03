@@ -86,10 +86,18 @@ _GRAPH_WINDOW_COMBO_STYLE = """
 
 # Default linear pump model (overridden from config): flow_ml_min = rpm * slope.
 DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.7823
+# Discrete setpoints on the service-tab flow slider (10, 20, 30, ... ml/min).
+PUMP_FLOW_SLIDER_STEP_ML_PER_MIN = 10
 
 
 def _pump_flow_ml_per_min(rpm: float, slope: float) -> float:
     return max(0.0, float(rpm)) * float(slope)
+
+
+def _snap_ml_per_min_setpoint(ml_per_min: float, step: int = PUMP_FLOW_SLIDER_STEP_ML_PER_MIN) -> int:
+    """Snap a flow value to the nearest discrete ml/min setpoint."""
+    step = max(1, int(step))
+    return int(round(float(ml_per_min) / step) * step)
 
 
 class MainScreenWidget(QWidget):
@@ -1074,26 +1082,10 @@ class ServiceTab(QWidget):
         
         self.stepper_speed_label = QLabel(self._format_speed_text(self.stepper_speed_rpm))
         self.stepper_speed_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
-        self.stepper_speed_label.setFixedHeight(52)
+        self.stepper_speed_label.setFixedHeight(104)
         self.stepper_speed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        self.stepper_speed_slider = QSlider(Qt.Orientation.Horizontal)
-        self.stepper_speed_slider.setRange(
-            min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm),
-            self.stepper_max_speed_rpm,
-        )
-        self.stepper_speed_slider.setTickInterval(10)
-        self.stepper_speed_slider.setSingleStep(1)
-        self.stepper_speed_slider.setPageStep(10)
-        self.stepper_speed_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.stepper_speed_slider.setValue(
-            max(
-                min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm),
-                min(self.stepper_max_speed_rpm, self.stepper_speed_rpm),
-            )
-        )
-        self.stepper_speed_slider.setMinimumHeight(52)
-        self.stepper_speed_slider.setStyleSheet("""
+
+        slider_style = """
             QSlider::groove:horizontal {
                 height: 16px;
                 background: #d8e0e6;
@@ -1110,8 +1102,37 @@ class ServiceTab(QWidget):
                 margin: -9px 0;
                 border-radius: 15px;
             }
-        """)
+        """
+
+        self.stepper_speed_slider = QSlider(Qt.Orientation.Horizontal)
+        self.stepper_speed_slider.setRange(
+            min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm),
+            self.stepper_max_speed_rpm,
+        )
+        self.stepper_speed_slider.setTickInterval(10)
+        self.stepper_speed_slider.setSingleStep(1)
+        self.stepper_speed_slider.setPageStep(10)
+        self.stepper_speed_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.stepper_speed_slider.setValue(
+            max(
+                min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm),
+                min(self.stepper_max_speed_rpm, self.stepper_speed_rpm),
+            )
+        )
+        self.stepper_speed_slider.setMinimumHeight(48)
+        self.stepper_speed_slider.setStyleSheet(slider_style)
         self.stepper_speed_slider.valueChanged.connect(self._on_stepper_speed_changed)
+
+        # Flow slider uses step indices (1 => 10 ml/min, 2 => 20 ml/min, ...).
+        self.stepper_flow_slider = QSlider(Qt.Orientation.Horizontal)
+        self.stepper_flow_slider.setTickInterval(1)
+        self.stepper_flow_slider.setSingleStep(1)
+        self.stepper_flow_slider.setPageStep(1)
+        self.stepper_flow_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.stepper_flow_slider.setMinimumHeight(48)
+        self.stepper_flow_slider.setStyleSheet(slider_style)
+        self._configure_flow_slider_range()
+        self.stepper_flow_slider.valueChanged.connect(self._on_stepper_flow_changed)
 
         # Jog controls (hold to move)
         self.jog_reverse_button = QPushButton("JOG REVERSE")
@@ -1169,7 +1190,12 @@ class ServiceTab(QWidget):
         speed_row_layout = QHBoxLayout()
         speed_row_layout.setContentsMargins(0, 0, 0, 0)
         speed_row_layout.setSpacing(6)
-        speed_row_layout.addWidget(self.stepper_speed_slider, 1)
+        sliders_col = QVBoxLayout()
+        sliders_col.setContentsMargins(0, 0, 0, 0)
+        sliders_col.setSpacing(2)
+        sliders_col.addWidget(self.stepper_speed_slider)
+        sliders_col.addWidget(self.stepper_flow_slider)
+        speed_row_layout.addLayout(sliders_col, 1)
         speed_row_layout.addWidget(self.stepper_speed_label, 0, Qt.AlignmentFlag.AlignVCenter)
         outputs_layout.addLayout(speed_row_layout)
         jog_layout = QHBoxLayout()
@@ -1214,9 +1240,7 @@ class ServiceTab(QWidget):
         if refresh_heat_ex:
             self.heat_ex_temp_c = float(heat_ex_temp_c) if heat_ex_temp_c is not None else None
         if stepper_speed_rpm is not None:
-            self.stepper_speed_rpm = int(stepper_speed_rpm)
-            if self.stepper_speed_slider.value() != self.stepper_speed_rpm:
-                self.stepper_speed_slider.setValue(self.stepper_speed_rpm)
+            self._set_stepper_speed_rpm(int(stepper_speed_rpm), emit_callback=False)
 
         comp_status = "ON" if self.compressor_on else "OFF"
         comp_color = "#16a34a" if self.compressor_on else "#6b7280"
@@ -1235,12 +1259,89 @@ class ServiceTab(QWidget):
         ml_per_min = _pump_flow_ml_per_min(rpm, self.pump_flow_ml_per_min_per_rpm)
         return f"{rpm} RPM\n{ml_per_min:.1f} ml/min"
 
-    def _on_stepper_speed_changed(self, value: int):
-        """Handle speed slider changes."""
-        self.stepper_speed_rpm = int(value)
+    def _flow_setpoint_bounds(self) -> tuple[int, int]:
+        """Return min/max discrete ml/min setpoints for the current RPM range."""
+        slope = float(self.pump_flow_ml_per_min_per_rpm) or DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
+        step = PUMP_FLOW_SLIDER_STEP_ML_PER_MIN
+        min_rpm = min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm)
+        max_flow = _pump_flow_ml_per_min(self.stepper_max_speed_rpm, slope)
+        min_flow = _pump_flow_ml_per_min(min_rpm, slope)
+        lo = max(step, int(math.ceil(min_flow / step) * step))
+        hi = int(math.floor(max_flow / step) * step)
+        if hi < lo:
+            hi = lo
+        return lo, hi
+
+    def _rpm_to_flow_setpoint(self, rpm: int) -> int:
+        lo, hi = self._flow_setpoint_bounds()
+        ml_per_min = _pump_flow_ml_per_min(rpm, self.pump_flow_ml_per_min_per_rpm)
+        return max(lo, min(hi, _snap_ml_per_min_setpoint(ml_per_min)))
+
+    def _flow_setpoint_to_rpm(self, ml_per_min: int) -> int:
+        slope = float(self.pump_flow_ml_per_min_per_rpm) or DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
+        min_rpm = min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm)
+        rpm = int(round(float(ml_per_min) / slope))
+        return max(min_rpm, min(self.stepper_max_speed_rpm, rpm))
+
+    def _flow_ml_to_slider_step(self, ml_per_min: int) -> int:
+        return max(1, int(ml_per_min) // PUMP_FLOW_SLIDER_STEP_ML_PER_MIN)
+
+    def _flow_slider_step_to_ml(self, step: int) -> int:
+        return max(PUMP_FLOW_SLIDER_STEP_ML_PER_MIN, int(step) * PUMP_FLOW_SLIDER_STEP_ML_PER_MIN)
+
+    def _configure_flow_slider_range(self):
+        """Configure the ml/min slider range/value from the current RPM/slope."""
+        lo, hi = self._flow_setpoint_bounds()
+        setpoint = self._rpm_to_flow_setpoint(self.stepper_speed_rpm)
+        blocked = self.stepper_flow_slider.blockSignals(True)
+        try:
+            self.stepper_flow_slider.setRange(
+                self._flow_ml_to_slider_step(lo),
+                self._flow_ml_to_slider_step(hi),
+            )
+            self.stepper_flow_slider.setValue(self._flow_ml_to_slider_step(setpoint))
+        finally:
+            self.stepper_flow_slider.blockSignals(blocked)
+
+    def _sync_linked_speed_sliders(self, rpm: int):
+        """Keep RPM and ml/min sliders aligned without re-entering handlers."""
+        rpm = int(rpm)
+        flow_step = self._flow_ml_to_slider_step(self._rpm_to_flow_setpoint(rpm))
+
+        blocked_rpm = self.stepper_speed_slider.blockSignals(True)
+        try:
+            if self.stepper_speed_slider.value() != rpm:
+                self.stepper_speed_slider.setValue(rpm)
+        finally:
+            self.stepper_speed_slider.blockSignals(blocked_rpm)
+
+        blocked_flow = self.stepper_flow_slider.blockSignals(True)
+        try:
+            if self.stepper_flow_slider.value() != flow_step:
+                self.stepper_flow_slider.setValue(flow_step)
+        finally:
+            self.stepper_flow_slider.blockSignals(blocked_flow)
+
+    def _set_stepper_speed_rpm(self, rpm: int, *, emit_callback: bool = True):
+        """Apply a stepper speed and keep both speed sliders in sync."""
+        min_rpm = min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm)
+        rpm = max(min_rpm, min(self.stepper_max_speed_rpm, int(rpm)))
+        self.stepper_speed_rpm = rpm
+        self._sync_linked_speed_sliders(rpm)
         self.stepper_speed_label.setText(self._format_speed_text(self.stepper_speed_rpm))
-        if self.on_stepper_speed_change_callback:
+        if emit_callback and self.on_stepper_speed_change_callback:
             self.on_stepper_speed_change_callback(self.stepper_speed_rpm)
+
+    def _on_stepper_speed_changed(self, value: int):
+        """Handle RPM slider changes; keep the ml/min slider in sync."""
+        self._set_stepper_speed_rpm(int(value), emit_callback=True)
+
+    def _on_stepper_flow_changed(self, value: int):
+        """Handle ml/min slider changes; convert setpoint to RPM and sync."""
+        ml_per_min = self._flow_slider_step_to_ml(int(value))
+        lo, hi = self._flow_setpoint_bounds()
+        ml_per_min = max(lo, min(hi, ml_per_min))
+        self._set_stepper_speed_rpm(self._flow_setpoint_to_rpm(ml_per_min), emit_callback=True)
 
     def _on_compressor_control_toggle_clicked(self):
         self.compressor_control_enabled = not self.compressor_control_enabled
@@ -2516,6 +2617,7 @@ class MainScreen(QMainWindow):
             self.config.get('compressor', {}),
         )
         self.service_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
+        self.service_tab._configure_flow_slider_range()
         self.service_tab.stepper_speed_label.setText(
             self.service_tab._format_speed_text(self.service_tab.stepper_speed_rpm)
         )
