@@ -1012,6 +1012,10 @@ class ServiceTab(QWidget):
             int(stepper_cfg.get("min_speed_rpm", 1) or 1),
         )
         self.stepper_continuous_on: bool = False
+        # Exact ml/min setpoint when speed is set via the flow slider / ramp test.
+        # Integer RPM cannot hit every setpoint exactly with the linear pump model,
+        # so the UI shows this commanded value instead of rpm * slope.
+        self._commanded_flow_ml_per_min: Optional[int] = None
         self.flow_ramp_test_active: bool = False
         self._flow_ramp_test_ml_per_min: int = FLOW_RAMP_TEST_START_ML_PER_MIN
         self._flow_ramp_test_timer = QTimer(self)
@@ -1272,6 +1276,8 @@ class ServiceTab(QWidget):
         self.stepper_continuous_button.setEnabled(True)
 
     def _format_speed_text(self, rpm: int) -> str:
+        if self._commanded_flow_ml_per_min is not None:
+            return f"{rpm} RPM\n{self._commanded_flow_ml_per_min:d} ml/min"
         ml_per_min = _pump_flow_ml_per_min(rpm, self.pump_flow_ml_per_min_per_rpm)
         return f"{rpm} RPM\n{ml_per_min:.1f} ml/min"
 
@@ -1294,10 +1300,24 @@ class ServiceTab(QWidget):
         return max(lo, min(hi, _snap_ml_per_min_setpoint(ml_per_min)))
 
     def _flow_setpoint_to_rpm(self, ml_per_min: int) -> int:
+        """Pick the integer RPM closest to the requested ml/min setpoint."""
         slope = float(self.pump_flow_ml_per_min_per_rpm) or DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
         min_rpm = min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm)
-        rpm = int(round(float(ml_per_min) / slope))
-        return max(min_rpm, min(self.stepper_max_speed_rpm, rpm))
+        max_rpm = self.stepper_max_speed_rpm
+        target = float(ml_per_min)
+        exact = target / slope
+        candidates = {
+            max(min_rpm, min(max_rpm, int(math.floor(exact)))),
+            max(min_rpm, min(max_rpm, int(math.ceil(exact)))),
+            max(min_rpm, min(max_rpm, int(round(exact)))),
+        }
+        return min(
+            candidates,
+            key=lambda rpm: (
+                abs(_pump_flow_ml_per_min(rpm, slope) - target),
+                abs(rpm - exact),
+            ),
+        )
 
     def _flow_ml_to_slider_step(self, ml_per_min: int) -> int:
         return max(1, int(ml_per_min) // PUMP_FLOW_SLIDER_STEP_ML_PER_MIN)
@@ -1308,7 +1328,10 @@ class ServiceTab(QWidget):
     def _configure_flow_slider_range(self):
         """Configure the ml/min slider range/value from the current RPM/slope."""
         lo, hi = self._flow_setpoint_bounds()
-        setpoint = self._rpm_to_flow_setpoint(self.stepper_speed_rpm)
+        if self._commanded_flow_ml_per_min is not None:
+            setpoint = max(lo, min(hi, int(self._commanded_flow_ml_per_min)))
+        else:
+            setpoint = self._rpm_to_flow_setpoint(self.stepper_speed_rpm)
         blocked = self.stepper_flow_slider.blockSignals(True)
         try:
             self.stepper_flow_slider.setRange(
@@ -1322,7 +1345,11 @@ class ServiceTab(QWidget):
     def _sync_linked_speed_sliders(self, rpm: int):
         """Keep RPM and ml/min sliders aligned without re-entering handlers."""
         rpm = int(rpm)
-        flow_step = self._flow_ml_to_slider_step(self._rpm_to_flow_setpoint(rpm))
+        if self._commanded_flow_ml_per_min is not None:
+            flow_setpoint = int(self._commanded_flow_ml_per_min)
+        else:
+            flow_setpoint = self._rpm_to_flow_setpoint(rpm)
+        flow_step = self._flow_ml_to_slider_step(flow_setpoint)
 
         blocked_rpm = self.stepper_speed_slider.blockSignals(True)
         try:
@@ -1338,10 +1365,27 @@ class ServiceTab(QWidget):
         finally:
             self.stepper_flow_slider.blockSignals(blocked_flow)
 
-    def _set_stepper_speed_rpm(self, rpm: int, *, emit_callback: bool = True):
+    def _set_stepper_speed_rpm(
+        self,
+        rpm: int,
+        *,
+        emit_callback: bool = True,
+        flow_setpoint_ml_per_min: Optional[int] = None,
+        clear_flow_setpoint: bool = False,
+    ):
         """Apply a stepper speed and keep both speed sliders in sync."""
         min_rpm = min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm)
         rpm = max(min_rpm, min(self.stepper_max_speed_rpm, int(rpm)))
+        if flow_setpoint_ml_per_min is not None:
+            self._commanded_flow_ml_per_min = int(flow_setpoint_ml_per_min)
+        elif clear_flow_setpoint:
+            self._commanded_flow_ml_per_min = None
+        elif (
+            self._commanded_flow_ml_per_min is not None
+            and self._flow_setpoint_to_rpm(self._commanded_flow_ml_per_min) != rpm
+        ):
+            # External RPM no longer matches the commanded flow setpoint.
+            self._commanded_flow_ml_per_min = None
         self.stepper_speed_rpm = rpm
         self._sync_linked_speed_sliders(rpm)
         self.stepper_speed_label.setText(self._format_speed_text(self.stepper_speed_rpm))
@@ -1350,14 +1394,22 @@ class ServiceTab(QWidget):
 
     def _on_stepper_speed_changed(self, value: int):
         """Handle RPM slider changes; keep the ml/min slider in sync."""
-        self._set_stepper_speed_rpm(int(value), emit_callback=True)
+        self._set_stepper_speed_rpm(
+            int(value),
+            emit_callback=True,
+            clear_flow_setpoint=True,
+        )
 
     def _on_stepper_flow_changed(self, value: int):
         """Handle ml/min slider changes; convert setpoint to RPM and sync."""
         ml_per_min = self._flow_slider_step_to_ml(int(value))
         lo, hi = self._flow_setpoint_bounds()
         ml_per_min = max(lo, min(hi, ml_per_min))
-        self._set_stepper_speed_rpm(self._flow_setpoint_to_rpm(ml_per_min), emit_callback=True)
+        self._set_stepper_speed_rpm(
+            self._flow_setpoint_to_rpm(ml_per_min),
+            emit_callback=True,
+            flow_setpoint_ml_per_min=ml_per_min,
+        )
 
     def _on_compressor_control_toggle_clicked(self):
         self.compressor_control_enabled = not self.compressor_control_enabled
@@ -1476,7 +1528,11 @@ class ServiceTab(QWidget):
         self.flow_ramp_test_active = True
         self._flow_ramp_test_ml_per_min = start_ml
         self._apply_flow_ramp_test_button_style(True)
-        self._set_stepper_speed_rpm(self._flow_setpoint_to_rpm(start_ml), emit_callback=True)
+        self._set_stepper_speed_rpm(
+            self._flow_setpoint_to_rpm(start_ml),
+            emit_callback=True,
+            flow_setpoint_ml_per_min=start_ml,
+        )
         self._set_continuous_run(True)
         if self.on_flow_ramp_test_logging_callback:
             self.on_flow_ramp_test_logging_callback(True)
@@ -1503,7 +1559,11 @@ class ServiceTab(QWidget):
             self.stop_flow_ramp_test()
             return
         self._flow_ramp_test_ml_per_min = next_ml
-        self._set_stepper_speed_rpm(self._flow_setpoint_to_rpm(next_ml), emit_callback=True)
+        self._set_stepper_speed_rpm(
+            self._flow_setpoint_to_rpm(next_ml),
+            emit_callback=True,
+            flow_setpoint_ml_per_min=next_ml,
+        )
         self._apply_flow_ramp_test_button_style(True)
 
     def _apply_flow_ramp_test_button_style(self, active: bool):
@@ -1661,6 +1721,7 @@ class Service2Tab(QWidget):
         self,
         pump_speed_rpm: Optional[int] = None,
         compressor_on: Optional[bool] = None,
+        flow_ml_per_min: Optional[float] = None,
     ):
         """Update pump speed and compressor status."""
         if pump_speed_rpm is not None:
@@ -1668,15 +1729,19 @@ class Service2Tab(QWidget):
         if compressor_on is not None:
             self.compressor_on = bool(compressor_on)
 
-        ml_per_min = _pump_flow_ml_per_min(
-            self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
-        )
+        if flow_ml_per_min is not None:
+            flow_text = f"{float(flow_ml_per_min):.0f} ml/min"
+        else:
+            ml_per_min = _pump_flow_ml_per_min(
+                self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
+            )
+            flow_text = f"{ml_per_min:.1f} ml/min"
         if self.pump_speed_rpm > 0:
             pump_color = "#16a34a"
-            pump_text = f"Pump: {self.pump_speed_rpm} RPM ({ml_per_min:.1f} ml/min)"
+            pump_text = f"Pump: {self.pump_speed_rpm} RPM ({flow_text})"
         else:
             pump_color = "#6b7280"
-            pump_text = f"Pump: 0 RPM ({ml_per_min:.1f} ml/min, stopped)"
+            pump_text = f"Pump: 0 RPM ({flow_text}, stopped)"
         self.pump_speed_label.setText(pump_text)
         self.pump_speed_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=pump_color))
 
@@ -1902,20 +1967,28 @@ class PressureServiceTab(QWidget):
             label.setText(f"{name}: {value:.2f} psi")
             label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color="#8b5cf6"))
 
-    def update_pump_speed(self, pump_speed_rpm: Optional[int] = None):
+    def update_pump_speed(
+        self,
+        pump_speed_rpm: Optional[int] = None,
+        flow_ml_per_min: Optional[float] = None,
+    ):
         """Update pump speed / derived flow display."""
         if pump_speed_rpm is not None:
             self.pump_speed_rpm = max(0, int(pump_speed_rpm))
 
-        ml_per_min = _pump_flow_ml_per_min(
-            self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
-        )
+        if flow_ml_per_min is not None:
+            flow_text = f"{float(flow_ml_per_min):.0f} ml/min"
+        else:
+            ml_per_min = _pump_flow_ml_per_min(
+                self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
+            )
+            flow_text = f"{ml_per_min:.1f} ml/min"
         if self.pump_speed_rpm > 0:
             pump_color = "#16a34a"
-            pump_text = f"Pump: {self.pump_speed_rpm} RPM ({ml_per_min:.1f} ml/min)"
+            pump_text = f"Pump: {self.pump_speed_rpm} RPM ({flow_text})"
         else:
             pump_color = "#6b7280"
-            pump_text = f"Pump: 0 RPM ({ml_per_min:.1f} ml/min, stopped)"
+            pump_text = f"Pump: 0 RPM ({flow_text}, stopped)"
         self.pump_speed_label.setText(pump_text)
         self.pump_speed_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=pump_color))
 

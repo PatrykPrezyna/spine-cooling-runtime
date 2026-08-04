@@ -716,6 +716,9 @@ class SensorMonitorApp(QObject):
         actual_pump_speed_rpm = (
             int(self.stepper_speed_rpm) if self.stepper_motor_running else 0
         )
+        commanded_flow_ml_per_min = getattr(
+            self.ui.service_tab, "_commanded_flow_ml_per_min", None
+        )
         self.ui.service_tab.update_outputs(
             compressor_on=self.compressor_on,
             compressor_control_enabled=self.compressor_control_enabled,
@@ -728,9 +731,11 @@ class SensorMonitorApp(QObject):
         self.ui.service2_tab.update_actuators(
             pump_speed_rpm=actual_pump_speed_rpm,
             compressor_on=self.compressor_on,
+            flow_ml_per_min=commanded_flow_ml_per_min,
         )
         self.ui.pressure_service_tab.update_pump_speed(
             pump_speed_rpm=actual_pump_speed_rpm,
+            flow_ml_per_min=commanded_flow_ml_per_min,
         )
 
     # ------------------------------------------------------------------
