@@ -971,18 +971,35 @@ class MainScreenWidget(QWidget):
 
 class ServiceTab(QWidget):
     """Service tab showing all sensors and outputs"""
-    _LABEL_NEUTRAL_STYLE = "font-size: 12px; padding: 6px; color: #5c6b79;"
-    _LABEL_STRONG_TEMPLATE = "font-size: 12px; padding: 6px; color: {color}; font-weight: 600;"
-    _CONTROL_LABEL_STYLE = "font-size: 12px; padding: 3px 6px; color: #2f3b47;"
+    _LABEL_NEUTRAL_STYLE = "font-size: 13px; padding: 4px 2px; color: #5c6b79;"
+    _LABEL_STRONG_TEMPLATE = "font-size: 13px; padding: 4px 2px; color: {color}; font-weight: 600;"
+    _CONTROL_LABEL_STYLE = (
+        "font-size: 16px; font-weight: 700; padding: 6px 10px; color: #0e6a76;"
+        "background: #eef7f8; border: 1px solid #b7d6db; border-radius: 10px;"
+    )
+    _SLIDER_UNIT_LABEL_STYLE = (
+        "font-size: 12px; font-weight: 700; color: #475569; padding: 0 4px;"
+    )
+    _TEMP_STEP_BUTTON_STYLE = """
+            QPushButton {
+                background-color: #e8eef3;
+                border: 1px solid #c5d0d9;
+                border-radius: 10px;
+                font-size: 20px;
+                font-weight: 700;
+                color: #1f2937;
+            }
+            QPushButton:pressed { background-color: #d5dee6; }
+        """
     _JOG_BUTTON_STYLE = """
             QPushButton {
                 background-color: #e7edf2;
                 border: 1px solid #cfd8e0;
-                font-size: 15px;
+                font-size: 14px;
                 color: #23303b;
                 font-weight: 600;
-                border-radius: 16px;
-                padding: 12px 16px;
+                border-radius: 12px;
+                padding: 10px 12px;
             }
             QPushButton:hover {
                 background-color: #dde6ed;
@@ -991,6 +1008,30 @@ class ServiceTab(QWidget):
                 background-color: #eef2f6;
                 border-color: #dbe3ea;
                 color: #93a0ac;
+            }
+        """
+    _SLIDER_STYLE = """
+            QSlider {
+                min-height: 36px;
+                max-height: 40px;
+            }
+            QSlider::groove:horizontal {
+                height: 12px;
+                background: #d8e0e6;
+                border-radius: 6px;
+                margin: 0 8px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #0e6a76;
+                border-radius: 6px;
+            }
+            QSlider::handle:horizontal {
+                background: white;
+                border: 2px solid #0e6a76;
+                width: 26px;
+                height: 26px;
+                margin: -8px 0;
+                border-radius: 13px;
             }
         """
     
@@ -1048,24 +1089,29 @@ class ServiceTab(QWidget):
         """Create service tab widgets"""
         # Compressor group
         self.compressor_group = QGroupBox("Compressor")
-        self.compressor_group.setStyleSheet(self._group_box_style("#16a34a", "12px"))
+        self.compressor_group.setStyleSheet(self._group_box_style("#16a34a", "13px", margin_top=8))
         
         # Stepper group
         self.outputs_group = QGroupBox("Stepper")
-        self.outputs_group.setStyleSheet(self._group_box_style("#0e6a76", "12px"))
+        self.outputs_group.setStyleSheet(self._group_box_style("#0e6a76", "13px", margin_top=8))
         
         # Output labels
         self.compressor_label = QLabel("Compressor: OFF")
         self.compressor_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
         self.compressor_control_button = QPushButton("Control OFF")
-        self.compressor_control_button.setMinimumHeight(36)
+        self.compressor_control_button.setMinimumHeight(40)
+        self.compressor_control_button.setMaximumWidth(180)
         self.compressor_control_button.clicked.connect(self._on_compressor_control_toggle_clicked)
         self._apply_compressor_control_button_style(False)
 
         spin_style = """
-            QSpinBox {
+            QDoubleSpinBox {
                 font-size: 18px;
                 font-weight: 700;
+                background: white;
+                border: 1px solid #c5d0d9;
+                border-radius: 8px;
+                padding: 2px 4px;
             }
         """
         self.compressor_off_temp_spin = QDoubleSpinBox()
@@ -1073,17 +1119,19 @@ class ServiceTab(QWidget):
         self.compressor_off_temp_spin.setDecimals(1)
         self.compressor_off_temp_spin.setSingleStep(0.1)
         self.compressor_off_temp_spin.setValue(self.compressor_off_temp_c)
-        self.compressor_off_temp_spin.setFixedWidth(80)
-        self.compressor_off_temp_spin.setFixedHeight(48)
+        self.compressor_off_temp_spin.setFixedWidth(78)
+        self.compressor_off_temp_spin.setFixedHeight(44)
         self.compressor_off_temp_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.compressor_off_temp_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         self.compressor_off_temp_spin.setStyleSheet(spin_style)
         self.compressor_off_temp_spin.valueChanged.connect(self._on_compressor_thresholds_changed)
         self.compressor_off_temp_down = QPushButton("-")
-        self.compressor_off_temp_down.setFixedSize(48, 48)
+        self.compressor_off_temp_down.setFixedSize(44, 44)
+        self.compressor_off_temp_down.setStyleSheet(self._TEMP_STEP_BUTTON_STYLE)
         self.compressor_off_temp_down.clicked.connect(lambda: self.compressor_off_temp_spin.stepBy(-1))
         self.compressor_off_temp_up = QPushButton("+")
-        self.compressor_off_temp_up.setFixedSize(48, 48)
+        self.compressor_off_temp_up.setFixedSize(44, 44)
+        self.compressor_off_temp_up.setStyleSheet(self._TEMP_STEP_BUTTON_STYLE)
         self.compressor_off_temp_up.clicked.connect(lambda: self.compressor_off_temp_spin.stepBy(1))
 
         self.compressor_on_temp_spin = QDoubleSpinBox()
@@ -1091,42 +1139,39 @@ class ServiceTab(QWidget):
         self.compressor_on_temp_spin.setDecimals(1)
         self.compressor_on_temp_spin.setSingleStep(0.1)
         self.compressor_on_temp_spin.setValue(self.compressor_on_temp_c)
-        self.compressor_on_temp_spin.setFixedWidth(80)
-        self.compressor_on_temp_spin.setFixedHeight(48)
+        self.compressor_on_temp_spin.setFixedWidth(78)
+        self.compressor_on_temp_spin.setFixedHeight(44)
         self.compressor_on_temp_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.compressor_on_temp_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         self.compressor_on_temp_spin.setStyleSheet(spin_style)
         self.compressor_on_temp_spin.valueChanged.connect(self._on_compressor_thresholds_changed)
         self.compressor_on_temp_down = QPushButton("-")
-        self.compressor_on_temp_down.setFixedSize(48, 48)
+        self.compressor_on_temp_down.setFixedSize(44, 44)
+        self.compressor_on_temp_down.setStyleSheet(self._TEMP_STEP_BUTTON_STYLE)
         self.compressor_on_temp_down.clicked.connect(lambda: self.compressor_on_temp_spin.stepBy(-1))
         self.compressor_on_temp_up = QPushButton("+")
-        self.compressor_on_temp_up.setFixedSize(48, 48)
+        self.compressor_on_temp_up.setFixedSize(44, 44)
+        self.compressor_on_temp_up.setStyleSheet(self._TEMP_STEP_BUTTON_STYLE)
         self.compressor_on_temp_up.clicked.connect(lambda: self.compressor_on_temp_spin.stepBy(1))
         
         self.stepper_speed_label = QLabel(self._format_speed_text(self.stepper_speed_rpm))
         self.stepper_speed_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
-        self.stepper_speed_label.setFixedHeight(104)
+        self.stepper_speed_label.setMinimumWidth(110)
+        self.stepper_speed_label.setMinimumHeight(40)
         self.stepper_speed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        slider_style = """
-            QSlider::groove:horizontal {
-                height: 16px;
-                background: #d8e0e6;
-                border-radius: 8px;
-            }
-            QSlider::sub-page:horizontal {
-                background: #0e6a76;
-                border-radius: 8px;
-            }
-            QSlider::handle:horizontal {
-                background: white;
-                border: 2px solid #0e6a76;
-                width: 30px;
-                margin: -9px 0;
-                border-radius: 15px;
-            }
-        """
+        self.stepper_rpm_unit_label = QLabel("RPM")
+        self.stepper_rpm_unit_label.setStyleSheet(self._SLIDER_UNIT_LABEL_STYLE)
+        self.stepper_rpm_unit_label.setFixedWidth(52)
+        self.stepper_rpm_unit_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.stepper_flow_unit_label = QLabel("ml/min")
+        self.stepper_flow_unit_label.setStyleSheet(self._SLIDER_UNIT_LABEL_STYLE)
+        self.stepper_flow_unit_label.setFixedWidth(52)
+        self.stepper_flow_unit_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
 
         self.stepper_speed_slider = QSlider(Qt.Orientation.Horizontal)
         self.stepper_speed_slider.setRange(
@@ -1136,15 +1181,14 @@ class ServiceTab(QWidget):
         self.stepper_speed_slider.setTickInterval(10)
         self.stepper_speed_slider.setSingleStep(1)
         self.stepper_speed_slider.setPageStep(10)
-        self.stepper_speed_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.stepper_speed_slider.setTickPosition(QSlider.TickPosition.NoTicks)
         self.stepper_speed_slider.setValue(
             max(
                 min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm),
                 min(self.stepper_max_speed_rpm, self.stepper_speed_rpm),
             )
         )
-        self.stepper_speed_slider.setMinimumHeight(48)
-        self.stepper_speed_slider.setStyleSheet(slider_style)
+        self.stepper_speed_slider.setStyleSheet(self._SLIDER_STYLE)
         self.stepper_speed_slider.valueChanged.connect(self._on_stepper_speed_changed)
 
         # Flow slider uses step indices (1 => 10 ml/min, 2 => 20 ml/min, ...).
@@ -1152,103 +1196,135 @@ class ServiceTab(QWidget):
         self.stepper_flow_slider.setTickInterval(1)
         self.stepper_flow_slider.setSingleStep(1)
         self.stepper_flow_slider.setPageStep(1)
-        self.stepper_flow_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.stepper_flow_slider.setMinimumHeight(48)
-        self.stepper_flow_slider.setStyleSheet(slider_style)
+        self.stepper_flow_slider.setTickPosition(QSlider.TickPosition.NoTicks)
+        self.stepper_flow_slider.setStyleSheet(self._SLIDER_STYLE)
         self._configure_flow_slider_range()
         self.stepper_flow_slider.valueChanged.connect(self._on_stepper_flow_changed)
 
         # Jog controls (hold to move)
-        self.jog_reverse_button = QPushButton("JOG REVERSE")
-        self.jog_reverse_button.setMinimumHeight(48)
+        self.jog_reverse_button = QPushButton("JOG REV")
+        self.jog_reverse_button.setMinimumHeight(44)
         self.jog_reverse_button.setStyleSheet(self._JOG_BUTTON_STYLE)
         self.jog_reverse_button.pressed.connect(lambda: self._on_jog_pressed(-1))
         self.jog_reverse_button.released.connect(self._on_jog_released)
         
-        self.jog_forward_button = QPushButton("JOG FORWARD")
-        self.jog_forward_button.setMinimumHeight(48)
+        self.jog_forward_button = QPushButton("JOG FWD")
+        self.jog_forward_button.setMinimumHeight(44)
         self.jog_forward_button.setStyleSheet(self._JOG_BUTTON_STYLE)
         self.jog_forward_button.pressed.connect(lambda: self._on_jog_pressed(1))
         self.jog_forward_button.released.connect(self._on_jog_released)
 
-        self.stepper_continuous_button = QPushButton("RUN OFF")
-        self.stepper_continuous_button.setMinimumHeight(48)
+        self.stepper_continuous_button = QPushButton("RUN")
+        self.stepper_continuous_button.setFixedHeight(44)
+        self.stepper_continuous_button.setMinimumWidth(96)
         self.stepper_continuous_button.clicked.connect(self._on_stepper_continuous_toggle_clicked)
         self._apply_continuous_button_style(False)
 
         self.flow_ramp_test_button = QPushButton("Start Test")
-        self.flow_ramp_test_button.setMinimumHeight(48)
+        self.flow_ramp_test_button.setMinimumHeight(44)
         self.flow_ramp_test_button.clicked.connect(self._on_flow_ramp_test_clicked)
         self._apply_flow_ramp_test_button_style(False)
 
         self.rpm_flow_calibration_button = QPushButton("Calibrate 2 min")
-        self.rpm_flow_calibration_button.setMinimumHeight(48)
+        self.rpm_flow_calibration_button.setMinimumHeight(40)
         self.rpm_flow_calibration_button.clicked.connect(
             self._on_rpm_flow_calibration_clicked
         )
         self._apply_rpm_flow_calibration_button_style(False)
 
-    def _setup_layout(self):
-        """Setup service tab layout"""
-        main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(1, 1, 1, 1)
-        main_layout.setSpacing(1)
+    def _make_temp_control_row(self, caption: str, spin: QDoubleSpinBox, down: QPushButton, up: QPushButton) -> QHBoxLayout:
+        """Build a compact threshold row: label | − value +."""
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        label = QLabel(caption)
+        label.setStyleSheet("font-size: 13px; color: #2f3b47;")
+        label.setMinimumWidth(100)
+        row.addWidget(label)
+        row.addWidget(down)
+        row.addWidget(spin)
+        row.addWidget(up)
+        row.addStretch(1)
+        return row
 
-        # Compressor layout
+    def _make_slider_row(self, unit_label: QLabel, slider: QSlider) -> QHBoxLayout:
+        """Build a labeled slider row with enough handle clearance."""
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 2, 0, 2)
+        row.setSpacing(8)
+        row.addWidget(unit_label)
+        row.addWidget(slider, 1)
+        return row
+
+    def _setup_layout(self):
+        """Setup service tab layout for the 800x480 touchscreen."""
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(6, 4, 6, 4)
+        main_layout.setSpacing(6)
+
+        # Compressor: status + toggle on one row, thresholds below.
         compressor_layout = QVBoxLayout()
-        compressor_layout.setContentsMargins(2, 1, 2, 1)
-        compressor_layout.setSpacing(1)
-        compressor_layout.addWidget(self.compressor_label)
-        compressor_layout.addWidget(self.compressor_control_button)
-        off_row = QHBoxLayout()
-        off_row.setSpacing(6)
-        off_row.addWidget(QLabel("Off below (°C):"))
-        off_row.addWidget(self.compressor_off_temp_spin)
-        off_row.addWidget(self.compressor_off_temp_down)
-        off_row.addWidget(self.compressor_off_temp_up)
-        off_row.addStretch()
-        compressor_layout.addLayout(off_row)
-        on_row = QHBoxLayout()
-        on_row.setSpacing(6)
-        on_row.addWidget(QLabel("On above (°C):"))
-        on_row.addWidget(self.compressor_on_temp_spin)
-        on_row.addWidget(self.compressor_on_temp_down)
-        on_row.addWidget(self.compressor_on_temp_up)
-        on_row.addStretch()
-        compressor_layout.addLayout(on_row)
+        compressor_layout.setContentsMargins(8, 6, 8, 6)
+        compressor_layout.setSpacing(6)
+        status_row = QHBoxLayout()
+        status_row.setContentsMargins(0, 0, 0, 0)
+        status_row.setSpacing(8)
+        status_row.addWidget(self.compressor_label, 1)
+        status_row.addWidget(self.compressor_control_button, 0)
+        compressor_layout.addLayout(status_row)
+        thresholds = QHBoxLayout()
+        thresholds.setContentsMargins(0, 0, 0, 0)
+        thresholds.setSpacing(16)
+        thresholds.addLayout(
+            self._make_temp_control_row(
+                "Off below (°C)",
+                self.compressor_off_temp_spin,
+                self.compressor_off_temp_down,
+                self.compressor_off_temp_up,
+            )
+        )
+        thresholds.addLayout(
+            self._make_temp_control_row(
+                "On above (°C)",
+                self.compressor_on_temp_spin,
+                self.compressor_on_temp_down,
+                self.compressor_on_temp_up,
+            )
+        )
+        compressor_layout.addLayout(thresholds)
         self.compressor_group.setLayout(compressor_layout)
         main_layout.addWidget(self.compressor_group)
 
-        # Stepper layout
+        # Stepper: labeled sliders, readout + calibrate, jog/run, ramp test.
         outputs_layout = QVBoxLayout()
-        outputs_layout.setContentsMargins(2, 1, 2, 1)
-        outputs_layout.setSpacing(1)
-        speed_row_layout = QHBoxLayout()
-        speed_row_layout.setContentsMargins(0, 0, 0, 0)
-        speed_row_layout.setSpacing(6)
-        sliders_col = QVBoxLayout()
-        sliders_col.setContentsMargins(0, 0, 0, 0)
-        sliders_col.setSpacing(2)
-        sliders_col.addWidget(self.stepper_speed_slider)
-        sliders_col.addWidget(self.stepper_flow_slider)
-        sliders_col.addWidget(self.rpm_flow_calibration_button)
-        speed_row_layout.addLayout(sliders_col, 1)
-        speed_row_layout.addWidget(self.stepper_speed_label, 0, Qt.AlignmentFlag.AlignVCenter)
-        outputs_layout.addLayout(speed_row_layout)
+        outputs_layout.setContentsMargins(8, 6, 8, 6)
+        outputs_layout.setSpacing(8)
+
+        outputs_layout.addLayout(
+            self._make_slider_row(self.stepper_rpm_unit_label, self.stepper_speed_slider)
+        )
+        outputs_layout.addLayout(
+            self._make_slider_row(self.stepper_flow_unit_label, self.stepper_flow_slider)
+        )
+
+        readout_row = QHBoxLayout()
+        readout_row.setContentsMargins(0, 0, 0, 0)
+        readout_row.setSpacing(8)
+        readout_row.addWidget(self.rpm_flow_calibration_button, 1)
+        readout_row.addWidget(self.stepper_speed_label, 0)
+        outputs_layout.addLayout(readout_row)
+
         jog_layout = QHBoxLayout()
         jog_layout.setContentsMargins(0, 0, 0, 0)
-        jog_layout.setSpacing(1)
-        jog_layout.addWidget(self.jog_reverse_button)
-        jog_layout.addWidget(self.jog_forward_button)
-        jog_layout.addWidget(self.stepper_continuous_button)
+        jog_layout.setSpacing(6)
+        jog_layout.addWidget(self.jog_reverse_button, 1)
+        jog_layout.addWidget(self.jog_forward_button, 1)
+        jog_layout.addWidget(self.stepper_continuous_button, 0)
         outputs_layout.addLayout(jog_layout)
         outputs_layout.addWidget(self.flow_ramp_test_button)
         self.outputs_group.setLayout(outputs_layout)
-        main_layout.addWidget(self.outputs_group)
-        
-        # Add stretch to push everything to top
-        main_layout.addStretch()
-        
+        main_layout.addWidget(self.outputs_group, 1)
+
         self.setLayout(main_layout)
 
     def update_outputs(
@@ -1448,10 +1524,11 @@ class ServiceTab(QWidget):
             self.on_compressor_thresholds_change_callback(off_c, on_c)
 
     def _apply_compressor_control_button_style(self, control_enabled: bool):
+        # Label reflects current state; color matches state (green = active).
         if control_enabled:
             text = "Control ON"
-            bg = "#22c55e"
-            hover = "#16a34a"
+            bg = "#16a34a"
+            hover = "#15803d"
             border = "#15803d"
         else:
             text = "Control OFF"
@@ -1463,10 +1540,10 @@ class ServiceTab(QWidget):
             QPushButton {{
                 background-color: {bg};
                 color: white;
-                font-size: 12px;
+                font-size: 13px;
                 font-weight: 700;
                 border-radius: 10px;
-                padding: 6px 10px;
+                padding: 8px 12px;
                 border: 2px solid {border};
             }}
             QPushButton:hover {{
@@ -1500,14 +1577,17 @@ class ServiceTab(QWidget):
             self.on_stepper_continuous_toggle_callback(self.stepper_continuous_on)
 
     def _apply_continuous_button_style(self, is_on: bool):
+        # Action-oriented labels: tap RUN to start, STOP to halt.
         if is_on:
-            text = "OFF"
-            bg = "#16a34a"
-            hover = "#15803d"
+            text = "STOP"
+            bg = "#dc2626"
+            hover = "#b91c1c"
+            border = "#991b1b"
         else:
-            text = "ON"
-            bg = "#6b7280"
-            hover = "#4b5563"
+            text = "RUN"
+            bg = "#0e6a76"
+            hover = "#0b565f"
+            border = "#0b565f"
         self.stepper_continuous_button.setText(text)
         self.stepper_continuous_button.setStyleSheet(f"""
             QPushButton {{
@@ -1515,9 +1595,9 @@ class ServiceTab(QWidget):
                 color: white;
                 font-size: 15px;
                 font-weight: 700;
-                border-radius: 16px;
-                padding: 12px 16px;
-                border: 1px solid #cfd8e0;
+                border-radius: 12px;
+                padding: 10px 14px;
+                border: 1px solid {border};
             }}
             QPushButton:hover {{
                 background-color: {hover};
@@ -1592,7 +1672,7 @@ class ServiceTab(QWidget):
             hover = "#b91c1c"
             border = "#991b1b"
         else:
-            text = "Start Test"
+            text = "Start Flow Ramp Test"
             bg = "#0e6a76"
             hover = "#0b565f"
             border = "#0b565f"
@@ -1601,10 +1681,10 @@ class ServiceTab(QWidget):
             QPushButton {{
                 background-color: {bg};
                 color: white;
-                font-size: 15px;
+                font-size: 14px;
                 font-weight: 700;
-                border-radius: 16px;
-                padding: 12px 16px;
+                border-radius: 12px;
+                padding: 10px 14px;
                 border: 1px solid {border};
             }}
             QPushButton:hover {{
@@ -1682,8 +1762,8 @@ class ServiceTab(QWidget):
                 color: white;
                 font-size: 13px;
                 font-weight: 700;
-                border-radius: 12px;
-                padding: 8px 10px;
+                border-radius: 10px;
+                padding: 8px 12px;
                 border: 1px solid {border};
             }}
             QPushButton:hover {{
@@ -1698,15 +1778,15 @@ class ServiceTab(QWidget):
                 font-weight: bold;
                 font-size: {font_size};
                 border: 2px solid {border_color};
-                border-radius: 5px;
+                border-radius: 8px;
                 margin-top: {margin_top}px;
-                padding-top: 10px;
+                padding-top: 12px;
                 background-color: {bg_color};
             }}
             QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 10px;
-                padding: 0 5px;
+                padding: 0 6px;
                 color: #1f2937;
             }}
         """
