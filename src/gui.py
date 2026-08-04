@@ -92,6 +92,10 @@ PUMP_FLOW_SLIDER_STEP_ML_PER_MIN = 10
 FLOW_RAMP_TEST_START_ML_PER_MIN = 10
 FLOW_RAMP_TEST_STEP_ML_PER_MIN = 10
 FLOW_RAMP_TEST_INTERVAL_MS = 2 * 60 * 1000
+# RPM→flow calibration: run pump at the selected RPM for a fixed window
+# so volume can be measured and converted to ml/min.
+RPM_FLOW_CALIBRATION_DURATION_S = 2 * 60
+RPM_FLOW_CALIBRATION_TICK_MS = 1000
 
 
 def _pump_flow_ml_per_min(rpm: float, slope: float) -> float:
@@ -1021,6 +1025,12 @@ class ServiceTab(QWidget):
         self._flow_ramp_test_timer = QTimer(self)
         self._flow_ramp_test_timer.setInterval(FLOW_RAMP_TEST_INTERVAL_MS)
         self._flow_ramp_test_timer.timeout.connect(self._on_flow_ramp_test_tick)
+        self.rpm_flow_calibration_active: bool = False
+        self._rpm_flow_calibration_rpm: int = self.stepper_speed_rpm
+        self._rpm_flow_calibration_remaining_s: int = RPM_FLOW_CALIBRATION_DURATION_S
+        self._rpm_flow_calibration_timer = QTimer(self)
+        self._rpm_flow_calibration_timer.setInterval(RPM_FLOW_CALIBRATION_TICK_MS)
+        self._rpm_flow_calibration_timer.timeout.connect(self._on_rpm_flow_calibration_tick)
 
         # Callbacks (set by the host window).
         self.on_compressor_control_toggle_callback: Optional[Callable[[bool], None]] = None
@@ -1170,7 +1180,14 @@ class ServiceTab(QWidget):
         self.flow_ramp_test_button.setMinimumHeight(48)
         self.flow_ramp_test_button.clicked.connect(self._on_flow_ramp_test_clicked)
         self._apply_flow_ramp_test_button_style(False)
-        
+
+        self.rpm_flow_calibration_button = QPushButton("Calibrate 2 min")
+        self.rpm_flow_calibration_button.setMinimumHeight(48)
+        self.rpm_flow_calibration_button.clicked.connect(
+            self._on_rpm_flow_calibration_clicked
+        )
+        self._apply_rpm_flow_calibration_button_style(False)
+
     def _setup_layout(self):
         """Setup service tab layout"""
         main_layout = QVBoxLayout()
@@ -1214,6 +1231,7 @@ class ServiceTab(QWidget):
         sliders_col.setSpacing(2)
         sliders_col.addWidget(self.stepper_speed_slider)
         sliders_col.addWidget(self.stepper_flow_slider)
+        sliders_col.addWidget(self.rpm_flow_calibration_button)
         speed_row_layout.addLayout(sliders_col, 1)
         speed_row_layout.addWidget(self.stepper_speed_label, 0, Qt.AlignmentFlag.AlignVCenter)
         outputs_layout.addLayout(speed_row_layout)
@@ -1523,6 +1541,7 @@ class ServiceTab(QWidget):
         """Start at 10 ml/min, run pump, start pressure log, ramp +10 every 2 min."""
         if self.flow_ramp_test_active:
             return
+        self.stop_rpm_flow_calibration()
         lo, hi = self._flow_setpoint_bounds()
         start_ml = max(lo, min(hi, FLOW_RAMP_TEST_START_ML_PER_MIN))
         self.flow_ramp_test_active = True
@@ -1586,6 +1605,85 @@ class ServiceTab(QWidget):
                 font-weight: 700;
                 border-radius: 16px;
                 padding: 12px 16px;
+                border: 1px solid {border};
+            }}
+            QPushButton:hover {{
+                background-color: {hover};
+            }}
+        """)
+
+    def _on_rpm_flow_calibration_clicked(self):
+        """Toggle a fixed-RPM pump run used for RPM→flow volume calibration."""
+        if self.rpm_flow_calibration_active:
+            self.stop_rpm_flow_calibration()
+        else:
+            self.start_rpm_flow_calibration()
+
+    def start_rpm_flow_calibration(self):
+        """Run the pump at the current slider RPM for 2 minutes, then stop."""
+        if self.rpm_flow_calibration_active:
+            return
+        self.stop_flow_ramp_test()
+        self._rpm_flow_calibration_rpm = int(self.stepper_speed_rpm)
+        self._rpm_flow_calibration_remaining_s = RPM_FLOW_CALIBRATION_DURATION_S
+        self.rpm_flow_calibration_active = True
+        self._apply_rpm_flow_calibration_button_style(True)
+        self._set_stepper_speed_rpm(
+            self._rpm_flow_calibration_rpm,
+            emit_callback=True,
+            clear_flow_setpoint=True,
+        )
+        self._set_continuous_run(True)
+        self._rpm_flow_calibration_timer.start()
+
+    def stop_rpm_flow_calibration(self):
+        """Stop the calibration timer and continuous pump run."""
+        if (
+            not self.rpm_flow_calibration_active
+            and not self._rpm_flow_calibration_timer.isActive()
+        ):
+            return
+        self.rpm_flow_calibration_active = False
+        self._rpm_flow_calibration_timer.stop()
+        self._rpm_flow_calibration_remaining_s = RPM_FLOW_CALIBRATION_DURATION_S
+        self._apply_rpm_flow_calibration_button_style(False)
+        self._set_continuous_run(False)
+
+    def _on_rpm_flow_calibration_tick(self):
+        """Count down the calibration window; stop the pump at zero."""
+        if not self.rpm_flow_calibration_active:
+            return
+        self._rpm_flow_calibration_remaining_s -= 1
+        if self._rpm_flow_calibration_remaining_s <= 0:
+            self.stop_rpm_flow_calibration()
+            return
+        self._apply_rpm_flow_calibration_button_style(True)
+
+    def _apply_rpm_flow_calibration_button_style(self, active: bool):
+        if active:
+            remaining = max(0, int(self._rpm_flow_calibration_remaining_s))
+            minutes, seconds = divmod(remaining, 60)
+            text = (
+                f"Stop Cal ({self._rpm_flow_calibration_rpm} RPM "
+                f"{minutes}:{seconds:02d})"
+            )
+            bg = "#dc2626"
+            hover = "#b91c1c"
+            border = "#991b1b"
+        else:
+            text = "Calibrate 2 min"
+            bg = "#0e6a76"
+            hover = "#0b565f"
+            border = "#0b565f"
+        self.rpm_flow_calibration_button.setText(text)
+        self.rpm_flow_calibration_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: white;
+                font-size: 13px;
+                font-weight: 700;
+                border-radius: 12px;
+                padding: 8px 10px;
                 border: 1px solid {border};
             }}
             QPushButton:hover {{
@@ -3432,6 +3530,7 @@ class MainScreen(QMainWindow):
         self.update_timer.stop()
         if getattr(self, "service_tab", None) is not None:
             self.service_tab.stop_flow_ramp_test()
+            self.service_tab.stop_rpm_flow_calibration()
         event.accept()
 
 

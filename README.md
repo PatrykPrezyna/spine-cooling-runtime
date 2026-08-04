@@ -39,7 +39,7 @@ Raspberry Pi 4B application for medical device with visual UI, sensor reading, a
 ## Installation
 
 1. Clone or download this repository https://github.com/PatrykPrezyna/spine-cooling-runtime.git
-2. Create a virtual environment:
+2. Create a virtual environment (on Windows: use python.org or the Microsoft Store Python — **not** Miniconda/Anaconda, which breaks PyQt6):
    ```bash
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
@@ -48,11 +48,12 @@ Raspberry Pi 4B application for medical device with visual UI, sensor reading, a
    ```bash
    pip install -r requirements.txt
    ```
+   Pi-only packages (`RPi.GPIO`, `pigpio`, Blinka, …) are gated with environment markers, so the same command works for Windows/macOS simulation and for the Raspberry Pi.
 4. Edit `config.yaml` — sensor names, GPIO pins, stepper speeds, temperature thresholds
 5. Run on a Raspberry Pi: `python src/main.py`
 6. Run without hardware (PC dev): `python src/main.py --sim`
-6. Run with sensor simulation: `python src/main.py --sim --test-ui`
-7. Run unit tests: `python -m unittest discover tests -v`
+7. Run with sensor simulation: `python src/main.py --sim --test-ui`
+8. Run unit tests: `python -m unittest discover tests -v`
 
 Off-Pi mode uses fakes in `src/sim/`; tweak default sensor/temp values under `simulation:` in `config.yaml`.
 
