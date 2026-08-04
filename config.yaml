@@ -8,7 +8,8 @@ temperature_sources:
   Tank: thermistor
   Cath In: thermistor
   Cath Out: thermistor  
-  Tubing: thermistor
+  Cartrige In: thermistor
+  Cartrige Out: thermistor
   Room Temp: thermistor
 alarms:
   csf_label: CSF
@@ -153,8 +154,8 @@ thermistor_sensors:
   labels:
     0: Tank
     1: Cath In
-    2: defect
-    3: defect2
+    2: Cartrige in
+    3: Cartrige Out
     4: Cath Out
     5: Tubing
     6: Room Temp
