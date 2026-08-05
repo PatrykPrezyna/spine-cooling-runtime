@@ -85,7 +85,7 @@ _GRAPH_WINDOW_COMBO_STYLE = """
 """
 
 # Default linear pump model (overridden from config): flow_ml_min = rpm * slope.
-DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.7823
+DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.5862
 # Discrete setpoints on the service-tab flow slider (10, 20, 30, ... ml/min).
 PUMP_FLOW_SLIDER_STEP_ML_PER_MIN = 10
 # Service-tab flow ramp test: start at 10 ml/min, +10 every 5 minutes.

@@ -211,7 +211,7 @@ logging:
 # Pump throughput: flow scales linearly with stepper RPM. Slope from a
 # least-squares fit (through the origin) of the measured calibration data.
 # flow_ml_per_s = pump_rpm * pump_flow_ml_per_min_per_rpm / 60
-pump_flow_ml_per_min_per_rpm: 0.7823
+pump_flow_ml_per_min_per_rpm: 0.5862
 ui:
   window_width: 500
   window_height: 450

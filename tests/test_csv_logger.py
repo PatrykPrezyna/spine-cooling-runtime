@@ -23,7 +23,7 @@ _CONFIG = {
         "csv_directory": "unused",
         "filename_format": "test_pressure_%Y%m%d_%H%M%S.csv",
     },
-    "pump_flow_ml_per_min_per_rpm": 0.7823,
+    "pump_flow_ml_per_min_per_rpm": 0.5862,
     "thermocouples": {
         "enabled": True,
         "channels": [1, 2],
