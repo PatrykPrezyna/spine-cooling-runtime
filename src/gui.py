@@ -94,7 +94,7 @@ FLOW_RAMP_TEST_STEP_ML_PER_MIN = 10
 FLOW_RAMP_TEST_INTERVAL_MS = 5 * 60 * 1000
 # RPM→flow calibration: run pump at the selected RPM for a fixed window
 # so volume can be measured and converted to ml/min.
-RPM_FLOW_CALIBRATION_DURATION_S = 2 * 60
+RPM_FLOW_CALIBRATION_DURATION_S = 5 * 60
 RPM_FLOW_CALIBRATION_TICK_MS = 1000
 
 
@@ -1225,7 +1225,7 @@ class ServiceTab(QWidget):
         self.flow_ramp_test_button.clicked.connect(self._on_flow_ramp_test_clicked)
         self._apply_flow_ramp_test_button_style(False)
 
-        self.rpm_flow_calibration_button = QPushButton("Calibrate 2 min")
+        self.rpm_flow_calibration_button = QPushButton("Calibrate 5 min")
         self.rpm_flow_calibration_button.setMinimumHeight(40)
         self.rpm_flow_calibration_button.clicked.connect(
             self._on_rpm_flow_calibration_clicked
@@ -1700,7 +1700,7 @@ class ServiceTab(QWidget):
             self.start_rpm_flow_calibration()
 
     def start_rpm_flow_calibration(self):
-        """Run the pump at the current slider RPM for 2 minutes, then stop."""
+        """Run the pump at the current slider RPM for 5 minutes, then stop."""
         if self.rpm_flow_calibration_active:
             return
         self.stop_flow_ramp_test()
@@ -1751,7 +1751,7 @@ class ServiceTab(QWidget):
             hover = "#b91c1c"
             border = "#991b1b"
         else:
-            text = "Calibrate 2 min"
+            text = "Calibrate 5 min"
             bg = "#0e6a76"
             hover = "#0b565f"
             border = "#0b565f"
