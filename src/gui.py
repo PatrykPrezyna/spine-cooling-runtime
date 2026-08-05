@@ -88,10 +88,10 @@ _GRAPH_WINDOW_COMBO_STYLE = """
 DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.7823
 # Discrete setpoints on the service-tab flow slider (10, 20, 30, ... ml/min).
 PUMP_FLOW_SLIDER_STEP_ML_PER_MIN = 10
-# Service-tab flow ramp test: start at 10 ml/min, +10 every 2 minutes.
+# Service-tab flow ramp test: start at 10 ml/min, +10 every 5 minutes.
 FLOW_RAMP_TEST_START_ML_PER_MIN = 10
 FLOW_RAMP_TEST_STEP_ML_PER_MIN = 10
-FLOW_RAMP_TEST_INTERVAL_MS = 2 * 60 * 1000
+FLOW_RAMP_TEST_INTERVAL_MS = 5 * 60 * 1000
 # RPM→flow calibration: run pump at the selected RPM for a fixed window
 # so volume can be measured and converted to ml/min.
 RPM_FLOW_CALIBRATION_DURATION_S = 2 * 60
@@ -1618,7 +1618,7 @@ class ServiceTab(QWidget):
             self.start_flow_ramp_test()
 
     def start_flow_ramp_test(self):
-        """Start at 10 ml/min, run pump, start pressure log, ramp +10 every 2 min."""
+        """Start at 10 ml/min, run pump, start pressure log, ramp +10 every 5 min."""
         if self.flow_ramp_test_active:
             return
         self.stop_rpm_flow_calibration()
