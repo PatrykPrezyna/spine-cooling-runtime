@@ -4,13 +4,16 @@ control_temp_label: CSF
 #   CSF: thermocouple  → thermocouples.labels value named "CSF"
 #   Cart In: thermistor → thermistor_sensors.labels value named "Cart In"
 # Only listed names appear; order is display order.
+# All 8 thermistor board channels (1-8). Unused channels are named by number only.
 temperature_sources:
-  Tank: thermistor
-  Cath In: thermistor
-  Cath Out: thermistor  
-  Cartrige In: thermistor
-  Cartrige Out: thermistor
-  Room Temp: thermistor
+  1 Tank: thermistor
+  2 Cath In: thermistor
+  3 Cartrige In: thermistor
+  4 Cartrige Out: thermistor
+  5 Cath Out: thermistor
+  "6": thermistor
+  7 Room Temp: thermistor
+  "8": thermistor
 alarms:
   csf_label: CSF
   csf_low_temp_c: 28.0
@@ -53,14 +56,14 @@ simulation:
     Pump Input: 25.0
     Pump Output: 30.0
   thermistors:
-    Cart In: 22.0
-    Cart Out: 22.0
-    defect: 25.0
-    defect2: 25.0
-    Heat Ex: 22.0
-    Heat Ex 2: 22.0
-    Room Temp: 22.0
-    defect3: 25.0
+    1 Tank: 22.0
+    2 Cath In: 22.0
+    3 Cartrige In: 22.0
+    4 Cartrige Out: 22.0
+    5 Cath Out: 22.0
+    "6": 25.0
+    7 Room Temp: 22.0
+    "8": 25.0
 acustic_signal_gpio_pin: 16
 sensors:
 - name: Level Low
@@ -151,15 +154,16 @@ thermistor_sensors:
   - 5
   - 6
   - 7
+  # Channel index 0-7 → display names 1-8. Unused channels use the number only.
   labels:
-    0: Tank
-    1: Cath In
-    2: Cartrige in
-    3: Cartrige Out
-    4: Cath Out
-    5: Tubing
-    6: Room Temp
-    7: defect3
+    0: 1 Tank
+    1: 2 Cath In
+    2: 3 Cartrige In
+    3: 4 Cartrige Out
+    4: 5 Cath Out
+    5: "6"
+    6: 7 Room Temp
+    7: "8"
   conversion:
     vref_v: 2.5
     rs_ohm: 100000

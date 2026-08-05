@@ -974,7 +974,7 @@ class ServiceTab(QWidget):
     _LABEL_NEUTRAL_STYLE = "font-size: 13px; padding: 4px 2px; color: #5c6b79;"
     _LABEL_STRONG_TEMPLATE = "font-size: 13px; padding: 4px 2px; color: {color}; font-weight: 600;"
     _CONTROL_LABEL_STYLE = (
-        "font-size: 16px; font-weight: 700; padding: 6px 10px; color: #0e6a76;"
+        "font-size: 12px; font-weight: 700; padding: 4px 8px; color: #0e6a76;"
         "background: #eef7f8; border: 1px solid #b7d6db; border-radius: 10px;"
     )
     _SLIDER_UNIT_LABEL_STYLE = (
@@ -1063,8 +1063,9 @@ class ServiceTab(QWidget):
         self._commanded_flow_ml_per_min: Optional[int] = None
         self.flow_ramp_test_active: bool = False
         self._flow_ramp_test_ml_per_min: int = FLOW_RAMP_TEST_START_ML_PER_MIN
+        self._flow_ramp_test_remaining_s: int = FLOW_RAMP_TEST_INTERVAL_MS // 1000
         self._flow_ramp_test_timer = QTimer(self)
-        self._flow_ramp_test_timer.setInterval(FLOW_RAMP_TEST_INTERVAL_MS)
+        self._flow_ramp_test_timer.setInterval(1000)
         self._flow_ramp_test_timer.timeout.connect(self._on_flow_ramp_test_tick)
         self.rpm_flow_calibration_active: bool = False
         self._rpm_flow_calibration_rpm: int = self.stepper_speed_rpm
@@ -1156,8 +1157,8 @@ class ServiceTab(QWidget):
         
         self.stepper_speed_label = QLabel(self._format_speed_text(self.stepper_speed_rpm))
         self.stepper_speed_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
-        self.stepper_speed_label.setMinimumWidth(110)
-        self.stepper_speed_label.setMinimumHeight(40)
+        self.stepper_speed_label.setMinimumWidth(120)
+        self.stepper_speed_label.setMinimumHeight(44)
         self.stepper_speed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.stepper_rpm_unit_label = QLabel("RPM")
@@ -1626,6 +1627,7 @@ class ServiceTab(QWidget):
         start_ml = max(lo, min(hi, FLOW_RAMP_TEST_START_ML_PER_MIN))
         self.flow_ramp_test_active = True
         self._flow_ramp_test_ml_per_min = start_ml
+        self._flow_ramp_test_remaining_s = FLOW_RAMP_TEST_INTERVAL_MS // 1000
         self._apply_flow_ramp_test_button_style(True)
         self._set_stepper_speed_rpm(
             self._flow_setpoint_to_rpm(start_ml),
@@ -1643,14 +1645,19 @@ class ServiceTab(QWidget):
             return
         self.flow_ramp_test_active = False
         self._flow_ramp_test_timer.stop()
+        self._flow_ramp_test_remaining_s = FLOW_RAMP_TEST_INTERVAL_MS // 1000
         self._apply_flow_ramp_test_button_style(False)
         if self.on_flow_ramp_test_logging_callback:
             self.on_flow_ramp_test_logging_callback(False)
         self._set_continuous_run(False)
 
     def _on_flow_ramp_test_tick(self):
-        """Increase flow by 10 ml/min; stop automatically at the max setpoint."""
+        """Count down to the next +10 ml/min step; stop at the max setpoint."""
         if not self.flow_ramp_test_active:
+            return
+        self._flow_ramp_test_remaining_s -= 1
+        if self._flow_ramp_test_remaining_s > 0:
+            self._apply_flow_ramp_test_button_style(True)
             return
         _lo, hi = self._flow_setpoint_bounds()
         next_ml = self._flow_ramp_test_ml_per_min + FLOW_RAMP_TEST_STEP_ML_PER_MIN
@@ -1658,6 +1665,7 @@ class ServiceTab(QWidget):
             self.stop_flow_ramp_test()
             return
         self._flow_ramp_test_ml_per_min = next_ml
+        self._flow_ramp_test_remaining_s = FLOW_RAMP_TEST_INTERVAL_MS // 1000
         self._set_stepper_speed_rpm(
             self._flow_setpoint_to_rpm(next_ml),
             emit_callback=True,
@@ -1667,7 +1675,12 @@ class ServiceTab(QWidget):
 
     def _apply_flow_ramp_test_button_style(self, active: bool):
         if active:
-            text = f"Stop Test ({self._flow_ramp_test_ml_per_min} ml/min)"
+            remaining = max(0, int(self._flow_ramp_test_remaining_s))
+            minutes, seconds = divmod(remaining, 60)
+            text = (
+                f"Stop Test ({self._flow_ramp_test_ml_per_min} ml/min "
+                f"{minutes}:{seconds:02d})"
+            )
             bg = "#dc2626"
             hover = "#b91c1c"
             border = "#991b1b"
@@ -1681,7 +1694,7 @@ class ServiceTab(QWidget):
             QPushButton {{
                 background-color: {bg};
                 color: white;
-                font-size: 14px;
+                font-size: 12px;
                 font-weight: 700;
                 border-radius: 12px;
                 padding: 10px 14px;
@@ -1760,7 +1773,7 @@ class ServiceTab(QWidget):
             QPushButton {{
                 background-color: {bg};
                 color: white;
-                font-size: 13px;
+                font-size: 11px;
                 font-weight: 700;
                 border-radius: 10px;
                 padding: 8px 12px;
