@@ -165,7 +165,7 @@ thermistor_sensors:
     6: CSF2
     7: CSF3
   channel_configs:
-    7:  # CSF3 — AB6N2-GC14KA143E/37C (14 kΩ @ 37 °C)
+    0:  # CSF3 — AB6N2-GC14KA143E/37C (14 kΩ @ 37 °C)
       table_csv: data/calibration/Thermistor_AB6N2-GC14KA143E_37C.csv
       resistance_column: Resistance_Ohm
   conversion:
