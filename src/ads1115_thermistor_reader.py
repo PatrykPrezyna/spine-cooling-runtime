@@ -1,7 +1,10 @@
 """ADS1115-based thermistor temperature reader.
 
-Reads single-ended ADC channels and converts voltage to Celsius using the
-MA300TA103C R–T table and the divider ``V = Vref * R / (Rs + R)``.
+Reads single-ended ADC channels and converts voltage to Celsius using an R–T
+table and the divider ``V = Vref * R / (Rs + R)``.
+
+Default conversion uses the MA300TA103C table. Individual channels may override
+``table_csv`` / ``resistance_column`` via ``channel_configs``.
 
 Up to 8 channels are supported by spanning multiple ADS1115 chips: channel N
 maps to ``i2c_addresses[N // 4]`` and pin ``N % 4``.
@@ -47,6 +50,9 @@ class ADS1115ThermistorReader:
         self.vref_v = float(conv.get("vref_v", DEFAULT_VREF_V))
         self.rs_ohm = float(conv.get("rs_ohm", DEFAULT_RS_OHM))
         self.rt_table: Sequence[RtPoint] = self._load_conversion_table(conv)
+        self._channel_rt_tables: Dict[int, Sequence[RtPoint]] = (
+            self._load_channel_tables(ts_cfg, conv)
+        )
         self.last_error: Optional[str] = None
         self.is_initialized = False
 
@@ -111,6 +117,34 @@ class ADS1115ThermistorReader:
         r_col = str(conv.get("resistance_column", DEFAULT_R_COL))
         return load_rt_table(path, r_col=r_col)
 
+    @classmethod
+    def _load_channel_tables(
+        cls, ts_cfg: dict, default_conv: dict
+    ) -> Dict[int, Sequence[RtPoint]]:
+        """Load per-channel R–T overrides from ``channel_configs``."""
+        tables: Dict[int, Sequence[RtPoint]] = {}
+        channel_configs = ts_cfg.get("channel_configs", {}) or {}
+        for key, cfg in channel_configs.items():
+            if not isinstance(cfg, dict):
+                continue
+            if "table_csv" not in cfg and "resistance_column" not in cfg:
+                continue
+            try:
+                channel = int(key)
+            except (TypeError, ValueError):
+                continue
+            override = {
+                "table_csv": cfg.get("table_csv", default_conv.get("table_csv")),
+                "resistance_column": cfg.get(
+                    "resistance_column", default_conv.get("resistance_column")
+                ),
+            }
+            tables[channel] = cls._load_conversion_table(override)
+        return tables
+
+    def _rt_table_for_channel(self, channel: int) -> Sequence[RtPoint]:
+        return self._channel_rt_tables.get(int(channel), self.rt_table)
+
     @staticmethod
     def _parse_addresses(ts_cfg: dict) -> List[int]:
         raw = ts_cfg.get("i2c_addresses")
@@ -161,7 +195,7 @@ class ADS1115ThermistorReader:
                 millivolts = float(analog.voltage) * 1000.0
                 values[self._channel_label(channel)] = millivolts_to_celsius(
                     millivolts,
-                    self.rt_table,
+                    self._rt_table_for_channel(channel),
                     vref_v=self.vref_v,
                     rs_ohm=self.rs_ohm,
                 )

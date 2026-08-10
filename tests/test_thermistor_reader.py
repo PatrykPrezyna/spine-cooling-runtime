@@ -111,6 +111,39 @@ class ThermistorConversionTests(unittest.TestCase):
         self.assertAlmostEqual(reader.rt_table[0][1], 0.0)  # coldest first (highest R)
         self.assertAlmostEqual(reader.rt_table[-1][1], 50.0)
 
+    def test_reader_loads_per_channel_table_override(self) -> None:
+        ab6_csv = "data/calibration/Thermistor_AB6N2-GC14KA143E_37C.csv"
+        reader = ADS1115ThermistorReader(
+            {
+                "thermistor_sensors": {
+                    "enabled": False,
+                    "conversion": _CONFIG["thermistor_sensors"]["conversion"],
+                    "channel_configs": {
+                        0: {
+                            "table_csv": ab6_csv,
+                            "resistance_column": "Resistance_Ohm",
+                        }
+                    },
+                }
+            }
+        )
+        default_table = reader.rt_table
+        csf_table = reader._rt_table_for_channel(0)
+        other_table = reader._rt_table_for_channel(1)
+        self.assertIs(other_table, default_table)
+        self.assertIsNot(csf_table, default_table)
+        # AB6N2: 14004 Ω at 37 °C (body-temp rating)
+        r_37 = next(r for r, t in csf_table if t == 37.0)
+        self.assertAlmostEqual(r_37, 14004.0, places=1)
+        self.assertAlmostEqual(
+            millivolts_to_celsius(
+                1000.0 * 2.5 * 14004.0 / (100000.0 + 14004.0),
+                csf_table,
+            ),
+            37.0,
+            places=5,
+        )
+
 
 class ThermistorHardwareTests(unittest.TestCase):
     def test_labels_split_by_family_with_shared_names(self) -> None:
