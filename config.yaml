@@ -1,4 +1,4 @@
-control_temp_label: CSF
+control_temp_label: CSF2
 # Logical temperatures shown in the UI / control / CSV.
 # For each name, read that same label from the chosen board.
 # Only listed names appear; order is display order.
@@ -7,18 +7,19 @@ temperature_sources:
   CSF: thermistor
   HeatEx1: thermistor
   HeatEx2: thermistor
-  Cartrige In: thermistor
-  Cartrige Out: thermistor
-  "6": thermistor
-  Room Temp: thermistor
+  Catheter In: thermistor
+  Catheter Out: thermistor
   Body Temp: thermistor
+  CSF2: thermistor
+  CSF3: thermistor
 alarms:
-  csf_label: CSF
+  csf_label: CSF2
   csf_low_temp_c: 28.0
   heat_ex_label: HeatEx1
   heat_ex_min_c: -10.0
   leak_pressure_delta_min: 5.0
   # Digital leak sensor: a 0/low reading means fluid detected -> immediate stop.
+  leak_detection_enabled: false
   leak_sensor_label: Leak Sensor
   # Ignore brief flicker: the leak line must stay low this long before tripping.
   leak_debounce_s: 0.5
@@ -26,7 +27,7 @@ alarms:
   cooling_ineffective_csf_delta_c: 0.2
   battery_low_pct: 20
 simulation:
-  csf_label: CSF
+  csf_label: CSF2
   csf_initial_c: 37.0
   csf_max_c: 37.0
   csf_min_c: 25.0
@@ -39,8 +40,8 @@ simulation:
   heat_ex_max_c: 22.0
   heat_ex_cool_rate_c_per_s: 0.5
   heat_ex_warm_rate_c_per_s: 0.02
-  cart_in_label: Cartrige In
-  cart_out_label: Cartrige Out
+  cart_in_label: Catheter In
+  cart_out_label: Catheter Out
   cart_initial_c: 22.0
   cart_in_rise_rate_c_per_s: 0.1
   sensors:
@@ -49,19 +50,19 @@ simulation:
     Level Critical: true
     Leak Sensor: true
   pressures:
-    Cartridge Input: 20.0
-    Cartridge Output: 15.0
+    Catheter Input: 20.0
+    Catheter Output: 15.0
     Pump Input: 25.0
     Pump Output: 30.0
   thermistors:
     CSF: 36.5
     HeatEx1: 22.0
     HeatEx2: 22.0
-    Cartrige In: 22.0
-    Cartrige Out: 22.0
-    "6": 25.0
-    Room Temp: 22.0
+    Catheter In: 22.0
+    Catheter Out: 22.0
     Body Temp: 25.0
+    CSF2: 36.5
+    CSF3: 36.5
 acustic_signal_gpio_pin: 16
 sensors:
 - name: Level Low
@@ -153,18 +154,18 @@ thermistor_sensors:
   - 5
   - 6
   - 7
-  # Channel index 0-7 → display names 1-8. Unused channels use the number only.
+  # Channel index 0-7 → display names (same order as temperature_sources).
   labels:
     0: CSF
     1: HeatEx1
     2: HeatEx2
-    3: Catheder In
-    4: Cartrige Out
-    5: Catheder Out
-    6: Room Temp
-    7: Body Temp
+    3: Catheter In
+    4: Catheter Out
+    5: Body Temp
+    6: CSF2
+    7: CSF3
   channel_configs:
-    0:  # CSF — AB6N2-GC14KA143E/37C (14 kΩ @ 37 °C)
+    7:  # CSF3 — AB6N2-GC14KA143E/37C (14 kΩ @ 37 °C)
       table_csv: data/calibration/Thermistor_AB6N2-GC14KA143E_37C.csv
       resistance_column: Resistance_Ohm
   conversion:
@@ -197,8 +198,8 @@ pressure_sensors:
   labels:
     0: Pump Output
     1: Pump Input
-    2: Catheder Input
-    3: Catheder Output
+    2: Catheter Input
+    3: Catheter Output
   calibration:
     mv_lo: -14.858
     psi_lo: -11.5
@@ -208,7 +209,7 @@ compressor:
   relay_pin: 6
   # Must match thermistor_sensors.labels (channel used for cooling control).
   heat_ex_label: HeatEx1
-  off_below_temp_c: -11
+  off_below_temp_c: -9
   on_above_temp_c: -9.0
 logging:
   csv_directory: data/csv
@@ -220,14 +221,14 @@ logging:
 # least-squares fit (through the origin) of the measured calibration data.
 # flow_ml_per_s = pump_rpm * pump_flow_ml_per_min_per_rpm / 60
 pump_flow_ml_per_min_per_rpm: 0.5862
-# Closed-loop pump flow during PUMPING (CSF vs UI set temperature).
-# error = CSF - set_temp (°C). Above full_speed_error_c → max flow;
+# Closed-loop pump flow during PUMPING (control_temp_label vs UI set temperature).
+# error = CSF2 - set_temp (°C). Above full_speed_error_c → max flow;
 # between 0 and that band → PID; at/below setpoint → min flow.
 pump_control:
-  max_flow_ml_per_min: 100.0
+  max_flow_ml_per_min: 60.0
   min_flow_ml_per_min: 10.0
   full_speed_error_c: 0.5
-  kp: 180.0   # ml/min per °C (P-only ≈ min + 180*error → 100 at 0.5°C)
+  kp: 180.0   # ml/min per °C (P-only ≈ min + 180*error → 60 by ~0.28°C; clamped at max)
   ki: 40.0
   kd: 5.0
   integral_limit: 2.0
@@ -241,8 +242,8 @@ stepper_motor:
   steps_per_revolution: 200
   microstepping: 16
   default_speed_rpm: 20
-  # ~100 ml/min and ~10 ml/min at pump_flow_ml_per_min_per_rpm = 0.5862
-  pumping_speed_rpm: 171
+  # ~60 ml/min and ~10 ml/min at pump_flow_ml_per_min_per_rpm = 0.5862
+  pumping_speed_rpm: 102
   pumping_slow_speed_rpm: 17
   max_speed_rpm: 390
   min_pump_speed_rpm: 17

@@ -107,6 +107,8 @@ def _check_leak(ctx: RuleContext) -> bool:
     if ctx.current_state in (State.INIT, State.ERROR):
         return False
     alarms = _alarms(ctx)
+    if not bool(alarms.get("leak_detection_enabled", True)):
+        return False
     sensor_name = str(alarms.get("leak_sensor_label", "Leak Sensor"))
     if sensor_name not in ctx.sensor_states:
         return False
