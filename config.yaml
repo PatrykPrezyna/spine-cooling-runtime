@@ -158,9 +158,9 @@ thermistor_sensors:
     0: CSF
     1: HeatEx1
     2: HeatEx2
-    3: Cartrige In
+    3: Catheder In
     4: Cartrige Out
-    5: "6"
+    5: Catheder Out
     6: Room Temp
     7: Body Temp
   channel_configs:
@@ -220,6 +220,17 @@ logging:
 # least-squares fit (through the origin) of the measured calibration data.
 # flow_ml_per_s = pump_rpm * pump_flow_ml_per_min_per_rpm / 60
 pump_flow_ml_per_min_per_rpm: 0.5862
+# Closed-loop pump flow during PUMPING (CSF vs UI set temperature).
+# error = CSF - set_temp (°C). Above full_speed_error_c → max flow;
+# between 0 and that band → PID; at/below setpoint → min flow.
+pump_control:
+  max_flow_ml_per_min: 100.0
+  min_flow_ml_per_min: 10.0
+  full_speed_error_c: 0.5
+  kp: 180.0   # ml/min per °C (P-only ≈ min + 180*error → 100 at 0.5°C)
+  ki: 40.0
+  kd: 5.0
+  integral_limit: 2.0
 ui:
   window_width: 500
   window_height: 450
@@ -230,10 +241,11 @@ stepper_motor:
   steps_per_revolution: 200
   microstepping: 16
   default_speed_rpm: 20
-  pumping_speed_rpm: 60
-  pumping_slow_speed_rpm: 20
+  # ~100 ml/min and ~10 ml/min at pump_flow_ml_per_min_per_rpm = 0.5862
+  pumping_speed_rpm: 171
+  pumping_slow_speed_rpm: 17
   max_speed_rpm: 390
-  min_pump_speed_rpm: 1
+  min_pump_speed_rpm: 17
   min_speed_rpm: 1
   ramp_start_fraction: 0.5
   continuous_direction: -1

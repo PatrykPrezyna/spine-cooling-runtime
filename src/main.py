@@ -33,6 +33,7 @@ from leak_debounce import LeakDebounceTracker
 from fault_catalog import FaultCode, Severity, get_fault, stop_priority
 from gui import MainScreen
 from hardware_factory import build_hardware
+from pump_flow_control import PumpFlowController, flow_ml_per_min_to_rpm
 from safety_rules import RuleContext, TelemetrySnapshot, evaluate, is_fault_still_active
 from sensor_injection import SensorInjectionController, select_temperatures
 from sensor_override_ui import SensorOverrideWindow
@@ -180,9 +181,32 @@ class SensorMonitorApp(QObject):
         self.pressure_reader: Any = None
         stepper_cfg = self.config.get('stepper_motor', {})
         compressor_cfg = self.config.get('compressor', {})
+        self.pump_flow_ml_per_min_per_rpm: float = float(
+            self.config.get("pump_flow_ml_per_min_per_rpm", 0.5862)
+        )
+        self.pump_flow_controller = PumpFlowController.from_config_dict(
+            self.config.get("pump_control")
+        )
         self.stepper_speed_rpm: int = int(stepper_cfg.get('default_speed_rpm', 30))
-        self.pumping_stepper_speed_rpm: int = int(stepper_cfg.get('pumping_speed_rpm', 60))
-        self.pumping_slow_stepper_speed_rpm: int = int(stepper_cfg.get('pumping_slow_speed_rpm', 20))
+        # Fallback RPM if closed-loop control has no temperature yet (~max flow).
+        self.pumping_stepper_speed_rpm: int = int(
+            stepper_cfg.get(
+                "pumping_speed_rpm",
+                flow_ml_per_min_to_rpm(
+                    self.pump_flow_controller.config.max_flow_ml_per_min,
+                    self.pump_flow_ml_per_min_per_rpm,
+                ),
+            )
+        )
+        self.pumping_slow_stepper_speed_rpm: int = int(
+            stepper_cfg.get(
+                "pumping_slow_speed_rpm",
+                flow_ml_per_min_to_rpm(
+                    self.pump_flow_controller.config.min_flow_ml_per_min,
+                    self.pump_flow_ml_per_min_per_rpm,
+                ),
+            )
+        )
         self.compressor_on: bool = False
         self.compressor_relay_pin: int = int(compressor_cfg.get('relay_pin', 6))
         self.compressor_relay_io6_high: bool = True
@@ -583,6 +607,11 @@ class SensorMonitorApp(QObject):
 
     def _on_state_changed(self, old_state: State, new_state: State):
         self._refresh_ui_state_display()
+        if new_state in (State.PUMPING, State.PUMPING_SLOWLY):
+            if old_state not in (State.PUMPING, State.PUMPING_SLOWLY):
+                self.pump_flow_controller.reset()
+        elif old_state in (State.PUMPING, State.PUMPING_SLOWLY):
+            self.pump_flow_controller.reset()
         self._apply_state_driven_stepper_control(new_state)
         self._apply_state_driven_compressor_control(new_state)
         if self.ui:
@@ -611,15 +640,42 @@ class SensorMonitorApp(QObject):
                 requested = max(min_rpm, requested)
         return requested
 
+    def _rpm_for_flow_ml_per_min(self, flow_ml_per_min: float, *, enforce_min: bool = True) -> int:
+        """Map a closed-loop flow command to a clamped stepper RPM."""
+        cfg = self.pump_flow_controller.config
+        flow = max(cfg.min_flow_ml_per_min, min(cfg.max_flow_ml_per_min, float(flow_ml_per_min)))
+        rpm = flow_ml_per_min_to_rpm(flow, self.pump_flow_ml_per_min_per_rpm)
+        return self._clamp_pump_speed_rpm(rpm, enforce_min=enforce_min)
+
+    def _apply_closed_loop_pump_control(
+        self,
+        csf_temp: Optional[float],
+        set_temp: Optional[float],
+    ) -> None:
+        """Update pump RPM from CSF error while actively pumping."""
+        if not self.state_machine:
+            return
+        if self.state_machine.get_current_state() not in (State.PUMPING, State.PUMPING_SLOWLY):
+            return
+        if csf_temp is None or set_temp is None:
+            return
+        flow = self.pump_flow_controller.compute(float(csf_temp), float(set_temp))
+        target_rpm = self._rpm_for_flow_ml_per_min(flow, enforce_min=True)
+        if target_rpm == self.stepper_speed_rpm and self.stepper_continuous_forward:
+            return
+        self.stepper_speed_rpm = target_rpm
+        if self.stepper_continuous_forward and self.stepper_driver:
+            self.stepper_driver.set_continuous_speed(self.stepper_speed_rpm)
+        elif not self.stepper_continuous_forward:
+            self.on_stepper_continuous_toggle(True)
+
     def _apply_state_driven_stepper_control(self, state: State):
         """Drive the stepper from state machine transitions."""
-        if state == State.PUMPING:
-            self.stepper_speed_rpm = self._clamp_pump_speed_rpm(self.pumping_stepper_speed_rpm)
-            self.on_stepper_continuous_toggle(True)
-        elif state == State.PUMPING_SLOWLY:
-            self.stepper_speed_rpm = self._clamp_pump_speed_rpm(
-                self.pumping_slow_stepper_speed_rpm,
-                enforce_min=False,
+        if state in (State.PUMPING, State.PUMPING_SLOWLY):
+            # Start at max flow; closed-loop tick will trim within [min, max].
+            self.stepper_speed_rpm = self._rpm_for_flow_ml_per_min(
+                self.pump_flow_controller.config.max_flow_ml_per_min,
+                enforce_min=True,
             )
             self.on_stepper_continuous_toggle(True)
         elif self.stepper_continuous_forward:
@@ -693,6 +749,7 @@ class SensorMonitorApp(QObject):
                     self.state_machine.update(
                         sensor_states, body_temp=body_temp, set_temp=set_temp
                     )
+                    self._apply_closed_loop_pump_control(body_temp, set_temp)
 
             if self.ui:
                 self.ui.update_sensor_display(

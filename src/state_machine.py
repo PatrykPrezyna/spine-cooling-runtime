@@ -4,13 +4,19 @@ Tracks where the device is in its workflow and which moves are legal next.
 
 Typical happy path:
 
-  INIT -> READY -> COOLING -> PUMPING <-> PUMPING SLOWLY
-           ^                                    |
-           +-------- ERROR (fault; ack) <-------+
+  INIT -> READY -> COOLING -> PUMPING
+           ^                     |
+           +-- ERROR (fault; ack)+
 
-``main.py`` calls ``update()`` every tick with sensor readings and
-temperatures. Button handlers call ``start_pumping()``, ``stop_pumping()``,
+Pump flow during ``PUMPING`` is closed-loop (ml/min PID) in ``main.py``;
+this machine only owns workflow states.
+
+``main.py`` calls ``update()`` every tick with sensor readings.
+Button handlers call ``start_pumping()``, ``stop_pumping()``,
 and ``acknowledge_error()``.
+
+``PUMPING_SLOWLY`` is retained for backward-compatible transitions/UI but
+is no longer entered by temperature hysteresis.
 """
 
 from datetime import datetime, timedelta
@@ -32,8 +38,6 @@ class State(Enum):
 class StateMachine:
     """Controls application flow through the states above."""
 
-    # Fast/slow pump toggle uses a band around the setpoint (degrees C).
-    PUMPING_HYSTERESIS_C = 2.0
     READY_HOLD_AFTER_STARTUP_S = 10.0
 
     def __init__(self, ready_hold_after_startup_s: float = READY_HOLD_AFTER_STARTUP_S):
@@ -115,11 +119,15 @@ class StateMachine:
         body_temp: Optional[float] = None,
         set_temp: Optional[float] = None,
     ) -> None:
-        """Run each sensor/temperature tick.
+        """Run each sensor tick.
 
         ``sensor_states`` keys (from config.yaml / MultiSensorReader):
         ``Cartridge In Place``, ``Level Low``, ``Level Critical``.
+
+        ``body_temp`` / ``set_temp`` are accepted for call-site compatibility;
+        pump speed is controlled outside this machine.
         """
+        del body_temp, set_temp
         cartridge = sensor_states.get("Cartridge In Place", False)
         level_low = sensor_states.get("Level Low", False)
         level_critical = sensor_states.get("Level Critical", False)
@@ -132,18 +140,6 @@ class StateMachine:
                 self._startup_ready_hold_until = None
             if cartridge and level_low and level_critical:
                 self._change_state(State.COOLING, "All conditions met")
-            return
-
-        # --- switch pump speed from body temperature --------------------
-        if body_temp is None or set_temp is None:
-            return
-        half_band = self.PUMPING_HYSTERESIS_C / 2.0
-        too_cold = body_temp <= set_temp - half_band
-        warm_enough = body_temp >= set_temp + half_band
-        if self.current_state == State.PUMPING and too_cold:
-            self._change_state(State.PUMPING_SLOWLY, "Body temperature below target")
-        elif self.current_state == State.PUMPING_SLOWLY and warm_enough:
-            self._change_state(State.PUMPING, "Body temperature above target")
 
     # --- internal: validate and apply a state change ------------------
 
