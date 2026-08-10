@@ -1,11 +1,12 @@
 control_temp_label: CSF
 # Logical temperatures shown in the UI / control / CSV.
-# For each name, read that same label from the chosen board:
-#   CSF: thermistor → thermistor_sensors.labels value named "CSF"
+# For each name, read that same label from the chosen board.
 # Only listed names appear; order is display order.
+# All 8 entries below are thermistors (ADS1115 channels 0–7).
 temperature_sources:
   CSF: thermistor
   HeatEx1: thermistor
+  HeatEx2: thermistor
   Cartrige In: thermistor
   Cartrige Out: thermistor
   "6": thermistor
@@ -14,7 +15,7 @@ temperature_sources:
 alarms:
   csf_label: CSF
   csf_low_temp_c: 28.0
-  heat_ex_label: Heat Ex
+  heat_ex_label: HeatEx1
   heat_ex_min_c: -10.0
   leak_pressure_delta_min: 5.0
   # Digital leak sensor: a 0/low reading means fluid detected -> immediate stop.
@@ -33,13 +34,13 @@ simulation:
   csf_cart_out_scale: 0.05
   csf_min_effective_pump_speed_rpm: 20
   csf_pump_speed_ref_rpm: 60
-  heat_ex_label: Heat Ex
+  heat_ex_label: HeatEx1
   heat_ex_initial_c: 22.0
   heat_ex_max_c: 22.0
   heat_ex_cool_rate_c_per_s: 0.5
   heat_ex_warm_rate_c_per_s: 0.02
-  cart_in_label: Cart In
-  cart_out_label: Cart Out
+  cart_in_label: Cartrige In
+  cart_out_label: Cartrige Out
   cart_initial_c: 22.0
   cart_in_rise_rate_c_per_s: 0.1
   sensors:
@@ -53,14 +54,14 @@ simulation:
     Pump Input: 25.0
     Pump Output: 30.0
   thermistors:
-    1 Tank: 22.0
-    2 Cath In: 22.0
-    3 Cartrige In: 22.0
-    4 Cartrige Out: 22.0
-    5 Cath Out: 22.0
+    CSF: 36.5
+    HeatEx1: 22.0
+    HeatEx2: 22.0
+    Cartrige In: 22.0
+    Cartrige Out: 22.0
     "6": 25.0
-    7 Room Temp: 22.0
-    "8": 25.0
+    Room Temp: 22.0
+    Body Temp: 25.0
 acustic_signal_gpio_pin: 16
 sensors:
 - name: Level Low
@@ -156,7 +157,7 @@ thermistor_sensors:
   labels:
     0: CSF
     1: HeatEx1
-    2: HeatEx1
+    2: HeatEx2
     3: Cartrige In
     4: Cartrige Out
     5: "6"
@@ -205,7 +206,8 @@ pressure_sensors:
     psi_hi: 75.0
 compressor:
   relay_pin: 6
-  heat_ex_label: Heat Ex
+  # Must match thermistor_sensors.labels (channel used for cooling control).
+  heat_ex_label: HeatEx1
   off_below_temp_c: -11
   on_above_temp_c: -9.0
 logging:
