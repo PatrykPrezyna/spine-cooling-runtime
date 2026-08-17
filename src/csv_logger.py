@@ -10,9 +10,12 @@ from typing import Optional
 class CSVLogger:
     """Append sensor + temperature + pressure samples to a timestamped CSV file."""
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, session_start: Optional[datetime] = None):
         self.csv_directory = config['logging']['csv_directory']
         self.filename_format = config['logging']['filename_format']
+        # Shared with PressureCSVLogger so the session file and the high-rate
+        # pressure files of the same run carry an identical stamp.
+        self.session_start = session_start or datetime.now()
         self.thermocouple_columns = self._thermocouple_columns_from_config(config)
         self.pressure_columns = self._pressure_columns_from_config(config)
         # Linear pump model: flow_ml_per_s = rpm * slope / 60.
@@ -70,8 +73,9 @@ class CSVLogger:
             return False
 
         try:
-            timestamp = datetime.now().strftime(self.filename_format)
-            self.csv_file = Path(self.csv_directory) / timestamp
+            self.csv_file = Path(self.csv_directory) / self.session_start.strftime(
+                self.filename_format
+            )
 
             self.file_handle = open(self.csv_file, 'w', newline='')
             self.csv_writer = csv.writer(self.file_handle)

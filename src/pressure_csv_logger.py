@@ -1,8 +1,13 @@
 """Fast pressure-only CSV logger with a dedicated capture thread.
 
 While capture is ON, a background loop reads pressures and appends CSV rows at
-``pressure_sensors.capture_rate_hz`` (default 100 Hz). A new timestamped file
-is created on every ``start_logging()`` call.
+``pressure_sensors.capture_rate_hz`` (default 100 Hz).
+
+Every ``start_logging()`` call opens a new file named
+``pressure_log_<session>_runNN.csv``, where ``<session>`` is the stamp shared
+with the session ``sensor_log`` and ``NN`` counts captures within that session.
+Pairing a pressure file with its session file is therefore a string match on
+the stamp rather than a guess from modification times.
 """
 
 from __future__ import annotations
@@ -23,7 +28,7 @@ class PressureCSVLogger:
     # paying fsync cost on every high-rate sample.
     _FLUSH_EVERY_N_ROWS = 50
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, session_start: Optional[datetime] = None):
         logging_cfg = config.get("logging", {})
         ps_cfg = config.get("pressure_sensors", {}) or {}
         self.csv_directory = str(
@@ -43,12 +48,15 @@ class PressureCSVLogger:
         )
         self.pressure_columns = self._pressure_columns_from_config(config)
         self.header = self._build_header(self.pressure_columns)
+        # Shared with CSVLogger so every capture is traceable to its session.
+        self.session_start = session_start or datetime.now()
 
         self.csv_file: Optional[Path] = None
         self.csv_writer: Optional[csv.writer] = None
         self.file_handle = None
         self.is_logging = False
         self._rows_since_flush = 0
+        self._run_index = 0
         self._lock = threading.Lock()
 
         Path(self.csv_directory).mkdir(parents=True, exist_ok=True)
@@ -73,21 +81,22 @@ class PressureCSVLogger:
         return header
 
     def _next_csv_path(self) -> Path:
-        """Return a unique path under ``csv_directory`` for a new capture file."""
-        candidate = Path(self.csv_directory) / datetime.now().strftime(
+        """Return the next ``_runNN`` path for the current session.
+
+        The stem carries the session stamp rather than the toggle time, so the
+        file pairs with the session CSV; ``NN`` separates repeated captures.
+        """
+        base = Path(self.csv_directory) / self.session_start.strftime(
             self.filename_format
         )
-        if not candidate.exists():
-            return candidate
-        # Same-second restarts: keep the format stem and add a numeric suffix.
-        stem = candidate.stem
-        suffix = candidate.suffix
-        for index in range(1, 1000):
-            alt = candidate.with_name(f"{stem}_{index}{suffix}")
-            if not alt.exists():
-                return alt
-        return Path(self.csv_directory) / (
-            f"{stem}_{datetime.now().strftime('%f')}{suffix}"
+        for index in range(self._run_index + 1, 1000):
+            candidate = base.with_name(f"{base.stem}_run{index:02d}{base.suffix}")
+            if not candidate.exists():
+                self._run_index = index
+                return candidate
+        # Exhausted the run counter; fall back to a unique time-based suffix.
+        return base.with_name(
+            f"{base.stem}_run{datetime.now().strftime('%H%M%S%f')}{base.suffix}"
         )
 
     def start_logging(self) -> bool:

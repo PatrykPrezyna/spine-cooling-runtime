@@ -7,6 +7,7 @@ import sys
 import tempfile
 import time
 import unittest
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -133,6 +134,56 @@ class PressureCsvLoggerTests(unittest.TestCase):
     def test_capture_rate_hz_defaults_to_100(self) -> None:
         self.assertEqual(self.logger.capture_rate_hz, 100.0)
 
+    def test_runs_are_numbered_within_one_session(self) -> None:
+        names = []
+        for _ in range(3):
+            self.assertTrue(self.logger.start_logging())
+            names.append(Path(self.logger.get_log_file_path() or "").name)
+            self.logger.stop_logging()
+
+        stamp = self.logger.session_start.strftime("%Y%m%d_%H%M%S")
+        self.assertEqual(
+            names,
+            [
+                f"pressure_log_{stamp}_run01.csv",
+                f"pressure_log_{stamp}_run02.csv",
+                f"pressure_log_{stamp}_run03.csv",
+            ],
+        )
+
+    def test_filename_uses_session_start_not_toggle_time(self) -> None:
+        session_start = datetime(2026, 8, 17, 16, 30, 45)
+        logger = PressureCSVLogger(self.config, session_start=session_start)
+        self.assertTrue(logger.start_logging())
+        name = Path(logger.get_log_file_path() or "").name
+        logger.stop_logging()
+        self.assertEqual(name, "pressure_log_20260817_163045_run01.csv")
+
+    def test_session_and_pressure_files_share_one_stamp(self) -> None:
+        from csv_logger import CSVLogger
+
+        session_start = datetime(2026, 8, 17, 16, 30, 45)
+        config = {
+            **self.config,
+            "logging": {
+                **self.config["logging"],
+                "csv_directory": self._tmpdir.name,
+                "filename_format": "sensor_log_%Y%m%d_%H%M%S.csv",
+            },
+        }
+        session_logger = CSVLogger(config, session_start=session_start)
+        pressure_logger = PressureCSVLogger(config, session_start=session_start)
+        self.assertTrue(session_logger.start_logging())
+        self.assertTrue(pressure_logger.start_logging())
+        session_name = Path(session_logger.get_log_file_path() or "").name
+        pressure_name = Path(pressure_logger.get_log_file_path() or "").name
+        session_logger.stop_logging()
+        pressure_logger.stop_logging()
+
+        stamp = "20260817_163045"
+        self.assertEqual(session_name, f"sensor_log_{stamp}.csv")
+        self.assertEqual(pressure_name, f"pressure_log_{stamp}_run01.csv")
+
 
 class PressureCaptureLoopTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -201,9 +252,9 @@ class PressureServiceTabLoggingToggleTests(unittest.TestCase):
         cls._app = QApplication.instance() or QApplication([])
 
     def test_toggle_flips_state_and_invokes_callback(self) -> None:
-        from gui import PressureServiceTab
+        from gui import PressureLoggingTab
 
-        tab = PressureServiceTab()
+        tab = PressureLoggingTab()
         calls: list[bool] = []
         tab.on_pressure_csv_logging_toggle_callback = calls.append
 
@@ -221,9 +272,9 @@ class PressureServiceTabLoggingToggleTests(unittest.TestCase):
         self.assertEqual(calls, [True, False])
 
     def test_set_pressure_csv_logging_does_not_emit_callback(self) -> None:
-        from gui import PressureServiceTab
+        from gui import PressureLoggingTab
 
-        tab = PressureServiceTab()
+        tab = PressureLoggingTab()
         calls: list[bool] = []
         tab.on_pressure_csv_logging_toggle_callback = calls.append
 

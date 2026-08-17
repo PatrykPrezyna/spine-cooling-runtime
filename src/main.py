@@ -14,6 +14,7 @@ thread is not delayed by Python's  Global Interpreter Lock.
 import argparse
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -170,9 +171,15 @@ class SensorMonitorApp(QObject):
         self.sensor_reader: Any = None
         self.sensor_injection: Optional[SensorInjectionController] = None
         self.override_ui: Optional[SensorOverrideWindow] = None
+        # One stamp for the whole run; both CSV loggers name their files with
+        # it so the session log and its pressure captures stay paired.
+        self.session_start = datetime.now()
         self.csv_logger: Optional[CSVLogger] = None
         self.pressure_csv_logger: Optional[PressureCSVLogger] = None
         self._pressure_capture_loop: Optional[PressureCaptureLoop] = None
+        self.pressure_csv_autostart = bool(
+            self.config.get("logging", {}).get("pressure_autostart", True)
+        )
         self.ui: Optional[MainScreen] = None
         self.state_machine: Optional[StateMachine] = None
         self.stepper_driver: Any = None
@@ -243,7 +250,7 @@ class SensorMonitorApp(QObject):
         config_file = Path(config_path)
         if not config_file.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
-        with open(config_file, 'r') as f:
+        with open(config_file, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
         print(f"Configuration loaded from: {config_path}")
         return config
@@ -281,8 +288,10 @@ class SensorMonitorApp(QObject):
                 self.state_machine.handle_init_complete(False, error_msg)
                 return False
 
-            self.csv_logger = CSVLogger(self.config)
-            self.pressure_csv_logger = PressureCSVLogger(self.config)
+            self.csv_logger = CSVLogger(self.config, session_start=self.session_start)
+            self.pressure_csv_logger = PressureCSVLogger(
+                self.config, session_start=self.session_start
+            )
             self._log_optional_status("Thermocouple reader", self.thermocouple_reader)
             self._log_optional_status("Thermistor reader", self.thermistor_reader)
             self._log_optional_status("ADS1115 pressure reader", self.pressure_reader)
@@ -309,6 +318,8 @@ class SensorMonitorApp(QObject):
                 print(f"Error: {error_msg}")
                 self.state_machine.handle_init_complete(False, error_msg)
                 return False
+
+            self._autostart_pressure_capture()
 
             self.is_running = True
             print("All components initialized successfully")
@@ -794,6 +805,10 @@ class SensorMonitorApp(QObject):
             pump_speed_rpm=actual_pump_speed_rpm,
             flow_ml_per_min=commanded_flow_ml_per_min,
         )
+        self.ui.power_graph_tab.update_pump_speed(
+            pump_speed_rpm=actual_pump_speed_rpm,
+            flow_ml_per_min=commanded_flow_ml_per_min,
+        )
 
     # ------------------------------------------------------------------
     # UI callbacks
@@ -853,10 +868,48 @@ class SensorMonitorApp(QObject):
             self._pressure_capture_loop.stop()
             self._pressure_capture_loop = None
 
-    def on_pressure_csv_logging_toggle(self, enabled: bool) -> None:
-        """Start/stop dedicated high-rate pressure CSV capture from the Pressure tab.
+    def _start_pressure_capture(self) -> bool:
+        """Open a new pressure CSV run and start the capture thread."""
+        if self.pressure_csv_logger is None:
+            return False
+        self._stop_pressure_capture()
+        if not self.pressure_csv_logger.start_logging():
+            return False
+        self._pressure_capture_loop = PressureCaptureLoop(
+            self.pressure_reader,
+            self.pressure_csv_logger,
+            pump_set_speed_rpm_getter=self._logged_pump_set_speed_rpm,
+        )
+        self._pressure_capture_loop.start()
+        return True
 
-        Each ON opens a new timestamped file under
+    def _autostart_pressure_capture(self) -> None:
+        """Begin high-rate pressure capture alongside the session CSV.
+
+        Skipped when the reader is unavailable, which would otherwise fill a
+        100 Hz file with blank rows. Capture failure is not fatal: the session
+        CSV still carries pressures at the UI tick rate.
+        """
+        if not self.pressure_csv_autostart:
+            return
+        if self.pressure_reader is None or not self.pressure_reader.is_initialized:
+            print("Pressure CSV autostart skipped: pressure reader unavailable")
+            return
+        if not self._start_pressure_capture():
+            print("Warning: pressure CSV autostart failed; continuing without it")
+
+    def _sync_pressure_logging_toggle(self) -> None:
+        """Match the Service 2 toggle to capture started before the UI existed."""
+        if self.ui is None:
+            return
+        tab = getattr(self.ui, "pressure_logging_tab", None)
+        if tab is not None:
+            tab.set_pressure_csv_logging(self._pressure_capture_loop is not None)
+
+    def on_pressure_csv_logging_toggle(self, enabled: bool) -> None:
+        """Start/stop dedicated high-rate pressure CSV capture from Service 2.
+
+        Each ON opens a new ``_runNN`` file under
         ``logging.pressure_csv_directory`` and starts a capture thread at
         ``pressure_sensors.capture_rate_hz``. OFF stops the thread and closes
         the file.
@@ -864,20 +917,11 @@ class SensorMonitorApp(QObject):
         if self.pressure_csv_logger is None:
             return
         if enabled:
-            self._stop_pressure_capture()
-            started = self.pressure_csv_logger.start_logging()
-            if not started:
+            if not self._start_pressure_capture():
                 if self.ui is not None:
-                    tab = getattr(self.ui, "pressure_service_tab", None)
+                    tab = getattr(self.ui, "pressure_logging_tab", None)
                     if tab is not None:
                         tab.set_pressure_csv_logging(False)
-                return
-            self._pressure_capture_loop = PressureCaptureLoop(
-                self.pressure_reader,
-                self.pressure_csv_logger,
-                pump_set_speed_rpm_getter=self._logged_pump_set_speed_rpm,
-            )
-            self._pressure_capture_loop.start()
         else:
             self._stop_pressure_capture()
             self.pressure_csv_logger.stop_logging()
@@ -1016,6 +1060,7 @@ class SensorMonitorApp(QObject):
             self.ui = MainScreen(self.config)
             self._wire_ui_callbacks()
             self._refresh_ui_state_display()
+            self._sync_pressure_logging_toggle()
             self.ui.set_update_callback(self.update_display)
 
             # Background IO must be started before the timer kicks off so

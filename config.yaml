@@ -50,10 +50,10 @@ simulation:
     Level Critical: true
     Leak Sensor: true
   pressures:
-    Catheter Input: 20.0
-    Catheter Output: 15.0
-    Pump Input: 25.0
-    Pump Output: 30.0
+    Catheter In: 20.0
+    Catheter Out: 15.0
+    Pump In: 25.0
+    Pump Out: 30.0
   thermistors:
     Tip: 36.5
     Cartrige Out: 22.0
@@ -180,7 +180,7 @@ thermistor_sensors:
 # Optional channel_configs[].label overrides the flat labels map.
 # Linear calibration: mV → psi (same for all sensors).
 # UI / session CSV follow ui.update_interval_ms (100 ms → 10 Hz).
-# Pressure-tab CSV toggle runs a dedicated capture thread at capture_rate_hz.
+# Service 2 CSV toggle runs a dedicated capture thread at capture_rate_hz.
 pressure_sensors:
   enabled: true
   sample_rate_hz: 10
@@ -196,10 +196,10 @@ pressure_sensors:
   - 2
   - 3
   labels:
-    0: Pump Output
-    1: Pump Input
-    2: Catheter Input
-    3: Catheter Output
+    0: Pump Out
+    1: Pump In
+    2: Catheter In
+    3: Catheter Out
   calibration:
     mv_lo: -14.858
     psi_lo: -11.5
@@ -214,13 +214,27 @@ compressor:
 logging:
   csv_directory: data/csv
   filename_format: sensor_log_%Y%m%d_%H%M%S.csv
-  # Toggleable pressure-only capture (Pressure service tab). New file each ON.
+  # Pressure-only capture (Service 2 tab). Both formats are stamped with one
+  # session time, so sensor_log_<session>.csv pairs with every
+  # pressure_log_<session>_runNN.csv; NN increments on each ON toggle.
   pressure_csv_directory: data/csv/pressure
   pressure_filename_format: pressure_log_%Y%m%d_%H%M%S.csv
+  # Start high-rate capture with the session instead of waiting for the toggle.
+  pressure_autostart: true
 # Pump throughput: flow scales linearly with stepper RPM. Slope from a
 # least-squares fit (through the origin) of the measured calibration data.
 # flow_ml_per_s = pump_rpm * pump_flow_ml_per_min_per_rpm / 60
 pump_flow_ml_per_min_per_rpm: 0.5862
+# Cooling power (Expert Power tab): P = m_dot * cp * dT, with m_dot from pump flow.
+# Catheter: heat picked up by water (T_out - T_in). Cartridge: heat extracted
+# from water at the cartridge outlet (T_in - T_out). Labels match temperature_sources.
+cooling_power:
+  water_density_kg_per_l: 1.0
+  water_cp_j_per_kg_k: 4184.0
+  catheter_in_label: Catheter In
+  catheter_out_label: Catheter Out
+  cartridge_in_label: Cartrige In
+  cartridge_out_label: Cartrige Out
 # Closed-loop pump flow during PUMPING (control_temp_label vs UI set temperature).
 # error = Probe 2 - set_temp (°C). Above full_speed_error_c → max flow;
 # between 0 and that band → PID; at/below setpoint → min flow.

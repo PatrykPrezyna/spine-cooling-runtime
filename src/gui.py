@@ -2,8 +2,18 @@
 PyQt6 user interface for the Spine Cooling runtime.
 
 Contains the main application window (`MainScreen`) and its primary
-visualization/control widget (`MainScreenWidget`), plus auxiliary tab
-widgets (`ServiceTab`, `Service2Tab`).
+visualization/control widget (`MainScreenWidget`), plus the tab widgets used
+by the two sub-pages.
+
+`MainScreen` shows exactly one of three pages:
+
+- Main: trend graph, CSF/setpoint readouts and the cooling action buttons
+  (`MainScreenWidget`). Its only exit is the expert page.
+- Expert: monitoring only — Temperature (`TemperatureGraphTab`), Pressure and
+  Flow (`PressureServiceTab`), Power (`PowerGraphTab`), Status (`Service2Tab`).
+- Service: acts on the hardware — Manual Operation (`ServiceTab`), Pressure Log
+  (`PressureLoggingTab`), Calibration (`CalibrationTab`). Only the expert tab
+  row links to it, so it stays one step away from the main page.
 """
 
 import math
@@ -12,7 +22,13 @@ import time
 from collections import deque
 from typing import Optional, Callable
 
-from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF
+from cooling_power import (
+    CoolingPowerConfig,
+    cartridge_cooling_power_w,
+    catheter_cooling_power_w,
+)
+
+from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF, QSize
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget,
@@ -22,7 +38,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QColor, QLinearGradient,
-    QFont, QPainterPath,
+    QFont, QPainterPath, QIcon, QPixmap,
 )
 
 
@@ -79,10 +95,188 @@ _GRAPH_WINDOW_COMBO_STYLE = """
         background-color: white;
         border: 1px solid #94a3b8;
         border-radius: 10px;
-        padding: 4px 10px;
+        padding: 4px 6px;
     }
-    QComboBox::drop-down { width: 22px; }
+    QComboBox::drop-down { width: 18px; }
 """
+
+# Graph X-axis nav row: [<] [time window] [>]. The main page and the advanced
+# graph tabs share these metrics so the block sits in the same spot on every
+# page, at the top of a control column of _GRAPH_NAV_COLUMN_W pixels.
+_GRAPH_NAV_BTN_W = 30
+_GRAPH_NAV_BTN_H = 34
+_GRAPH_NAV_GAP = 4
+_GRAPH_NAV_COLUMN_W = 150
+
+_PAGE_TAB_BAR_STYLE = """
+    QTabBar::tab {
+        background: #e5ebf0;
+        color: #40505d;
+        padding: 9px 12px;
+        margin-right: 4px;
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+        font-weight: 600;
+    }
+    QTabBar::tab:selected {
+        background: #0e6a76;
+        color: white;
+    }
+    QTabBar::tab:hover:!selected {
+        background: #d8e1e8;
+    }
+"""
+
+_HEADER_ICON_BUTTON_STYLE = """
+    QPushButton {
+        background: #f8fafb;
+        color: #51606c;
+        border: 1px solid #d5dce3;
+        border-radius: 10px;
+        font-size: 18px;
+        font-weight: 700;
+    }
+    QPushButton:hover {
+        background: #eef3f7;
+    }
+    QPushButton:pressed {
+        background: #e5ebf0;
+    }
+"""
+
+
+def _header_house_icon(size: int = 20) -> QIcon:
+    """Simple house silhouette for the back-to-main header button."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor("#51606c"))
+
+    roof = QPainterPath()
+    roof.moveTo(size * 0.50, size * 0.08)
+    roof.lineTo(size * 0.96, size * 0.50)
+    roof.lineTo(size * 0.04, size * 0.50)
+    roof.closeSubpath()
+    painter.drawPath(roof)
+
+    painter.drawRect(QRectF(size * 0.22, size * 0.46, size * 0.56, size * 0.46))
+
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+    painter.drawRect(QRectF(size * 0.42, size * 0.64, size * 0.16, size * 0.28))
+    painter.end()
+    return QIcon(pixmap)
+
+
+def _header_gear_icon(size: int = 20) -> QIcon:
+    """Cog for the service header button, drawn to match the other icons."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor("#51606c"))
+    painter.translate(size / 2.0, size / 2.0)
+
+    tooth_width = size * 0.22
+    for _ in range(8):
+        painter.drawRoundedRect(
+            QRectF(-tooth_width / 2.0, -size * 0.48, tooth_width, size * 0.30),
+            size * 0.05,
+            size * 0.05,
+        )
+        painter.rotate(45)
+    painter.drawEllipse(QRectF(-size * 0.30, -size * 0.30, size * 0.60, size * 0.60))
+
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+    painter.drawEllipse(QRectF(-size * 0.13, -size * 0.13, size * 0.26, size * 0.26))
+    painter.end()
+    return QIcon(pixmap)
+
+
+def _header_fullscreen_icon(size: int = 20) -> QIcon:
+    """Four corner brackets: the action is 'grow to fullscreen'."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QPen(QColor("#51606c"), max(1.0, size * 0.11))
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen)
+
+    inset = size * 0.17
+    arm = size * 0.24
+    for x, y, dx, dy in (
+        (inset, inset, 1, 1),
+        (size - inset, inset, -1, 1),
+        (inset, size - inset, 1, -1),
+        (size - inset, size - inset, -1, -1),
+    ):
+        painter.drawLine(QPointF(x, y), QPointF(x + dx * arm, y))
+        painter.drawLine(QPointF(x, y), QPointF(x, y + dy * arm))
+    painter.end()
+    return QIcon(pixmap)
+
+
+def _header_restore_window_icon(size: int = 20) -> QIcon:
+    """Two offset frames (restore down): the action is 'shrink to a window'."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QPen(QColor("#51606c"), max(1.0, size * 0.10))
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+
+    painter.drawRoundedRect(
+        QRectF(size * 0.36, size * 0.10, size * 0.54, size * 0.44),
+        size * 0.08,
+        size * 0.08,
+    )
+
+    front = QRectF(size * 0.10, size * 0.40, size * 0.54, size * 0.50)
+    # Punch a gap around the front frame so the two frames stay readable.
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor("#000000"))
+    painter.drawRoundedRect(
+        front.adjusted(-size * 0.07, -size * 0.07, size * 0.07, size * 0.07),
+        size * 0.10,
+        size * 0.10,
+    )
+
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(front, size * 0.08, size * 0.08)
+    painter.end()
+    return QIcon(pixmap)
+
+
+def _header_chart_icon(size: int = 20) -> QIcon:
+    """Axes with a trend line, for the expert (plots and status) header button."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    painter.setPen(QPen(QColor("#51606c"), max(1.0, size * 0.09)))
+    painter.drawLine(
+        QPointF(size * 0.12, size * 0.10), QPointF(size * 0.12, size * 0.88)
+    )
+    painter.drawLine(
+        QPointF(size * 0.12, size * 0.88), QPointF(size * 0.92, size * 0.88)
+    )
+
+    trend = QPainterPath()
+    trend.moveTo(size * 0.26, size * 0.66)
+    trend.lineTo(size * 0.45, size * 0.40)
+    trend.lineTo(size * 0.62, size * 0.55)
+    trend.lineTo(size * 0.84, size * 0.22)
+    painter.strokePath(trend, QPen(QColor("#0e6a76"), max(1.0, size * 0.11)))
+    painter.end()
+    return QIcon(pixmap)
 
 # Default linear pump model (overridden from config): flow_ml_min = rpm * slope.
 DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.5862
@@ -195,8 +389,8 @@ class MainScreenWidget(QWidget):
             graph_width = self.width() - (2 * margin)
             if self.show_temp_controls:
                 graph_width -= self._right_controls_reserved_width()
-            # Graph fills the full available height; the time-controls overlay
-            # its bottom-left corner (see _position_graph_nav_controls).
+            # Graph fills the full available height; the time controls live in
+            # the reserved right-hand column (see _position_graph_nav_controls).
             self._draw_temperature_graph(
                 painter,
                 graph_x=margin,
@@ -269,12 +463,11 @@ class MainScreenWidget(QWidget):
         painter.drawRoundedRect(graph_x, graph_y, graph_width, graph_height, 10, 10)
         
         # Plot area. Padding reserves clean zones so the legend (top) and the
-        # time-controls (bottom-left, below the x-axis labels) never overlap
-        # the gridlines, axes, or tick labels.
+        # x-axis tick labels (bottom) never overlap the gridlines or axes.
         plot_left = graph_x + 36
         plot_right = graph_x + graph_width - 10
         plot_top = graph_y + 26
-        plot_bottom = graph_y + graph_height - 58
+        plot_bottom = graph_y + graph_height - 26
         plot_width = plot_right - plot_left
         plot_height = plot_bottom - plot_top
         
@@ -315,7 +508,7 @@ class MainScreenWidget(QWidget):
             mins_ago = int(round((now - ts) / 60.0))
             label = "now" if mins_ago == 0 else f"-{mins_ago} min"
             painter.drawText(
-                QRectF(px - 20, plot_bottom + 4, 40, 14),
+                QRectF(px - 28, plot_bottom + 4, 56, 14),
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
                 label
             )
@@ -429,11 +622,14 @@ class MainScreenWidget(QWidget):
     # Touch-friendly gauge geometry
     _GAUGE_WIDTH = 55
     _GAUGE_MIN_HEIGHT = 80
-    _GAUGE_TOP = 85
+    # Leaves room for the graph nav row plus the CSF / setpoint readouts.
+    _GAUGE_TOP = 127
     _GAUGE_HANDLE_OVERHANG = 12
     _GAUGE_TICK_LABEL_LEFT = 48
-    _READOUT_MIN_WIDTH = 120
-    _RIGHT_MARGIN = 18
+    # Wide enough for the [<] [window] [>] nav row, matching the advanced tabs.
+    _READOUT_MIN_WIDTH = _GRAPH_NAV_COLUMN_W
+    # Mirrors the graph's left inset so the controls column is symmetric.
+    _RIGHT_MARGIN = 10
     _CONTROLS_GRAPH_GAP = 8
     _TEMP_BUTTON_SIZE = 48
     _TEMP_BUTTON_GAP = 10
@@ -482,7 +678,7 @@ class MainScreenWidget(QWidget):
         """Draw CSF and set-temperature readouts above the right-side gauge."""
         column_left, column_width = self._readout_column_geometry()
 
-        csf_top = 6
+        csf_top = self._GRAPH_NAV_TOP + _GRAPH_NAV_BTN_H + 8
         csf_height = 38
         if math.isnan(self.current_csf_temperature):
             csf_text = "--.-°C"
@@ -817,18 +1013,14 @@ class MainScreenWidget(QWidget):
         self.temp_minus_button = make("-", self._on_temp_decrement)
         self.temp_plus_button = make("+", self._on_temp_increment)
 
-    # Touch-friendly graph X-axis nav controls (overlay the graph bottom-left,
-    # in the reserved strip below the x-axis labels).
-    _GRAPH_NAV_BTN_W = 44
-    _GRAPH_NAV_BTN_H = 36
-    _GRAPH_NAV_COMBO_W = 96
-    _GRAPH_NAV_GAP = 8
+    # Top edge of the nav row inside the right-hand controls column.
+    _GRAPH_NAV_TOP = 6
 
     def _create_graph_nav_controls(self):
         """Create graph X-axis controls (window size and panning)."""
         def make_nav(text: str, on_click) -> QPushButton:
             btn = QPushButton(text, self)
-            btn.setFixedSize(self._GRAPH_NAV_BTN_W, self._GRAPH_NAV_BTN_H)
+            btn.setFixedSize(_GRAPH_NAV_BTN_W, _GRAPH_NAV_BTN_H)
             btn.setStyleSheet(_GRAPH_NAV_BUTTON_STYLE)
             btn.clicked.connect(on_click)
             return btn
@@ -844,7 +1036,7 @@ class MainScreenWidget(QWidget):
         )
         self.graph_window_combo.currentIndexChanged.connect(self._on_graph_window_changed)
         self.graph_window_combo.setStyleSheet(_GRAPH_WINDOW_COMBO_STYLE)
-        self.graph_window_combo.setFixedSize(self._GRAPH_NAV_COMBO_W, self._GRAPH_NAV_BTN_H)
+        self.graph_window_combo.setFixedHeight(_GRAPH_NAV_BTN_H)
     
     def _position_temp_buttons(self):
         """Position +/- buttons below the gauge"""
@@ -886,28 +1078,19 @@ class MainScreenWidget(QWidget):
         self._update_graph_nav_button_states()
 
     def _position_graph_nav_controls(self):
+        """Lay out [<] [window] [>] across the top of the controls column."""
         if not hasattr(self, "graph_window_combo"):
             return
-        btn_w = self._GRAPH_NAV_BTN_W
-        btn_h = self._GRAPH_NAV_BTN_H
-        combo_w = self._GRAPH_NAV_COMBO_W
-        gap = self._GRAPH_NAV_GAP
+        btn_w = _GRAPH_NAV_BTN_W
+        gap = _GRAPH_NAV_GAP
 
-        # Overlay the time controls in the graph's bottom-left corner, inside
-        # the reserved strip below the x-axis labels (see plot_bottom padding
-        # in _draw_temperature_graph), and right of the y-axis tick labels.
-        if self.show_graph and not self.show_cartridge:
-            margin = 10
-            graph_x = margin
-            graph_y = margin
-            graph_height = max(180, self.height() - (2 * margin))
-            left = graph_x + 40
-            top = graph_y + graph_height - btn_h - 4
-        else:
-            top = max(10, self.height() - btn_h - 8)
-            left = 12
+        column_left, column_width = self._readout_column_geometry()
+        combo_w = max(40, int(column_width) - 2 * (btn_w + gap))
+        left = int(column_left)
+        top = self._GRAPH_NAV_TOP
 
         self.graph_nav_left_button.move(left, top)
+        self.graph_window_combo.setFixedWidth(combo_w)
         self.graph_window_combo.move(left + btn_w + gap, top)
         self.graph_nav_right_button.move(left + btn_w + gap + combo_w + gap, top)
 
@@ -1806,11 +1989,10 @@ class ServiceTab(QWidget):
 
 
 class Service2Tab(QWidget):
-    """Animal Study tab showing digital, temperature, and pressure channels."""
+    """Status tab showing digital inputs. Also caches temperatures for the graphs."""
     _LABEL_NEUTRAL_STYLE = "font-size: 12px; padding: 6px; color: #5c6b79;"
     _LABEL_STRONG_TEMPLATE = "font-size: 12px; padding: 6px; color: {color}; font-weight: 600;"
 
-    _DEFAULT_PRESSURE_SENSOR_NAMES = ("Pressure 1", "Pressure 2")
     _DEFAULT_DIGITAL_SENSOR_NAMES = ("Level Low", "Level Critical", "Cartridge In Place")
 
     def __init__(
@@ -1821,11 +2003,6 @@ class Service2Tab(QWidget):
     ):
         super().__init__()
         self.sensor_names = list(sensor_names)
-        self.pressure_sensor_names = list(
-            pressure_sensor_names
-            if pressure_sensor_names is not None
-            else self._DEFAULT_PRESSURE_SENSOR_NAMES
-        )
         self.digital_sensor_names = list(
             digital_sensor_names
             if digital_sensor_names is not None
@@ -1833,44 +2010,17 @@ class Service2Tab(QWidget):
         )
         self.sensor_states: dict = {}
         self.temp_values = {name: float("nan") for name in self.sensor_names}
-        self.pressure_values = {name: float("nan") for name in self.pressure_sensor_names}
         self.digital_labels = {}
-        self.temp_labels = {}
-        self.pressure_labels = {}
-        self.pump_speed_rpm = 0
-        self.pump_flow_ml_per_min_per_rpm = DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
-        self.compressor_on = False
         self._create_widgets()
         self._setup_layout()
 
     def _create_widgets(self):
-        self.digital_group = QGroupBox("Digital Sensors")
+        self.digital_group = QGroupBox("Digital Status")
         self.digital_group.setStyleSheet(ServiceTab._group_box_style("#3b82f6", "10px", margin_top=6))
         for name in self.digital_sensor_names:
             label = QLabel(f"{name}: --")
             label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
             self.digital_labels[name] = label
-
-        self.temp_group = QGroupBox("Temperature Sensors")
-        self.temp_group.setStyleSheet(ServiceTab._group_box_style("#f59e0b", "10px", margin_top=6))
-        for name in self.sensor_names:
-            label = QLabel(f"{name}: --°C")
-            label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-            self.temp_labels[name] = label
-
-        self.pressure_group = QGroupBox("Pressure Sensors")
-        self.pressure_group.setStyleSheet(ServiceTab._group_box_style("#8b5cf6", "10px", margin_top=6))
-        for name in self.pressure_sensor_names:
-            label = QLabel(f"{name}: --.-- psi")
-            label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-            self.pressure_labels[name] = label
-
-        self.actuators_group = QGroupBox("Actuators")
-        self.actuators_group.setStyleSheet(ServiceTab._group_box_style("#0e6a76", "10px", margin_top=6))
-        self.pump_speed_label = QLabel("Pump: 0 RPM")
-        self.pump_speed_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-        self.compressor_label = QLabel("Compressor: OFF")
-        self.compressor_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
 
     def _setup_layout(self):
         main_layout = QVBoxLayout()
@@ -1882,64 +2032,11 @@ class Service2Tab(QWidget):
             digital_layout.addWidget(self.digital_labels[name])
         self.digital_group.setLayout(digital_layout)
         main_layout.addWidget(self.digital_group)
-
-        temp_layout = QGridLayout()
-        for index, name in enumerate(self.sensor_names):
-            row = index // 2
-            col = index % 2
-            temp_layout.addWidget(self.temp_labels[name], row, col)
-        self.temp_group.setLayout(temp_layout)
-        main_layout.addWidget(self.temp_group)
-
-        pressure_layout = QGridLayout()
-        for index, name in enumerate(self.pressure_sensor_names):
-            row = index // 2
-            col = index % 2
-            pressure_layout.addWidget(self.pressure_labels[name], row, col)
-        self.pressure_group.setLayout(pressure_layout)
-        main_layout.addWidget(self.pressure_group)
-
-        actuators_layout = QHBoxLayout()
-        actuators_layout.addWidget(self.pump_speed_label)
-        actuators_layout.addWidget(self.compressor_label)
-        self.actuators_group.setLayout(actuators_layout)
-        main_layout.addWidget(self.actuators_group)
-
         main_layout.addStretch()
         self.setLayout(main_layout)
 
-    def update_actuators(
-        self,
-        pump_speed_rpm: Optional[int] = None,
-        compressor_on: Optional[bool] = None,
-        flow_ml_per_min: Optional[float] = None,
-    ):
-        """Update pump speed and compressor status."""
-        if pump_speed_rpm is not None:
-            self.pump_speed_rpm = max(0, int(pump_speed_rpm))
-        if compressor_on is not None:
-            self.compressor_on = bool(compressor_on)
-
-        if flow_ml_per_min is not None:
-            flow_text = f"{float(flow_ml_per_min):.0f} ml/min"
-        else:
-            ml_per_min = _pump_flow_ml_per_min(
-                self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
-            )
-            flow_text = f"{ml_per_min:.1f} ml/min"
-        if self.pump_speed_rpm > 0:
-            pump_color = "#16a34a"
-            pump_text = f"Pump: {self.pump_speed_rpm} RPM ({flow_text})"
-        else:
-            pump_color = "#6b7280"
-            pump_text = f"Pump: 0 RPM ({flow_text}, stopped)"
-        self.pump_speed_label.setText(pump_text)
-        self.pump_speed_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=pump_color))
-
-        comp_status = "ON" if self.compressor_on else "OFF"
-        comp_color = "#16a34a" if self.compressor_on else "#6b7280"
-        self.compressor_label.setText(f"Compressor: {comp_status}")
-        self.compressor_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=comp_color))
+    def update_actuators(self, *args, **kwargs):
+        """Kept for API compatibility; actuators are not shown on this tab."""
 
     def update_sensors(self, sensor_states: dict):
         """Update digital sensor display."""
@@ -1954,7 +2051,7 @@ class Service2Tab(QWidget):
             label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
 
     def update_temperatures(self, temps: Optional[dict] = None):
-        """Update every configured label from the resolved temperature dict."""
+        """Cache logical temperatures for the main and advanced graphs."""
         temps = temps or {}
         for name in self.sensor_names:
             value = temps.get(name, float("nan"))
@@ -1963,235 +2060,40 @@ class Service2Tab(QWidget):
             except (TypeError, ValueError):
                 self.temp_values[name] = float("nan")
 
-        for name, value in self.temp_values.items():
-            label = self.temp_labels.get(name)
-            if label is None:
-                continue
-            if math.isnan(value):
-                label.setText(f"{name}: --.-°C")
-                label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-                continue
-            if value < 20:
-                color = "#3b82f6"
-            elif value > 25:
-                color = "#ef4444"
-            else:
-                color = "#16a34a"
-            label.setText(f"{name}: {value:.1f}°C")
-            label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
-
     def update_pressures(self, pressures: Optional[dict] = None):
-        """Update pressure display in psi."""
-        if pressures:
-            self.pressure_values.update(pressures)
-
-        for name, value in self.pressure_values.items():
-            label = self.pressure_labels.get(name)
-            if label is None:
-                continue
-            if math.isnan(value):
-                label.setText(f"{name}: --.-- psi")
-                label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-                continue
-            label.setText(f"{name}: {value:.2f} psi")
-            label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color="#8b5cf6"))
-
-
-class PressureServiceTab(QWidget):
-    """Service tab focused on pressure sensors and pump speed."""
-
-    _LABEL_NEUTRAL_STYLE = "font-size: 12px; padding: 6px; color: #5c6b79;"
-    _LABEL_STRONG_TEMPLATE = "font-size: 12px; padding: 6px; color: {color}; font-weight: 600;"
-    _DEFAULT_PRESSURE_SENSOR_NAMES = (
-        "Pressure 1",
-        "Pressure 2",
-        "Pressure 3",
-        "Pressure 4",
-    )
-
-    def __init__(
-        self,
-        pressure_sensor_names: Optional[list[str]] = None,
-        capture_rate_hz: float = 100.0,
-    ):
-        super().__init__()
-        self.pressure_sensor_names = list(
-            pressure_sensor_names
-            if pressure_sensor_names is not None
-            else self._DEFAULT_PRESSURE_SENSOR_NAMES
-        )
-        self.capture_rate_hz = max(1.0, float(capture_rate_hz))
-        self.pressure_values = {name: float("nan") for name in self.pressure_sensor_names}
-        self.pressure_labels: dict = {}
-        self.pump_speed_rpm = 0
-        self.pump_flow_ml_per_min_per_rpm = DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
-        self.pressure_csv_logging_enabled = False
-        self.on_pressure_csv_logging_toggle_callback: Optional[
-            Callable[[bool], None]
-        ] = None
-        self._create_widgets()
-        self._setup_layout()
-
-    def _create_widgets(self):
-        self.pressure_group = QGroupBox("Pressure Sensors")
-        self.pressure_group.setStyleSheet(ServiceTab._group_box_style("#8b5cf6", "10px", margin_top=6))
-        for name in self.pressure_sensor_names:
-            label = QLabel(f"{name}: --.-- psi")
-            label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-            self.pressure_labels[name] = label
-
-        self.pump_group = QGroupBox("Pump")
-        self.pump_group.setStyleSheet(ServiceTab._group_box_style("#0e6a76", "10px", margin_top=6))
-        self.pump_speed_label = QLabel("Pump: 0 RPM")
-        self.pump_speed_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-
-        self.logging_group = QGroupBox("Pressure CSV Log")
-        self.logging_group.setStyleSheet(
-            ServiceTab._group_box_style("#8b5cf6", "10px", margin_top=6)
-        )
-        self.pressure_csv_logging_button = QPushButton("Logging OFF")
-        self.pressure_csv_logging_button.setMinimumHeight(44)
-        self.pressure_csv_logging_button.clicked.connect(
-            self._on_pressure_csv_logging_toggle_clicked
-        )
-        self._apply_pressure_csv_logging_button_style(False)
-        rate_txt = f"{self.capture_rate_hz:.0f} Hz"
-        self.pressure_csv_status_label = QLabel(
-            f"Toggle ON to start a new pressure CSV file ({rate_txt})."
-        )
-        self.pressure_csv_status_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-        self.pressure_csv_status_label.setWordWrap(True)
-
-    def _setup_layout(self):
-        main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(4)
-
-        pressure_layout = QGridLayout()
-        for index, name in enumerate(self.pressure_sensor_names):
-            row = index // 2
-            col = index % 2
-            pressure_layout.addWidget(self.pressure_labels[name], row, col)
-        self.pressure_group.setLayout(pressure_layout)
-        main_layout.addWidget(self.pressure_group)
-
-        pump_layout = QHBoxLayout()
-        pump_layout.addWidget(self.pump_speed_label)
-        self.pump_group.setLayout(pump_layout)
-        main_layout.addWidget(self.pump_group)
-
-        logging_layout = QVBoxLayout()
-        logging_layout.setSpacing(6)
-        logging_layout.addWidget(self.pressure_csv_logging_button)
-        logging_layout.addWidget(self.pressure_csv_status_label)
-        self.logging_group.setLayout(logging_layout)
-        main_layout.addWidget(self.logging_group)
-
-        main_layout.addStretch()
-        self.setLayout(main_layout)
-
-    def _on_pressure_csv_logging_toggle_clicked(self):
-        self.set_pressure_csv_logging(not self.pressure_csv_logging_enabled)
-        if self.on_pressure_csv_logging_toggle_callback:
-            self.on_pressure_csv_logging_toggle_callback(
-                self.pressure_csv_logging_enabled
-            )
-
-    def set_pressure_csv_logging(self, enabled: bool) -> None:
-        """Update toggle state/UI without emitting the callback."""
-        self.pressure_csv_logging_enabled = bool(enabled)
-        self._apply_pressure_csv_logging_button_style(self.pressure_csv_logging_enabled)
-        rate_txt = f"{self.capture_rate_hz:.0f} Hz"
-        if self.pressure_csv_logging_enabled:
-            self.pressure_csv_status_label.setText(
-                f"Logging ON — writing a new pressure CSV at {rate_txt}."
-            )
-            self.pressure_csv_status_label.setStyleSheet(
-                self._LABEL_STRONG_TEMPLATE.format(color="#16a34a")
-            )
-        else:
-            self.pressure_csv_status_label.setText(
-                f"Toggle ON to start a new pressure CSV file ({rate_txt})."
-            )
-            self.pressure_csv_status_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-
-    def _apply_pressure_csv_logging_button_style(self, logging_enabled: bool):
-        if logging_enabled:
-            text = "Logging ON"
-            bg = "#22c55e"
-            hover = "#16a34a"
-            border = "#15803d"
-        else:
-            text = "Logging OFF"
-            bg = "#6b7280"
-            hover = "#4b5563"
-            border = "#4b5563"
-        self.pressure_csv_logging_button.setText(text)
-        self.pressure_csv_logging_button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {bg};
-                color: white;
-                font-size: 14px;
-                font-weight: 700;
-                border-radius: 10px;
-                padding: 8px 12px;
-                border: 2px solid {border};
-            }}
-            QPushButton:hover {{
-                background-color: {hover};
-            }}
-        """)
-
-    def update_pressures(self, pressures: Optional[dict] = None):
-        """Update pressure display in psi."""
-        if pressures:
-            self.pressure_values.update(pressures)
-
-        for name, value in self.pressure_values.items():
-            label = self.pressure_labels.get(name)
-            if label is None:
-                continue
-            if math.isnan(value):
-                label.setText(f"{name}: --.-- psi")
-                label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-                continue
-            label.setText(f"{name}: {value:.2f} psi")
-            label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color="#8b5cf6"))
-
-    def update_pump_speed(
-        self,
-        pump_speed_rpm: Optional[int] = None,
-        flow_ml_per_min: Optional[float] = None,
-    ):
-        """Update pump speed / derived flow display."""
-        if pump_speed_rpm is not None:
-            self.pump_speed_rpm = max(0, int(pump_speed_rpm))
-
-        if flow_ml_per_min is not None:
-            flow_text = f"{float(flow_ml_per_min):.0f} ml/min"
-        else:
-            ml_per_min = _pump_flow_ml_per_min(
-                self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
-            )
-            flow_text = f"{ml_per_min:.1f} ml/min"
-        if self.pump_speed_rpm > 0:
-            pump_color = "#16a34a"
-            pump_text = f"Pump: {self.pump_speed_rpm} RPM ({flow_text})"
-        else:
-            pump_color = "#6b7280"
-            pump_text = f"Pump: 0 RPM ({flow_text}, stopped)"
-        self.pump_speed_label.setText(pump_text)
-        self.pump_speed_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=pump_color))
+        """Kept for API compatibility; pressures are not shown on this tab."""
 
 
 class MultiTemperatureGraphWidget(QWidget):
-    """Custom graph widget for plotting multiple temperature channels."""
+    """Custom graph widget for plotting multiple time series.
+
+    Left-axis series share ``y_unit`` (temperatures by default). Optional
+    ``right_axis_names`` are scaled independently (e.g. pump flow).
+    """
 
     _MAX_HISTORY_SEC = 3600  # 60 minutes
 
-    def __init__(self, series_names: list[str]):
+    def __init__(
+        self,
+        series_names: list[str],
+        *,
+        y_unit: str = "°C",
+        y_tick_format: str = "{:.1f}",
+        default_y_range: tuple[float, float] = (20.0, 40.0),
+        right_axis_names: Optional[set[str]] = None,
+        right_axis_unit: str = "",
+        right_tick_format: str = "{:.0f}",
+        default_right_y_range: tuple[float, float] = (0.0, 70.0),
+    ):
         super().__init__()
         self.series_names = list(series_names)
+        self._y_unit = y_unit
+        self._y_tick_format = y_tick_format
+        self._default_y_range = default_y_range
+        self._right_axis_names = set(right_axis_names or ())
+        self._right_axis_unit = right_axis_unit
+        self._right_tick_format = right_tick_format
+        self._default_right_y_range = default_right_y_range
         self._history = deque()
         self._visible = {name: True for name in self.series_names}
         self._x_window_minutes_options = [5, 10, 15, 30, 60]
@@ -2213,6 +2115,9 @@ class MultiTemperatureGraphWidget(QWidget):
             name: base_colors[i % len(base_colors)]
             for i, name in enumerate(self.series_names)
         }
+
+    def _left_axis_names(self) -> list[str]:
+        return [name for name in self.series_names if name not in self._right_axis_names]
 
     def set_series_visible(self, name: str, visible: bool):
         if name in self._visible:
@@ -2276,9 +2181,10 @@ class MultiTemperatureGraphWidget(QWidget):
         painter.setPen(QPen(QColor("#cbd5e1"), 2))
         painter.drawRoundedRect(graph_x, graph_y, graph_width, graph_height, 10, 10)
 
+        has_right_axis = bool(self._right_axis_names)
         plot_left = graph_x + 44
-        plot_right = graph_x + graph_width - 12
-        plot_top = graph_y + 12
+        plot_right = graph_x + graph_width - (56 if has_right_axis else 12)
+        plot_top = graph_y + (20 if has_right_axis else 12)
         # No footer legend anymore; keep only space for x-axis labels.
         plot_bottom = graph_y + graph_height - 24
         plot_width = max(1, plot_right - plot_left)
@@ -2292,7 +2198,12 @@ class MultiTemperatureGraphWidget(QWidget):
             entry for entry in self._history if start_ts <= entry[0] <= end_ts
         ]
 
-        y_min, y_max = self._compute_visible_y_range(visible_entries)
+        y_min, y_max = self._compute_visible_y_range(
+            visible_entries, self._left_axis_names(), self._default_y_range
+        )
+        right_y_min, right_y_max = self._compute_visible_y_range(
+            visible_entries, list(self._right_axis_names), self._default_right_y_range
+        )
 
         # Dotted minor subdivisions between the major horizontal gridlines.
         minor_pen = QPen(QColor("#e2e8f0"), 1)
@@ -2312,11 +2223,38 @@ class MultiTemperatureGraphWidget(QWidget):
             painter.setPen(QPen(QColor("#e2e8f0"), 1))
             painter.drawLine(plot_left, py, plot_right, py)
             painter.setPen(QColor("#475569"))
+            left_label = self._y_tick_format.format(t)
+            if not has_right_axis:
+                left_label = f"{left_label}{self._y_unit}"
             painter.drawText(
                 QRectF(graph_x + 2, py - 8, 42, 16),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                f"{t:.1f}°C",
+                left_label,
             )
+            if has_right_axis:
+                rt = right_y_min + (i / 6.0) * (right_y_max - right_y_min)
+                painter.setPen(QColor("#475569"))
+                painter.drawText(
+                    QRectF(plot_right + 2, py - 8, 52, 16),
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                    self._right_tick_format.format(rt),
+                )
+
+        if has_right_axis:
+            painter.setFont(QFont("Arial", 8, QFont.Weight.Bold))
+            painter.setPen(QColor("#64748b"))
+            if self._y_unit:
+                painter.drawText(
+                    QRectF(graph_x + 2, graph_y + 2, 42, 12),
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                    self._y_unit,
+                )
+            if self._right_axis_unit:
+                painter.drawText(
+                    QRectF(plot_right + 2, graph_y + 2, 52, 12),
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                    self._right_axis_unit,
+                )
 
         # Dotted minor subdivisions between the major vertical gridlines.
         minor_pen = QPen(QColor("#e2e8f0"), 1)
@@ -2338,7 +2276,7 @@ class MultiTemperatureGraphWidget(QWidget):
             painter.drawLine(px, plot_top, px, plot_bottom)
             painter.setPen(QColor("#334155"))
             painter.drawText(
-                QRectF(px - 18, plot_bottom + 4, 36, 14),
+                QRectF(px - 26, plot_bottom + 4, 52, 14),
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
                 label,
             )
@@ -2346,11 +2284,15 @@ class MultiTemperatureGraphWidget(QWidget):
         painter.setPen(QPen(QColor("#64748b"), 1))
         painter.drawLine(int(plot_left), int(plot_top), int(plot_left), int(plot_bottom))
         painter.drawLine(int(plot_left), int(plot_bottom), int(plot_right), int(plot_bottom))
+        if has_right_axis:
+            painter.drawLine(
+                int(plot_right), int(plot_top), int(plot_right), int(plot_bottom)
+            )
 
         if visible_entries:
-            def temp_to_y(t: float) -> float:
-                t_clamped = max(y_min, min(y_max, t))
-                ratio = (t_clamped - y_min) / max(0.001, (y_max - y_min))
+            def value_to_y(value: float, axis_min: float, axis_max: float) -> float:
+                t_clamped = max(axis_min, min(axis_max, value))
+                ratio = (t_clamped - axis_min) / max(0.001, (axis_max - axis_min))
                 return plot_bottom - ratio * plot_height
 
             def time_to_x(ts: float) -> float:
@@ -2363,6 +2305,11 @@ class MultiTemperatureGraphWidget(QWidget):
             for name in self.series_names:
                 if not self._visible.get(name, False):
                     continue
+                axis_min, axis_max = (
+                    (right_y_min, right_y_max)
+                    if name in self._right_axis_names
+                    else (y_min, y_max)
+                )
                 pen = QPen(QColor(self._series_colors[name]), 2)
                 path = QPainterPath()
                 first = True
@@ -2371,7 +2318,7 @@ class MultiTemperatureGraphWidget(QWidget):
                     if math.isnan(value):
                         continue
                     px = time_to_x(ts)
-                    py = temp_to_y(value)
+                    py = value_to_y(value, axis_min, axis_max)
                     if first:
                         path.moveTo(px, py)
                         first = False
@@ -2383,14 +2330,24 @@ class MultiTemperatureGraphWidget(QWidget):
                     painter.strokePath(path, pen)
             painter.restore()
 
-    def _compute_visible_y_range(self, visible_entries):
+    def _compute_visible_y_range(
+        self,
+        visible_entries,
+        series_names: Optional[list[str]] = None,
+        default_range: Optional[tuple[float, float]] = None,
+    ):
+        names = list(series_names) if series_names is not None else list(self.series_names)
+        fallback = default_range if default_range is not None else self._default_y_range
         values = []
         for _ts, series_values in visible_entries:
-            for name, value in series_values.items():
-                if self._visible.get(name, False) and not math.isnan(value):
+            for name in names:
+                if not self._visible.get(name, False):
+                    continue
+                value = series_values.get(name, float("nan"))
+                if not math.isnan(value):
                     values.append(value)
         if not values:
-            return 20.0, 40.0
+            return fallback
         data_min = min(values)
         data_max = max(values)
         data_range = max(0.5, data_max - data_min)
@@ -2434,12 +2391,27 @@ class MultiTemperatureGraphWidget(QWidget):
 
 
 class TemperatureGraphTab(QWidget):
-    """Advanced tab: multi-temperature history graph with series toggles."""
+    """Advanced tab: multi-series history graph with series toggles."""
 
-    def __init__(self, series_names: list[str]):
+    def __init__(
+        self,
+        series_names: list[str],
+        *,
+        graph_widget: Optional[MultiTemperatureGraphWidget] = None,
+        series_units: Optional[dict[str, str]] = None,
+        series_formats: Optional[dict[str, str]] = None,
+        default_unit: str = "\u00b0C",
+        default_format: str = "{:.1f}",
+        right_column_width: int = _GRAPH_NAV_COLUMN_W,
+    ):
         super().__init__()
         self.series_names = list(series_names)
-        self.graph_widget = MultiTemperatureGraphWidget(self.series_names)
+        self.graph_widget = graph_widget or MultiTemperatureGraphWidget(self.series_names)
+        self._series_units = dict(series_units or {})
+        self._series_formats = dict(series_formats or {})
+        self._default_unit = default_unit
+        self._default_format = default_format
+        self._right_column_width = right_column_width
         self.checkboxes = {}
         self._create_time_scale_controls()
         self._create_widgets()
@@ -2448,12 +2420,12 @@ class TemperatureGraphTab(QWidget):
     def _create_time_scale_controls(self):
         """Build the X-axis time-window selector and pan buttons (like main page)."""
         self.graph_nav_left_button = QPushButton("<")
-        self.graph_nav_left_button.setFixedSize(34, 34)
+        self.graph_nav_left_button.setFixedSize(_GRAPH_NAV_BTN_W, _GRAPH_NAV_BTN_H)
         self.graph_nav_left_button.setStyleSheet(_GRAPH_NAV_BUTTON_STYLE)
         self.graph_nav_left_button.clicked.connect(self._on_nav_older)
 
         self.graph_nav_right_button = QPushButton(">")
-        self.graph_nav_right_button.setFixedSize(34, 34)
+        self.graph_nav_right_button.setFixedSize(_GRAPH_NAV_BTN_W, _GRAPH_NAV_BTN_H)
         self.graph_nav_right_button.setStyleSheet(_GRAPH_NAV_BUTTON_STYLE)
         self.graph_nav_right_button.clicked.connect(self._on_nav_newer)
 
@@ -2466,7 +2438,7 @@ class TemperatureGraphTab(QWidget):
             )
         )
         self.graph_window_combo.setStyleSheet(_GRAPH_WINDOW_COMBO_STYLE)
-        self.graph_window_combo.setMinimumHeight(34)
+        self.graph_window_combo.setFixedHeight(_GRAPH_NAV_BTN_H)
         self.graph_window_combo.currentIndexChanged.connect(self._on_window_changed)
 
     def _on_window_changed(self, index: int):
@@ -2556,7 +2528,7 @@ class TemperatureGraphTab(QWidget):
 
         right_container = QWidget()
         right_container.setLayout(right_column)
-        right_container.setFixedWidth(150)
+        right_container.setFixedWidth(self._right_column_width)
 
         # Maximize graph area (left) while keeping touch-friendly controls (right).
         main_layout.addWidget(self.graph_widget, 1)
@@ -2570,7 +2542,7 @@ class TemperatureGraphTab(QWidget):
         self._update_nav_states()
 
     def _update_checkbox_labels(self, series_values: dict) -> None:
-        """Show the latest value next to each probe name in the toggles."""
+        """Show the latest value next to each series name in the toggles."""
         for name, checkbox in self.checkboxes.items():
             raw = series_values.get(name)
             try:
@@ -2580,7 +2552,272 @@ class TemperatureGraphTab(QWidget):
             if math.isnan(value):
                 checkbox.setText(name)
             else:
-                checkbox.setText(f"{name}  {value:.1f} \u00b0C")
+                fmt = self._series_formats.get(name, self._default_format)
+                unit = self._series_units.get(name, self._default_unit)
+                checkbox.setText(f"{name}  {fmt.format(value)} {unit}")
+
+
+class PressureServiceTab(TemperatureGraphTab):
+    """Pressure and Flow graph: pressure sensors (psi) plus pump flow (ml/min)."""
+
+    # Short enough to fit the shared control column next to its value + unit.
+    PUMP_FLOW_SERIES = "Flow"
+    _DEFAULT_PRESSURE_SENSOR_NAMES = (
+        "Pressure 1",
+        "Pressure 2",
+        "Pressure 3",
+        "Pressure 4",
+    )
+
+    def __init__(self, pressure_sensor_names: Optional[list[str]] = None):
+        self.pressure_sensor_names = list(
+            pressure_sensor_names
+            if pressure_sensor_names is not None
+            else self._DEFAULT_PRESSURE_SENSOR_NAMES
+        )
+        series_names = list(self.pressure_sensor_names) + [self.PUMP_FLOW_SERIES]
+        series_units = {name: "psi" for name in self.pressure_sensor_names}
+        series_units[self.PUMP_FLOW_SERIES] = "ml/min"
+        series_formats = {name: "{:.1f}" for name in self.pressure_sensor_names}
+        series_formats[self.PUMP_FLOW_SERIES] = "{:.0f}"
+        graph_widget = MultiTemperatureGraphWidget(
+            series_names,
+            y_unit="psi",
+            y_tick_format="{:.1f}",
+            default_y_range=(0.0, 40.0),
+            right_axis_names={self.PUMP_FLOW_SERIES},
+            right_axis_unit="ml/min",
+            right_tick_format="{:.0f}",
+            default_right_y_range=(0.0, 70.0),
+        )
+        graph_widget._series_colors[self.PUMP_FLOW_SERIES] = "#0e6a76"
+        super().__init__(
+            series_names,
+            graph_widget=graph_widget,
+            series_units=series_units,
+            series_formats=series_formats,
+            default_unit="psi",
+            default_format="{:.1f}",
+        )
+        self.pressure_values = {
+            name: float("nan") for name in self.pressure_sensor_names
+        }
+        self.pump_speed_rpm = 0
+        self.pump_flow_ml_per_min_per_rpm = DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
+        self._flow_ml_per_min = 0.0
+
+    def update_pressures(self, pressures: Optional[dict] = None):
+        """Store the latest pressure readings (psi) for the next graph sample."""
+        if pressures:
+            self.pressure_values.update(pressures)
+
+    def update_pump_speed(
+        self,
+        pump_speed_rpm: Optional[int] = None,
+        flow_ml_per_min: Optional[float] = None,
+    ):
+        """Store pump speed / derived flow for the next graph sample."""
+        if pump_speed_rpm is not None:
+            self.pump_speed_rpm = max(0, int(pump_speed_rpm))
+        if flow_ml_per_min is not None:
+            self._flow_ml_per_min = max(0.0, float(flow_ml_per_min))
+        elif pump_speed_rpm is not None:
+            self._flow_ml_per_min = _pump_flow_ml_per_min(
+                self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
+            )
+
+    def push_latest_sample(self) -> None:
+        """Append one graph point from the latest pressure and flow values."""
+        series_values = {
+            name: self.pressure_values.get(name, float("nan"))
+            for name in self.pressure_sensor_names
+        }
+        series_values[self.PUMP_FLOW_SERIES] = self._flow_ml_per_min
+        self.add_sample(series_values)
+
+
+class PowerGraphTab(TemperatureGraphTab):
+    """Catheter and cartridge cooling power (W) from ΔT and water mass flow."""
+
+    CATHETER_SERIES = "Catheter"
+    CARTRIDGE_SERIES = "Cartridge"
+
+    def __init__(self, config: Optional[dict] = None):
+        self.power_config = CoolingPowerConfig.from_config_dict(
+            (config or {}).get("cooling_power")
+        )
+        series_names = [self.CATHETER_SERIES, self.CARTRIDGE_SERIES]
+        graph_widget = MultiTemperatureGraphWidget(
+            series_names,
+            y_unit="W",
+            y_tick_format="{:.1f}",
+            default_y_range=(0.0, 40.0),
+        )
+        graph_widget._series_colors[self.CATHETER_SERIES] = "#0ea5e9"
+        graph_widget._series_colors[self.CARTRIDGE_SERIES] = "#f59e0b"
+        super().__init__(
+            series_names,
+            graph_widget=graph_widget,
+            series_units={name: "W" for name in series_names},
+            series_formats={name: "{:.1f}" for name in series_names},
+            default_unit="W",
+            default_format="{:.1f}",
+        )
+        self._temperatures: dict = {}
+        self.pump_speed_rpm = 0
+        self.pump_flow_ml_per_min_per_rpm = DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
+        self._flow_ml_per_min = 0.0
+
+    def update_temperatures(self, temperatures: Optional[dict] = None):
+        """Store the latest logical temperatures for the next power sample."""
+        if temperatures:
+            self._temperatures.update(temperatures)
+
+    def update_pump_speed(
+        self,
+        pump_speed_rpm: Optional[int] = None,
+        flow_ml_per_min: Optional[float] = None,
+    ):
+        """Store pump speed / derived flow for the next power sample."""
+        if pump_speed_rpm is not None:
+            self.pump_speed_rpm = max(0, int(pump_speed_rpm))
+        if flow_ml_per_min is not None:
+            self._flow_ml_per_min = max(0.0, float(flow_ml_per_min))
+        elif pump_speed_rpm is not None:
+            self._flow_ml_per_min = _pump_flow_ml_per_min(
+                self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
+            )
+
+    def _power_kwargs(self) -> dict:
+        cfg = self.power_config
+        return {
+            "density_kg_per_l": cfg.water_density_kg_per_l,
+            "cp_j_per_kg_k": cfg.water_cp_j_per_kg_k,
+        }
+
+    def push_latest_sample(self) -> None:
+        """Append one graph point from the latest temperatures and flow."""
+        cfg = self.power_config
+        temps = self._temperatures
+        kwargs = self._power_kwargs()
+        series_values = {
+            self.CATHETER_SERIES: catheter_cooling_power_w(
+                temps.get(cfg.catheter_in_label),
+                temps.get(cfg.catheter_out_label),
+                self._flow_ml_per_min,
+                **kwargs,
+            ),
+            self.CARTRIDGE_SERIES: cartridge_cooling_power_w(
+                temps.get(cfg.cartridge_in_label),
+                temps.get(cfg.cartridge_out_label),
+                self._flow_ml_per_min,
+                **kwargs,
+            ),
+        }
+        self.add_sample(series_values)
+
+
+class PressureLoggingTab(QWidget):
+    """Service 2 page: start/stop dedicated high-rate pressure CSV capture."""
+
+    _LABEL_NEUTRAL_STYLE = "font-size: 12px; padding: 6px; color: #5c6b79;"
+    _LABEL_STRONG_TEMPLATE = "font-size: 12px; padding: 6px; color: {color}; font-weight: 600;"
+
+    def __init__(self, capture_rate_hz: float = 100.0):
+        super().__init__()
+        self.capture_rate_hz = max(1.0, float(capture_rate_hz))
+        self.pressure_csv_logging_enabled = False
+        self.on_pressure_csv_logging_toggle_callback: Optional[
+            Callable[[bool], None]
+        ] = None
+        self._create_widgets()
+        self._setup_layout()
+
+    def _create_widgets(self):
+        self.logging_group = QGroupBox("Pressure CSV Log")
+        self.logging_group.setStyleSheet(
+            ServiceTab._group_box_style("#8b5cf6", "10px", margin_top=6)
+        )
+        self.pressure_csv_logging_button = QPushButton("Logging OFF")
+        self.pressure_csv_logging_button.setMinimumHeight(44)
+        self.pressure_csv_logging_button.clicked.connect(
+            self._on_pressure_csv_logging_toggle_clicked
+        )
+        self._apply_pressure_csv_logging_button_style(False)
+        rate_txt = f"{self.capture_rate_hz:.0f} Hz"
+        self.pressure_csv_status_label = QLabel(
+            f"Toggle ON to start a new pressure CSV file ({rate_txt})."
+        )
+        self.pressure_csv_status_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+        self.pressure_csv_status_label.setWordWrap(True)
+
+    def _setup_layout(self):
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(4)
+
+        logging_layout = QVBoxLayout()
+        logging_layout.setSpacing(6)
+        logging_layout.addWidget(self.pressure_csv_logging_button)
+        logging_layout.addWidget(self.pressure_csv_status_label)
+        self.logging_group.setLayout(logging_layout)
+        main_layout.addWidget(self.logging_group)
+
+        main_layout.addStretch()
+        self.setLayout(main_layout)
+
+    def _on_pressure_csv_logging_toggle_clicked(self):
+        self.set_pressure_csv_logging(not self.pressure_csv_logging_enabled)
+        if self.on_pressure_csv_logging_toggle_callback:
+            self.on_pressure_csv_logging_toggle_callback(
+                self.pressure_csv_logging_enabled
+            )
+
+    def set_pressure_csv_logging(self, enabled: bool) -> None:
+        """Update toggle state/UI without emitting the callback."""
+        self.pressure_csv_logging_enabled = bool(enabled)
+        self._apply_pressure_csv_logging_button_style(self.pressure_csv_logging_enabled)
+        rate_txt = f"{self.capture_rate_hz:.0f} Hz"
+        if self.pressure_csv_logging_enabled:
+            self.pressure_csv_status_label.setText(
+                f"Logging ON — writing a new pressure CSV at {rate_txt}."
+            )
+            self.pressure_csv_status_label.setStyleSheet(
+                self._LABEL_STRONG_TEMPLATE.format(color="#16a34a")
+            )
+        else:
+            self.pressure_csv_status_label.setText(
+                f"Toggle ON to start a new pressure CSV file ({rate_txt})."
+            )
+            self.pressure_csv_status_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+
+    def _apply_pressure_csv_logging_button_style(self, logging_enabled: bool):
+        if logging_enabled:
+            text = "Logging ON"
+            bg = "#22c55e"
+            hover = "#16a34a"
+            border = "#15803d"
+        else:
+            text = "Logging OFF"
+            bg = "#6b7280"
+            hover = "#4b5563"
+            border = "#4b5563"
+        self.pressure_csv_logging_button.setText(text)
+        self.pressure_csv_logging_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: white;
+                font-size: 14px;
+                font-weight: 700;
+                border-radius: 10px;
+                padding: 8px 12px;
+                border: 2px solid {border};
+            }}
+            QPushButton:hover {{
+                background-color: {hover};
+            }}
+        """)
+
 
 class CalibrationTab(QWidget):
     """Advanced tab: two-point calibration controls."""
@@ -2948,6 +3185,45 @@ class MainScreen(QMainWindow):
         y = max(0, (screen.height() - SCREEN_HEIGHT) // 2)
         self.move(x, y)
     
+    def _create_tabbed_page(
+        self,
+        tabs: list[tuple[str, QWidget]],
+        *,
+        corner_widgets: Optional[list[QWidget]] = None,
+    ) -> tuple[QWidget, QTabBar, QStackedWidget]:
+        """Build one sub-page: a tab bar above a stack of tab widgets.
+
+        Returns the page plus its selector and stack so callers can query or
+        change the active tab later.
+        """
+        selector = QTabBar()
+        selector.setExpanding(False)
+        selector.setStyleSheet(_PAGE_TAB_BAR_STYLE)
+
+        stack = QStackedWidget()
+        for title, widget in tabs:
+            selector.addTab(title)
+            stack.addWidget(widget)
+
+        def on_current_changed(index: int) -> None:
+            stack.setCurrentIndex(index)
+
+        selector.currentChanged.connect(on_current_changed)
+
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(8)
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.setSpacing(10)
+        header_row.addWidget(selector, 1)
+        for corner_widget in corner_widgets or []:
+            header_row.addWidget(corner_widget, 0, Qt.AlignmentFlag.AlignRight)
+        page_layout.addLayout(header_row)
+        page_layout.addWidget(stack, 1)
+        return page, selector, stack
+
     def _create_widgets(self):
         """Create UI widgets"""
         # Main screen widget: temperature graph + setpoint controls
@@ -2989,24 +3265,24 @@ class MainScreen(QMainWindow):
         self.service_tab.on_compressor_thresholds_change_callback = self._on_service_compressor_thresholds_change
         self.service_tab.on_flow_ramp_test_logging_callback = self._on_service_flow_ramp_test_logging
 
-        # Animal Study tab (selected logical temperatures)
+        # Status tab (digital inputs; also caches logical temperatures for graphs)
         pressure_sensor_names = self._pressure_sensor_names_from_config(self.config)
         digital_sensor_names = self._digital_sensor_names_from_config(self.config)
         self.service2_tab = Service2Tab(
             self.temperature_sensor_names,
-            pressure_sensor_names=pressure_sensor_names,
             digital_sensor_names=digital_sensor_names,
         )
-        self.service2_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
         capture_rate_hz = float(
             (self.config.get("pressure_sensors") or {}).get("capture_rate_hz", 100)
         )
         self.pressure_service_tab = PressureServiceTab(
             pressure_sensor_names=pressure_sensor_names,
-            capture_rate_hz=capture_rate_hz,
         )
         self.pressure_service_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
-        self.pressure_service_tab.on_pressure_csv_logging_toggle_callback = (
+        self.power_graph_tab = PowerGraphTab(self.config)
+        self.power_graph_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
+        self.pressure_logging_tab = PressureLoggingTab(capture_rate_hz=capture_rate_hz)
+        self.pressure_logging_tab.on_pressure_csv_logging_toggle_callback = (
             self._on_pressure_csv_logging_toggle
         )
         self.calibration_tab = CalibrationTab(self.calibration_sensor_names)
@@ -3014,108 +3290,89 @@ class MainScreen(QMainWindow):
             self._on_temperature_graph_calibration_apply
         )
 
-        # In-window advanced area (graphs / Service / study tabs / Calibration).
-        self.advanced_tab_selector = QTabBar()
-        self.advanced_tab_selector.addTab("Temp Graph")
-        self.advanced_tab_selector.addTab("Service")
-        self.advanced_tab_selector.addTab("Pressure")
-        self.advanced_tab_selector.addTab("Animal Study")
-        self.advanced_tab_selector.addTab("Calibration")
-        self.advanced_tab_selector.setExpanding(False)
-
-        self.advanced_content_stack = QStackedWidget()
-        self.advanced_content_stack.addWidget(self.temperature_graph_tab)
-        self.advanced_content_stack.addWidget(self.service_tab)
-        self.advanced_content_stack.addWidget(self.pressure_service_tab)
-        self.advanced_content_stack.addWidget(self.service2_tab)
-        self.advanced_content_stack.addWidget(self.calibration_tab)
-        self.advanced_tab_selector.currentChanged.connect(self.advanced_content_stack.setCurrentIndex)
-
-        self.to_main_menu_button = QPushButton("To Main Menu")
-        self.to_main_menu_button.setFixedHeight(34)
+        self.to_main_menu_button = QPushButton()
+        self.to_main_menu_button.setFixedSize(34, 34)
+        self.to_main_menu_button.setIcon(_header_house_icon(20))
+        self.to_main_menu_button.setIconSize(QSize(20, 20))
+        self.to_main_menu_button.setToolTip("Back to main")
         self.to_main_menu_button.clicked.connect(self._show_main_view)
-        self.to_main_menu_button.setStyleSheet("""
-            QPushButton {
-                background: #e8edf2;
-                color: #24313d;
-                border: 1px solid #d1d8df;
-                border-radius: 12px;
-                font-size: 12px;
-                font-weight: 600;
-                padding: 0 14px;
-            }
-            QPushButton:hover {
-                background: #dde6ed;
-            }
-        """)
+        self.to_main_menu_button.setStyleSheet(_HEADER_ICON_BUTTON_STYLE)
         self.to_main_menu_button.setVisible(False)
 
-        # Corner control for toggling fullscreen/windowed mode.
-        self.window_mode_toggle_button = QPushButton("")
+        # Service launcher and fullscreen/windowed toggle: both sit in the
+        # expert tab row, so they are available on every expert tab and are
+        # out of reach from the main page.
+        self.service_view_button = QPushButton()
+        self.service_view_button.setFixedSize(34, 34)
+        self.service_view_button.setIcon(_header_gear_icon(20))
+        self.service_view_button.setIconSize(QSize(20, 20))
+        self.service_view_button.setToolTip("Open service view")
+        self.service_view_button.clicked.connect(self._show_service_view)
+        self.service_view_button.setStyleSheet(_HEADER_ICON_BUTTON_STYLE)
+
+        self.window_mode_toggle_button = QPushButton()
         self.window_mode_toggle_button.setFixedSize(34, 34)
+        self.window_mode_toggle_button.setIconSize(QSize(20, 20))
         self.window_mode_toggle_button.clicked.connect(self._toggle_window_mode)
-        self.window_mode_toggle_button.setStyleSheet("""
-            QPushButton {
-                background: #f8fafb;
-                color: #51606c;
-                border: 1px solid #d5dce3;
-                border-radius: 10px;
-                font-size: 14px;
-                font-weight: 700;
-            }
-            QPushButton:hover {
-                background: #eef3f7;
-            }
-            QPushButton:pressed {
-                background: #e5ebf0;
-            }
-        """)
+        self.window_mode_toggle_button.setStyleSheet(_HEADER_ICON_BUTTON_STYLE)
         self._update_window_mode_toggle_button()
 
-        self.advanced_page = QWidget()
-        advanced_layout = QVBoxLayout(self.advanced_page)
-        advanced_layout.setContentsMargins(0, 0, 0, 0)
-        advanced_layout.setSpacing(8)
-        advanced_header_row = QHBoxLayout()
-        advanced_header_row.setContentsMargins(0, 0, 0, 0)
-        advanced_header_row.setSpacing(10)
-        advanced_header_row.addWidget(self.advanced_tab_selector)
-        advanced_layout.addLayout(advanced_header_row)
-        advanced_layout.addWidget(self.advanced_content_stack, 1)
+        # Expert page: read-only monitoring (plots and sensor status).
+        (
+            self.expert_page,
+            self.expert_tab_selector,
+            self.expert_content_stack,
+        ) = self._create_tabbed_page(
+            [
+                ("Temperature", self.temperature_graph_tab),
+                ("Pressure and Flow", self.pressure_service_tab),
+                ("Power", self.power_graph_tab),
+                ("Status", self.service2_tab),
+            ],
+            corner_widgets=[
+                self.service_view_button,
+                self.window_mode_toggle_button,
+            ],
+        )
+
+        # Service page: everything that acts on the hardware or its calibration.
+        (
+            self.service_page,
+            self.service_tab_selector,
+            self.service_content_stack,
+        ) = self._create_tabbed_page(
+            [
+                ("Manual Operation", self.service_tab),
+                ("Pressure Log", self.pressure_logging_tab),
+                ("Calibration", self.calibration_tab),
+            ]
+        )
 
         self.content_stack = QStackedWidget()
         self.content_stack.addWidget(self.main_graph_widget)
-        self.content_stack.addWidget(self.advanced_page)
+        self.content_stack.addWidget(self.expert_page)
+        self.content_stack.addWidget(self.service_page)
+
+        # Compact expert-page launcher in the window header (upper-right).
+        self.expert_view_button = QPushButton()
+        self.expert_view_button.setFixedSize(34, 34)
+        self.expert_view_button.setIcon(_header_chart_icon(20))
+        self.expert_view_button.setIconSize(QSize(20, 20))
+        self.expert_view_button.setToolTip("Open expert view")
+        self.expert_view_button.clicked.connect(self._show_expert_view)
+        self.expert_view_button.setStyleSheet(_HEADER_ICON_BUTTON_STYLE)
         
-        # Compact advanced settings launcher
-        self.advanced_settings_button = QPushButton("⚙")
-        self.advanced_settings_button.setFixedSize(52, 52)
-        self.advanced_settings_button.setToolTip("Open advanced settings")
-        self.advanced_settings_button.clicked.connect(self._show_advanced_view)
-        self.advanced_settings_button.setStyleSheet("""
-            QPushButton {
-                background: #f8fafb;
-                color: #51606c;
-                border: 1px solid #d5dce3;
-                border-radius: 14px;
-                font-size: 20px;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background: #eef3f7;
-            }
-            QPushButton:pressed {
-                background: #e5ebf0;
-            }
-        """)
-        
-        # Top bar: workflow state (left) and hint/error status (right)
+        # Top bar: workflow state (left) and hint/error status (right). The same
+        # header is used by the main page and the service pages.
         self.state_label = QLabel("State: Init")
         self.state_label.setMinimumHeight(32)
         self.state_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
         self.state_label.setWordWrap(True)
+        self.state_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
 
         self.error_status_label = QLabel("")
         self.error_status_label.setMinimumHeight(32)
@@ -3214,15 +3471,15 @@ class MainScreen(QMainWindow):
         main_layout.setContentsMargins(8, 5, 8, 5)
         main_layout.setSpacing(4)
         
-        # Header row: state (left), error (right), then menu controls
+        # Header row: state (left), then corner icons (gear on main, house on service).
         header_row = QHBoxLayout()
         header_row.setContentsMargins(0, 0, 0, 0)
         header_row.setSpacing(10)
         header_row.addWidget(self.state_label, 1)
         header_row.addWidget(self.error_status_label, 0)
         header_row.addWidget(self.session_timer_label, 0)
-        header_row.addWidget(self.to_main_menu_button)
-        header_row.addWidget(self.window_mode_toggle_button, 0, Qt.AlignmentFlag.AlignRight)
+        header_row.addWidget(self.expert_view_button, 0, Qt.AlignmentFlag.AlignRight)
+        header_row.addWidget(self.to_main_menu_button, 0, Qt.AlignmentFlag.AlignRight)
         main_layout.addLayout(header_row)
 
         # Main content area
@@ -3237,7 +3494,6 @@ class MainScreen(QMainWindow):
         state_button_layout.setSpacing(10)
         state_button_layout.addWidget(self.pumping_toggle_button)
         state_button_layout.addWidget(self.acknowledge_button)
-        state_button_layout.addWidget(self.advanced_settings_button)
         self.state_buttons_row.setLayout(state_button_layout)
         # Fixed-height footer keeps action buttons from clipping on Pi.
         self.state_buttons_row.setFixedHeight(64)
@@ -3288,13 +3544,13 @@ class MainScreen(QMainWindow):
             self.on_compressor_thresholds_change_callback(off_temp_c, on_temp_c)
 
     def _on_pressure_csv_logging_toggle(self, enabled: bool):
-        """Forward Pressure-tab CSV capture toggle to the app callback."""
+        """Forward Service 2 CSV capture toggle to the app callback."""
         if self.on_pressure_csv_logging_toggle_callback:
             self.on_pressure_csv_logging_toggle_callback(enabled)
 
     def _set_pressure_csv_logging(self, enabled: bool, *, restart: bool = False) -> None:
-        """Set pressure CSV logging and keep the Pressure tab toggle in sync."""
-        tab = self.pressure_service_tab
+        """Set pressure CSV logging and keep the Service 2 toggle in sync."""
+        tab = self.pressure_logging_tab
         enabled = bool(enabled)
         if enabled and restart and tab.pressure_csv_logging_enabled:
             tab.set_pressure_csv_logging(False)
@@ -3323,14 +3579,12 @@ class MainScreen(QMainWindow):
         self._update_window_mode_toggle_button()
 
     def _update_window_mode_toggle_button(self) -> None:
-        """Show an intuitive icon for the next window mode action."""
+        """Show an icon for the window mode the button switches to."""
         if self.isFullScreen():
-            # Restore down icon when currently fullscreen.
-            self.window_mode_toggle_button.setText("❐")
+            self.window_mode_toggle_button.setIcon(_header_restore_window_icon(20))
             self.window_mode_toggle_button.setToolTip("Exit fullscreen")
         else:
-            # Maximize icon when currently windowed.
-            self.window_mode_toggle_button.setText("□")
+            self.window_mode_toggle_button.setIcon(_header_fullscreen_icon(20))
             self.window_mode_toggle_button.setToolTip("Enter fullscreen")
 
     def _on_temperature_graph_calibration_apply(
@@ -3399,23 +3653,32 @@ class MainScreen(QMainWindow):
         if self.on_acknowledge_callback:
             self.on_acknowledge_callback()
 
-    def _show_advanced_view(self):
-        """Switch to in-window advanced settings page."""
-        self.content_stack.setCurrentWidget(self.advanced_page)
-        self._set_main_action_buttons_visible(False)
-        self.to_main_menu_button.setVisible(True)
-        self.state_label.setFixedWidth(self._ADVANCED_STATE_LABEL_WIDTH)
+    def _show_page(self, page: QWidget) -> None:
+        """Show one of the three top-level pages and sync the header icons.
+
+        The main page only offers the expert page; the service page is reached
+        from the expert tab row, and both sub-pages offer the way back.
+        """
+        self.content_stack.setCurrentWidget(page)
+        on_main = page is self.main_graph_widget
+        self._set_main_action_buttons_visible(on_main)
+        if on_main:
+            # Acknowledge stays hidden unless a fault is currently latched.
+            self.acknowledge_button.setVisible(getattr(self, "_in_error_state", False))
+        self.expert_view_button.setVisible(page is not self.expert_page)
+        self.to_main_menu_button.setVisible(not on_main)
 
     def _show_main_view(self):
-        """Return to main screen from advanced settings page."""
-        self.content_stack.setCurrentWidget(self.main_graph_widget)
-        self._set_main_action_buttons_visible(True)
-        # Acknowledge stays hidden unless a fault is currently latched.
-        self.acknowledge_button.setVisible(getattr(self, "_in_error_state", False))
-        self.to_main_menu_button.setVisible(False)
-        self.state_label.setMinimumWidth(0)
-        self.state_label.setMaximumWidth(16777215)
-        self.state_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        """Show the main page: minimal set of numbers plus the action buttons."""
+        self._show_page(self.main_graph_widget)
+
+    def _show_expert_view(self):
+        """Show the expert page: temperature / pressure plots and status."""
+        self._show_page(self.expert_page)
+
+    def _show_service_view(self):
+        """Show the service page: manual operation, pressure log, calibration."""
+        self._show_page(self.service_page)
 
     def _set_main_action_buttons_visible(self, visible: bool):
         """Show or hide the bottom action row (children follow the parent)."""
@@ -3556,6 +3819,10 @@ class MainScreen(QMainWindow):
         self.service_tab.update_outputs()
         self.service2_tab.update_actuators()
         self.pressure_service_tab.update_pump_speed()
+        self.pressure_service_tab.push_latest_sample()
+        self.power_graph_tab.update_temperatures(self.service2_tab.temp_values)
+        self.power_graph_tab.update_pump_speed()
+        self.power_graph_tab.push_latest_sample()
     
     def _update_session_timer(self) -> None:
         """Refresh the header session timer (whole minutes since start)."""
@@ -3580,8 +3847,6 @@ class MainScreen(QMainWindow):
         self.warnings_label.setText("\n".join(lines))
         self.warnings_label.setVisible(True)
 
-    # Width of the state indicator on the advanced page (half of usable width).
-    _ADVANCED_STATE_LABEL_WIDTH = max(260, (SCREEN_WIDTH - 20) // 2)
     # Sentinel used to drop a previous setFixedSize(...) constraint.
     _QWIDGET_SIZE_MAX = 16777215
 

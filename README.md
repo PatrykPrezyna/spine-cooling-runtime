@@ -64,6 +64,39 @@ Off-Pi mode uses fakes in `src/sim/`; tweak default sensor/temp values under `si
 3 log in using port 22
 4 Go to spine-cooling-runtime/data/csv and doube cloick selected file
 
+### The two log files
+
+Each run writes two kinds of CSV, because temperature and pressure are sampled
+at different rates. Eight thermistors on two ADS1115s take ~60 ms for a full
+sweep, so temperatures cannot go much above ~16 Hz; the pressure chips run at
+860 SPS specifically to sustain 100 Hz.
+
+| File | Rate | Contents |
+|------|------|----------|
+| `data/csv/sensor_log_<session>.csv` | `ui.update_interval_ms` (100 ms → 10 Hz) | Temperatures, setpoint, pump, compressor, pressures |
+| `data/csv/pressure/pressure_log_<session>_runNN.csv` | `pressure_sensors.capture_rate_hz` (100 Hz) | Pressures + pump setpoint only |
+
+Both names share one `<session>` stamp taken at startup, so a pressure file
+always pairs with the session log of the same run. `NN` starts at `01` and
+increments each time pressure capture is toggled off and on again, so one
+session can hold several captures.
+
+High-rate capture starts automatically with the session; set
+`logging.pressure_autostart: false` to require the Service 2 toggle instead.
+The toggle still works either way — turning it off closes the current run, and
+turning it back on opens the next `runNN`.
+
+To combine them, join on the timestamp — the fast file carries the detail and
+the session file supplies the temperatures around it:
+
+```python
+import pandas as pd
+
+session = pd.read_csv("sensor_log_20260817_170941.csv", parse_dates=["timestamp"])
+fast = pd.read_csv("pressure/pressure_log_20260817_170941_run01.csv", parse_dates=["timestamp"])
+merged = pd.merge_asof(fast, session, on="timestamp", direction="nearest")
+```
+
 ## Project structure
 
 **Entry point:** `src/main.py` — wires sensors, drivers, state machine, and GUI together.

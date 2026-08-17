@@ -10,7 +10,6 @@ Chain under test:
 
 from __future__ import annotations
 
-import math
 import os
 import sys
 import unittest
@@ -125,10 +124,10 @@ class ConfigCalibrationTests(unittest.TestCase):
         self.assertEqual(
             labels,
             [
-                "Cartridge Input",
-                "Cartridge Output",
-                "Pump Input",
-                "Pump Output",
+                "Pump Out",
+                "Pump In",
+                "Catheter In",
+                "Catheter Out",
             ],
         )
 
@@ -227,66 +226,12 @@ class UiPressureFormatTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-        from PyQt6.QtWidgets import QApplication
+        try:
+            from PyQt6.QtWidgets import QApplication
+        except Exception as exc:
+            raise unittest.SkipTest(f"PyQt6 unavailable on this host: {exc}") from exc
 
         cls._app = QApplication.instance() or QApplication([])
-
-    def test_service2_tab_shows_psi_with_two_decimals(self) -> None:
-        from gui import Service2Tab
-
-        tab = Service2Tab(
-            sensor_names=["CSF"],
-            pressure_sensor_names=[
-                "Cartridge Input",
-                "Cartridge Output",
-                "Pump Input",
-                "Pump Output",
-            ],
-        )
-
-        # Drive the same path main.py uses after a reader poll.
-        voltages = {
-            0: MV_LO / 1000.0,
-            1: MV_HI / 1000.0,
-            2: 0.0,
-            3: ((MV_LO + MV_HI) / 2.0) / 1000.0,
-        }
-        reader = _reader_with_voltages(voltages)
-        pressures = reader.read_pressures()
-        tab.update_pressures(pressures)
-
-        self.assertEqual(
-            tab.pressure_labels["Cartridge Input"].text(),
-            "Cartridge Input: -11.50 psi",
-        )
-        self.assertEqual(
-            tab.pressure_labels["Cartridge Output"].text(),
-            "Cartridge Output: 75.00 psi",
-        )
-        mid = (PSI_LO + PSI_HI) / 2.0
-        self.assertEqual(
-            tab.pressure_labels["Pump Output"].text(),
-            f"Pump Output: {mid:.2f} psi",
-        )
-        zero_psi = mv_to_psi(0.0)
-        self.assertEqual(
-            tab.pressure_labels["Pump Input"].text(),
-            f"Pump Input: {zero_psi:.2f} psi",
-        )
-
-    def test_nan_shows_placeholder_with_unit(self) -> None:
-        from gui import Service2Tab
-
-        tab = Service2Tab(
-            sensor_names=["CSF"],
-            pressure_sensor_names=["Cartridge Input"],
-        )
-        tab.update_pressures({"Cartridge Input": float("nan")})
-        self.assertEqual(
-            tab.pressure_labels["Cartridge Input"].text(),
-            "Cartridge Input: --.-- psi",
-        )
-        self.assertTrue(math.isnan(tab.pressure_values["Cartridge Input"]))
 
     def test_pressure_service_tab_shows_psi_and_pump_speed(self) -> None:
         from gui import PressureServiceTab
@@ -309,17 +254,24 @@ class UiPressureFormatTests(unittest.TestCase):
         )
         tab.update_pressures(reader.read_pressures())
         tab.update_pump_speed(pump_speed_rpm=30)
+        tab.push_latest_sample()
 
         self.assertEqual(
-            tab.pressure_labels["Cartridge Input"].text(),
-            "Cartridge Input: -11.50 psi",
+            tab.checkboxes["Cartridge Input"].text(),
+            "Cartridge Input  -11.5 psi",
         )
         self.assertEqual(
-            tab.pressure_labels["Cartridge Output"].text(),
-            "Cartridge Output: 75.00 psi",
+            tab.checkboxes["Cartridge Output"].text(),
+            "Cartridge Output  75.0 psi",
         )
-        self.assertIn("Pump: 30 RPM", tab.pump_speed_label.text())
-        self.assertIn("ml/min", tab.pump_speed_label.text())
+        flow_series = PressureServiceTab.PUMP_FLOW_SERIES
+        self.assertIn(flow_series, tab.checkboxes)
+        self.assertIn("ml/min", tab.checkboxes[flow_series].text())
+        self.assertGreater(tab._flow_ml_per_min, 0.0)
+        self.assertEqual(len(tab.graph_widget._history), 1)
+        latest = tab.graph_widget._history[-1][1]
+        self.assertAlmostEqual(latest["Cartridge Input"], -11.5, places=2)
+        self.assertAlmostEqual(latest[flow_series], tab._flow_ml_per_min, places=2)
 
 
 if __name__ == "__main__":
