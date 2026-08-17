@@ -1,21 +1,21 @@
-control_temp_label: CSF2
+control_temp_label: Probe 2
 # Logical temperatures shown in the UI / control / CSV.
 # For each name, read that same label from the chosen board.
 # Only listed names appear; order is display order.
 # All 8 entries below are thermistors (ADS1115 channels 0–7).
 temperature_sources:
-  CSF: thermistor
-  HeatEx1: thermistor
-  HeatEx2: thermistor
+  Tip: thermistor
+  Cartrige Out: thermistor
   Catheter In: thermistor
   Catheter Out: thermistor
-  Body Temp: thermistor
-  CSF2: thermistor
-  CSF3: thermistor
+  Cartrige In: thermistor
+  Probe 1: thermistor
+  Probe 2: thermistor
+  Plate: thermistor
 alarms:
-  csf_label: CSF2
+  csf_label: Probe 2
   csf_low_temp_c: 28.0
-  heat_ex_label: HeatEx1
+  heat_ex_label: Plate
   heat_ex_min_c: -10.0
   leak_pressure_delta_min: 5.0
   # Digital leak sensor: a 0/low reading means fluid detected -> immediate stop.
@@ -27,7 +27,7 @@ alarms:
   cooling_ineffective_csf_delta_c: 0.2
   battery_low_pct: 20
 simulation:
-  csf_label: CSF2
+  csf_label: Probe 2
   csf_initial_c: 37.0
   csf_max_c: 37.0
   csf_min_c: 25.0
@@ -35,7 +35,7 @@ simulation:
   csf_cart_out_scale: 0.05
   csf_min_effective_pump_speed_rpm: 20
   csf_pump_speed_ref_rpm: 60
-  heat_ex_label: HeatEx1
+  heat_ex_label: Plate
   heat_ex_initial_c: 22.0
   heat_ex_max_c: 22.0
   heat_ex_cool_rate_c_per_s: 0.5
@@ -55,14 +55,14 @@ simulation:
     Pump Input: 25.0
     Pump Output: 30.0
   thermistors:
-    CSF: 36.5
-    HeatEx1: 22.0
-    HeatEx2: 22.0
+    Tip: 36.5
+    Cartrige Out: 22.0
     Catheter In: 22.0
     Catheter Out: 22.0
-    Body Temp: 25.0
-    CSF2: 36.5
-    CSF3: 36.5
+    Cartrige In: 22.0
+    Probe 1: 25.0
+    Probe 2: 36.5
+    Plate: 22.0
 acustic_signal_gpio_pin: 16
 sensors:
 - name: Level Low
@@ -106,14 +106,14 @@ thermocouples:
   - 7
   - 8
   labels:
-    1: CSF
-    2: CSF 2
-    3: Cart In
-    4: Cart Out
-    5: Heat Ex
-    6: Heat Ex 2
-    7: Temp 7
-    8: Temp 8
+    1: Tip
+    2: Cartrige Out
+    3: Catheter In
+    4: Catheter Out
+    5: Cartrige In
+    6: Probe 1
+    7: Probe 2
+    8: Plate
   calibration:
     default:
       measured_at_0c: 0.0
@@ -156,16 +156,16 @@ thermistor_sensors:
   - 7
   # Channel index 0-7 → display names (same order as temperature_sources).
   labels:
-    0: CSF
-    1: HeatEx1
-    2: HeatEx2
-    3: Catheter In
-    4: Catheter Out
-    5: Body Temp
-    6: CSF2
-    7: CSF3
+    0: Tip
+    1: Cartrige Out
+    2: Catheter In
+    3: Catheter Out
+    4: Cartrige In
+    5: Probe 1
+    6: Probe 2
+    7: Plate
   channel_configs:
-    0:  # CSF3 — AB6N2-GC14KA143E/37C (14 kΩ @ 37 °C)
+    0:  # Tip — AB6N2-GC14KA143E/37C (14 kΩ @ 37 °C)
       table_csv: data/calibration/Thermistor_AB6N2-GC14KA143E_37C.csv
       resistance_column: Resistance_Ohm
   conversion:
@@ -208,7 +208,7 @@ pressure_sensors:
 compressor:
   relay_pin: 6
   # Must match thermistor_sensors.labels (channel used for cooling control).
-  heat_ex_label: HeatEx1
+  heat_ex_label: Plate
   off_below_temp_c: -9
   on_above_temp_c: -9.0
 logging:
@@ -222,7 +222,7 @@ logging:
 # flow_ml_per_s = pump_rpm * pump_flow_ml_per_min_per_rpm / 60
 pump_flow_ml_per_min_per_rpm: 0.5862
 # Closed-loop pump flow during PUMPING (control_temp_label vs UI set temperature).
-# error = CSF2 - set_temp (°C). Above full_speed_error_c → max flow;
+# error = Probe 2 - set_temp (°C). Above full_speed_error_c → max flow;
 # between 0 and that band → PID; at/below setpoint → min flow.
 pump_control:
   max_flow_ml_per_min: 60.0
