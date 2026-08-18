@@ -50,10 +50,10 @@ simulation:
     Level Critical: true
     Leak Sensor: true
   pressures:
-    Catheter In: 20.0
-    Catheter Out: 15.0
     Pump In: 25.0
     Pump Out: 30.0
+    Catheter In: 20.0
+    Catheter Out: 15.0
   thermistors:
     Tip: 36.5
     Cartrige Out: 22.0
@@ -196,8 +196,8 @@ pressure_sensors:
   - 2
   - 3
   labels:
-    0: Pump Out
-    1: Pump In
+    0: Pump In
+    1: Pump Out
     2: Catheter In
     3: Catheter Out
   calibration:
