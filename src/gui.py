@@ -103,6 +103,24 @@ _GRAPH_WINDOW_COMBO_STYLE = """
     QComboBox::drop-down { width: 18px; }
 """
 
+_SMOOTHING_TOGGLE_STYLE = """
+    QPushButton {
+        font-size: 12px;
+        font-weight: 700;
+        color: #475569;
+        min-height: 26px;
+        padding: 2px 4px;
+        border: 2px solid #cbd5e1;
+        border-radius: 8px;
+        background-color: #f1f5f9;
+    }
+    QPushButton:checked {
+        color: #ffffff;
+        border: 2px solid #0e6a76;
+        background-color: #0e6a76;
+    }
+"""
+
 # Graph X-axis nav row: [<] [time window] [>]. The main page and the advanced
 # graph tabs share these metrics so the block sits in the same spot on every
 # page, at the top of a control column of _GRAPH_NAV_COLUMN_W pixels.
@@ -412,6 +430,33 @@ RPM_FLOW_CALIBRATION_TICK_MS = 1000
 
 def _pump_flow_ml_per_min(rpm: float, slope: float) -> float:
     return max(0.0, float(rpm)) * float(slope)
+
+
+def _aggregate_series(samples: list[dict], names: list[str], reduce) -> dict:
+    """Reduce finite values for each name across ``samples`` (mean, max, …)."""
+    result = {}
+    for name in names:
+        values = []
+        for sample in samples:
+            raw = sample.get(name)
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                continue
+            if not math.isnan(value):
+                values.append(value)
+        result[name] = reduce(values) if values else float("nan")
+    return result
+
+
+def _mean_series(samples: list[dict], names: list[str]) -> dict:
+    """Mean of finite values for each name across ``samples``."""
+    return _aggregate_series(samples, names, lambda values: sum(values) / len(values))
+
+
+def _max_series(samples: list[dict], names: list[str]) -> dict:
+    """Maximum of finite values for each name across ``samples``."""
+    return _aggregate_series(samples, names, max)
 
 
 def _snap_ml_per_min_setpoint(ml_per_min: float, step: int = PUMP_FLOW_SLIDER_STEP_ML_PER_MIN) -> int:
@@ -2542,8 +2587,27 @@ class MultiTemperatureGraphWidget(QWidget):
             return 0
         return int(max(0.0, (now - oldest_ts) // window_sec))
 
-    def add_sample(self, series_values: dict):
-        now = time.monotonic()
+    def add_sample(self, series_values: dict, timestamp: Optional[float] = None):
+        now = time.monotonic() if timestamp is None else float(timestamp)
+        self._history.append((now, self._normalize_series(series_values)))
+
+        cutoff = now - self._MAX_HISTORY_SEC
+        while self._history and self._history[0][0] < cutoff:
+            self._history.popleft()
+        self.update()
+
+    def replace_history(self, entries) -> None:
+        """Replace plotted samples (used when toggling raw vs averaged view)."""
+        self._history.clear()
+        materialized = list(entries)
+        if materialized:
+            cutoff = materialized[-1][0] - self._MAX_HISTORY_SEC
+            materialized = [entry for entry in materialized if entry[0] >= cutoff]
+        for ts, values in materialized:
+            self._history.append((float(ts), self._normalize_series(values)))
+        self.update()
+
+    def _normalize_series(self, series_values: dict) -> dict:
         normalized = {}
         for name in self.series_names:
             value = series_values.get(name)
@@ -2551,12 +2615,7 @@ class MultiTemperatureGraphWidget(QWidget):
                 normalized[name] = float(value)
             except (TypeError, ValueError):
                 normalized[name] = float("nan")
-        self._history.append((now, normalized))
-
-        cutoff = now - self._MAX_HISTORY_SEC
-        while self._history and self._history[0][0] < cutoff:
-            self._history.popleft()
-        self.update()
+        return normalized
 
     def paintEvent(self, _event):
         painter = QPainter(self)
@@ -2912,6 +2971,10 @@ class TemperatureGraphTab(QWidget):
         time_layout.addWidget(self.graph_nav_right_button)
         right_column.addLayout(time_layout)
 
+        extra = self._right_column_extra_widget()
+        if extra is not None:
+            right_column.addWidget(extra)
+
         # Series toggles (no title label) expand to fill the column height so
         # each is a large, easy touch target.
         for name in self.series_names:
@@ -2927,8 +2990,12 @@ class TemperatureGraphTab(QWidget):
         self.setLayout(main_layout)
         self._update_nav_states()
 
-    def add_sample(self, series_values: dict):
-        self.graph_widget.add_sample(series_values)
+    def _right_column_extra_widget(self) -> Optional[QWidget]:
+        """Optional control row above the series toggles (pressure smoothing)."""
+        return None
+
+    def add_sample(self, series_values: dict, timestamp: Optional[float] = None):
+        self.graph_widget.add_sample(series_values, timestamp=timestamp)
         self._update_checkbox_labels(series_values)
         self._update_nav_states()
 
@@ -2953,6 +3020,10 @@ class PressureServiceTab(TemperatureGraphTab):
 
     # Short enough to fit the shared control column next to its value + unit.
     PUMP_FLOW_SERIES = "Flow"
+    MODE_AVG = "avg"
+    MODE_MAX = "max"
+    MODE_RAW = "raw"
+    _WINDOW_S = 1.0
     _DEFAULT_PRESSURE_SENSOR_NAMES = (
         "Pressure 1",
         "Pressure 2",
@@ -2982,6 +3053,8 @@ class PressureServiceTab(TemperatureGraphTab):
             default_right_y_range=(0.0, 70.0),
         )
         graph_widget._series_colors[self.PUMP_FLOW_SERIES] = "#0e6a76"
+        self._display_mode = self.MODE_AVG
+        self._samples = deque()
         super().__init__(
             series_names,
             graph_widget=graph_widget,
@@ -2996,6 +3069,52 @@ class PressureServiceTab(TemperatureGraphTab):
         self.pump_speed_rpm = 0
         self.pump_flow_ml_per_min_per_rpm = DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
         self._flow_ml_per_min = 0.0
+
+    def _create_widgets(self):
+        super()._create_widgets()
+        self._smoothing_row = QWidget()
+        layout = QVBoxLayout(self._smoothing_row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(3)
+
+        window_row = QHBoxLayout()
+        window_row.setContentsMargins(0, 0, 0, 0)
+        window_row.setSpacing(3)
+        raw_row = QHBoxLayout()
+        raw_row.setContentsMargins(0, 0, 0, 0)
+        raw_row.setSpacing(3)
+
+        self._mode_buttons = {}
+        specs = (
+            (self.MODE_AVG, "Avg 1s", "1-second running average of pressure", window_row),
+            (self.MODE_MAX, "Max 1s", "Maximum pressure over the last second", window_row),
+            (self.MODE_RAW, "Raw", "Unfiltered pressure samples", raw_row),
+        )
+        for mode, label, tooltip, parent_row in specs:
+            button = QPushButton(label)
+            button.setCheckable(True)
+            button.setChecked(mode == self.MODE_AVG)
+            button.setToolTip(tooltip)
+            button.setStyleSheet(_SMOOTHING_TOGGLE_STYLE)
+            button.clicked.connect(lambda _checked=False, m=mode: self._on_smoothing_clicked(m))
+            self._mode_buttons[mode] = button
+            parent_row.addWidget(button, 1)
+
+        layout.addLayout(window_row)
+        layout.addLayout(raw_row)
+
+        self._avg_button = self._mode_buttons[self.MODE_AVG]
+        self._max_button = self._mode_buttons[self.MODE_MAX]
+        self._raw_button = self._mode_buttons[self.MODE_RAW]
+
+    def _right_column_extra_widget(self) -> Optional[QWidget]:
+        return self._smoothing_row
+
+    def _on_smoothing_clicked(self, mode: str) -> None:
+        self._display_mode = mode
+        for button_mode, button in self._mode_buttons.items():
+            button.setChecked(button_mode == mode)
+        self._rebuild_graph()
 
     def update_pressures(self, pressures: Optional[dict] = None):
         """Store the latest pressure readings (psi) for the next graph sample."""
@@ -3017,14 +3136,75 @@ class PressureServiceTab(TemperatureGraphTab):
                 self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
             )
 
-    def push_latest_sample(self) -> None:
+    def push_latest_sample(self, timestamp: Optional[float] = None) -> None:
         """Append one graph point from the latest pressure and flow values."""
-        series_values = {
+        now = time.monotonic() if timestamp is None else float(timestamp)
+        raw = {
             name: self.pressure_values.get(name, float("nan"))
             for name in self.pressure_sensor_names
         }
-        series_values[self.PUMP_FLOW_SERIES] = self._flow_ml_per_min
-        self.add_sample(series_values)
+        raw[self.PUMP_FLOW_SERIES] = self._flow_ml_per_min
+        self._samples.append((now, raw))
+        cutoff = now - self.graph_widget._MAX_HISTORY_SEC
+        while self._samples and self._samples[0][0] < cutoff:
+            self._samples.popleft()
+        self.add_sample(self._displayed_values(now, raw), timestamp=now)
+
+    def _displayed_values(self, timestamp: float, raw: dict) -> dict:
+        if self._display_mode == self.MODE_RAW:
+            return dict(raw)
+        displayed = self._window_pressures_at(timestamp)
+        displayed[self.PUMP_FLOW_SERIES] = raw.get(
+            self.PUMP_FLOW_SERIES, float("nan")
+        )
+        return displayed
+
+    def _window_samples_at(self, timestamp: float) -> list[dict]:
+        cutoff = timestamp - self._WINDOW_S
+        window = []
+        for ts, values in reversed(self._samples):
+            if ts < cutoff:
+                break
+            window.append(values)
+        return window
+
+    def _window_pressures_at(self, timestamp: float) -> dict:
+        window = self._window_samples_at(timestamp)
+        reducer = _max_series if self._display_mode == self.MODE_MAX else _mean_series
+        return reducer(window, self.pressure_sensor_names)
+
+    def _windowed_entries(self) -> list:
+        reducer = _max_series if self._display_mode == self.MODE_MAX else _mean_series
+        window = deque()
+        entries = []
+        for ts, raw in self._samples:
+            window.append((ts, raw))
+            cutoff = ts - self._WINDOW_S
+            while window and window[0][0] < cutoff:
+                window.popleft()
+            displayed = reducer(
+                [values for _wts, values in window],
+                self.pressure_sensor_names,
+            )
+            displayed[self.PUMP_FLOW_SERIES] = raw.get(
+                self.PUMP_FLOW_SERIES, float("nan")
+            )
+            entries.append((ts, displayed))
+        return entries
+
+    def _rebuild_graph(self) -> None:
+        entries = (
+            list(self._samples)
+            if self._display_mode == self.MODE_RAW
+            else self._windowed_entries()
+        )
+        self.graph_widget.replace_history(entries)
+        if entries:
+            self._update_checkbox_labels(entries[-1][1])
+        else:
+            for name, checkbox in self.checkboxes.items():
+                checkbox.setText(name)
+        self._update_nav_states()
 
 
 class PowerGraphTab(TemperatureGraphTab):

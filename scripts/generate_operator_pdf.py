@@ -40,8 +40,8 @@ TEMPS = {
     "Plate": 4.2,
 }
 PRESSURES = {
-    "Pump Out": 31.4,
     "Pump In": 24.8,
+    "Pump Out": 31.4,
     "Catheter In": 19.6,
     "Catheter Out": 14.2,
 }
@@ -120,8 +120,8 @@ def _seed_graphs(ui: MainScreen) -> None:
         return (
             ts,
             {
-                "Pump Out": 28.0 + 4.0 * frac,
                 "Pump In": 22.0 + 3.0 * frac,
+                "Pump Out": 28.0 + 4.0 * frac,
                 "Catheter In": 18.0 + 2.0 * frac,
                 "Catheter Out": 13.0 + 1.5 * frac,
                 "Flow": flow,

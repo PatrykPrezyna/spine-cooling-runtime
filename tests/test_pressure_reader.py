@@ -124,8 +124,8 @@ class ConfigCalibrationTests(unittest.TestCase):
         self.assertEqual(
             labels,
             [
-                "Pump Out",
                 "Pump In",
+                "Pump Out",
                 "Catheter In",
                 "Catheter Out",
             ],
@@ -272,6 +272,75 @@ class UiPressureFormatTests(unittest.TestCase):
         latest = tab.graph_widget._history[-1][1]
         self.assertAlmostEqual(latest["Cartridge Input"], -11.5, places=2)
         self.assertAlmostEqual(latest[flow_series], tab._flow_ml_per_min, places=2)
+
+    def test_pressure_tab_one_second_average_and_raw_toggle(self) -> None:
+        from gui import PressureServiceTab
+
+        tab = PressureServiceTab(pressure_sensor_names=["Pump Out"])
+        flow_series = PressureServiceTab.PUMP_FLOW_SERIES
+        tab.update_pump_speed(flow_ml_per_min=10.0)
+        tab.update_pressures({"Pump Out": 10.0})
+        tab.push_latest_sample(timestamp=1.0)
+        tab.update_pump_speed(flow_ml_per_min=50.0)
+        tab.update_pressures({"Pump Out": 20.0})
+        tab.push_latest_sample(timestamp=1.5)
+
+        self.assertEqual(tab._display_mode, PressureServiceTab.MODE_AVG)
+        self.assertTrue(tab._avg_button.isChecked())
+        latest = tab.graph_widget._history[-1][1]
+        self.assertAlmostEqual(latest["Pump Out"], 15.0, places=4)
+        self.assertAlmostEqual(latest[flow_series], 50.0, places=4)
+        self.assertEqual(tab.checkboxes["Pump Out"].text(), "Pump Out  15.0 psi")
+
+        tab._on_smoothing_clicked(PressureServiceTab.MODE_MAX)
+        self.assertEqual(tab._display_mode, PressureServiceTab.MODE_MAX)
+        self.assertTrue(tab._max_button.isChecked())
+        self.assertFalse(tab._avg_button.isChecked())
+        max_history = list(tab.graph_widget._history)
+        self.assertEqual(len(max_history), 2)
+        self.assertAlmostEqual(max_history[0][1]["Pump Out"], 10.0, places=4)
+        self.assertAlmostEqual(max_history[1][1]["Pump Out"], 20.0, places=4)
+        self.assertEqual(tab.checkboxes["Pump Out"].text(), "Pump Out  20.0 psi")
+
+        tab._on_smoothing_clicked(PressureServiceTab.MODE_RAW)
+        self.assertEqual(tab._display_mode, PressureServiceTab.MODE_RAW)
+        self.assertTrue(tab._raw_button.isChecked())
+        self.assertFalse(tab._avg_button.isChecked())
+        self.assertFalse(tab._max_button.isChecked())
+        raw_history = list(tab.graph_widget._history)
+        self.assertEqual(len(raw_history), 2)
+        self.assertAlmostEqual(raw_history[0][1]["Pump Out"], 10.0, places=4)
+        self.assertAlmostEqual(raw_history[1][1]["Pump Out"], 20.0, places=4)
+        self.assertEqual(tab.checkboxes["Pump Out"].text(), "Pump Out  20.0 psi")
+
+        tab._on_smoothing_clicked(PressureServiceTab.MODE_AVG)
+        tab.update_pressures({"Pump Out": 40.0})
+        tab.push_latest_sample(timestamp=3.0)
+        latest = tab.graph_widget._history[-1][1]
+        # 1.0 and 1.5 are older than the 1 s window ending at 3.0.
+        self.assertAlmostEqual(latest["Pump Out"], 40.0, places=4)
+
+    def test_pressure_tab_one_second_max_holds_peak_in_window(self) -> None:
+        from gui import PressureServiceTab
+
+        tab = PressureServiceTab(pressure_sensor_names=["Pump Out"])
+        tab._on_smoothing_clicked(PressureServiceTab.MODE_MAX)
+        tab.update_pressures({"Pump Out": 10.0})
+        tab.push_latest_sample(timestamp=1.0)
+        tab.update_pressures({"Pump Out": 30.0})
+        tab.push_latest_sample(timestamp=1.4)
+        tab.update_pressures({"Pump Out": 12.0})
+        tab.push_latest_sample(timestamp=1.8)
+
+        latest = tab.graph_widget._history[-1][1]
+        self.assertAlmostEqual(latest["Pump Out"], 30.0, places=4)
+        self.assertEqual(tab.checkboxes["Pump Out"].text(), "Pump Out  30.0 psi")
+
+        tab.update_pressures({"Pump Out": 8.0})
+        tab.push_latest_sample(timestamp=2.5)
+        latest = tab.graph_widget._history[-1][1]
+        # Peak at 1.4 has aged out of the 1 s window ending at 2.5.
+        self.assertAlmostEqual(latest["Pump Out"], 12.0, places=4)
 
 
 if __name__ == "__main__":
