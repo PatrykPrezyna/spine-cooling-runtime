@@ -1,13 +1,13 @@
 """Fast pressure-only CSV logger with a dedicated capture thread.
 
-While capture is ON, a background loop reads pressures and appends CSV rows at
-``pressure_sensors.capture_rate_hz`` (default 100 Hz).
+A background loop reads pressures and appends CSV rows at
+``pressure_sensors.capture_rate_hz`` (default 100 Hz) for the whole session.
 
-Every ``start_logging()`` call opens a new file named
-``pressure_log_<session>_runNN.csv``, where ``<session>`` is the stamp shared
-with the session ``sensor_log`` and ``NN`` counts captures within that session.
-Pairing a pressure file with its session file is therefore a string match on
-the stamp rather than a guess from modification times.
+``start_logging()`` opens ``pressure_log_<session>_runNN.csv``, where
+``<session>`` is the stamp shared with the session ``sensor_log`` and ``NN``
+counts captures within that session (normally ``01`` for a single always-on
+run). Pairing a pressure file with its session file is therefore a string
+match on the stamp rather than a guess from modification times.
 """
 
 from __future__ import annotations
@@ -83,8 +83,9 @@ class PressureCSVLogger:
     def _next_csv_path(self) -> Path:
         """Return the next ``_runNN`` path for the current session.
 
-        The stem carries the session stamp rather than the toggle time, so the
-        file pairs with the session CSV; ``NN`` separates repeated captures.
+        The stem carries the session stamp rather than start time of a later
+        capture, so the file pairs with the session CSV; ``NN`` separates
+        repeated captures if logging is restarted.
         """
         base = Path(self.csv_directory) / self.session_start.strftime(
             self.filename_format
@@ -102,8 +103,8 @@ class PressureCSVLogger:
     def start_logging(self) -> bool:
         """Start logging to a new CSV file. Returns True on success.
 
-        If logging is already active, the current file is closed first so each
-        ON toggle always creates a fresh file.
+        If logging is already active, the current file is closed first so a
+        restart always creates a fresh file.
         """
         with self._lock:
             if self.is_logging:
@@ -135,7 +136,7 @@ class PressureCSVLogger:
         pressures: Optional[dict] = None,
         peristaltic_pump_set_speed_rpm: Optional[float] = None,
     ) -> None:
-        """Append one pressure row (no-op when capture is off).
+        """Append one pressure row (no-op when capture is not running).
 
         ``peristaltic_pump_set_speed_rpm`` is the latest stepper setpoint
         (0 when the pump is not running), matching the session CSV column.
@@ -204,7 +205,7 @@ class PressureCSVLogger:
 
 
 class PressureCaptureLoop:
-    """Background read+log loop at ``capture_rate_hz`` while CSV capture is ON."""
+    """Background read+log loop at ``capture_rate_hz`` for the session."""
 
     def __init__(
         self,

@@ -11,15 +11,16 @@ by the two sub-pages.
   (`MainScreenWidget`). Its only exit is the expert page.
 - Expert: monitoring only — Temperature (`TemperatureGraphTab`), Pressure and
   Flow (`PressureServiceTab`), Power (`PowerGraphTab`), Status (`Service2Tab`).
-- Service: acts on the hardware — Manual Operation (`ServiceTab`), Pressure Log
-  (`PressureLoggingTab`), Calibration (`CalibrationTab`). Only the expert tab
-  row links to it, so it stays one step away from the main page.
+- Service: acts on the hardware — Manual Operation (`ServiceTab`), Calibration
+  (`CalibrationTab`). Only the expert tab row links to it, so it stays one
+  step away from the main page.
 """
 
 import math
 import sys
 import time
 from collections import deque
+from html import escape as _html_escape
 from typing import Optional, Callable
 
 from cooling_power import (
@@ -27,14 +28,16 @@ from cooling_power import (
     cartridge_cooling_power_w,
     catheter_cooling_power_w,
 )
+from fault_catalog import FaultCode, operator_help
 
-from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF, QSize
+from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF, QSize, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget,
     QLabel, QGridLayout, QGroupBox, QSlider, QComboBox, QStackedWidget, QCheckBox,
     QSizePolicy, QTabBar, QTabWidget, QLineEdit, QSpinBox, QDoubleSpinBox,
     QTableWidget, QTableWidgetItem, QHeaderView,
+    QDialog, QScrollArea, QFrame,
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QColor, QLinearGradient,
@@ -107,6 +110,9 @@ _GRAPH_NAV_BTN_W = 30
 _GRAPH_NAV_BTN_H = 34
 _GRAPH_NAV_GAP = 4
 _GRAPH_NAV_COLUMN_W = 150
+_SPINE_COLUMN_W = _GRAPH_NAV_COLUMN_W
+_SPINE_NAV_GAP = 6
+_SPINE_BUTTON_GAP = 8
 
 _PAGE_TAB_BAR_STYLE = """
     QTabBar::tab {
@@ -278,6 +284,118 @@ def _header_chart_icon(size: int = 20) -> QIcon:
     painter.end()
     return QIcon(pixmap)
 
+
+class ClickableLabel(QLabel):
+    """QLabel that can emit ``clicked`` when tap/click is enabled."""
+
+    clicked = pyqtSignal()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._click_enabled = False
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def set_click_enabled(self, enabled: bool) -> None:
+        self._click_enabled = bool(enabled)
+        self.setCursor(
+            Qt.CursorShape.PointingHandCursor if self._click_enabled
+            else Qt.CursorShape.ArrowCursor
+        )
+
+    def mouseReleaseEvent(self, event):
+        if (
+            self._click_enabled
+            and event.button() == Qt.MouseButton.LeftButton
+            and self.rect().contains(event.position().toPoint())
+        ):
+            self.clicked.emit()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
+class FaultHelpDialog(QDialog):
+    """Modal help sheet: probable causes and step-by-step recovery."""
+
+    def __init__(
+        self,
+        parent: QWidget,
+        title: str,
+        causes: tuple[str, ...],
+        steps: tuple[str, ...],
+    ):
+        super().__init__(parent)
+        self.setWindowTitle("Error help")
+        self.setModal(True)
+        self.setFixedSize(720, 400)
+        self.setStyleSheet("""
+            QDialog {
+                background: #f8fafb;
+            }
+            QLabel#faultTitle {
+                color: #7e3f26;
+                font-size: 18px;
+                font-weight: 700;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 12)
+        layout.setSpacing(10)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("faultTitle")
+        title_label.setWordWrap(True)
+        layout.addWidget(title_label)
+
+        body = QLabel(self._help_html(causes, steps))
+        body.setTextFormat(Qt.TextFormat.RichText)
+        body.setWordWrap(True)
+        body.setAlignment(Qt.AlignmentFlag.AlignTop)
+        body.setStyleSheet("QLabel { background: transparent; color: #1b2430; }")
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(body)
+        layout.addWidget(scroll, 1)
+
+        close_button = QPushButton("Close")
+        close_button.setMinimumHeight(48)
+        close_button.setStyleSheet("""
+            QPushButton {
+                background-color: #0e6a76;
+                color: white;
+                font-size: 16px;
+                font-weight: 600;
+                border: 1px solid #0b565f;
+                border-radius: 12px;
+            }
+            QPushButton:pressed { background-color: #0b565f; }
+        """)
+        close_button.clicked.connect(self.accept)
+        layout.addWidget(close_button)
+
+    @staticmethod
+    def _help_html(causes: tuple[str, ...], steps: tuple[str, ...]) -> str:
+        cause_items = "".join(
+            f"<li style='margin-bottom:6px;'>{_html_escape(item)}</li>"
+            for item in causes
+        )
+        step_items = "".join(
+            f"<li style='margin-bottom:6px;'>{_html_escape(item)}</li>"
+            for item in steps
+        )
+        return (
+            "<p style='font-size:15px;font-weight:700;color:#7e3f26;margin:4px 0 8px 0;'>"
+            "Probable causes</p>"
+            f"<ul style='font-size:14px;line-height:1.35;'>{cause_items}</ul>"
+            "<p style='font-size:15px;font-weight:700;color:#245962;margin:14px 0 8px 0;'>"
+            "What to do</p>"
+            f"<ol style='font-size:14px;line-height:1.35;'>{step_items}</ol>"
+        )
+
+
 # Default linear pump model (overridden from config): flow_ml_min = rpm * slope.
 DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.5862
 # Discrete setpoints on the service-tab flow slider (10, 20, 30, ... ml/min).
@@ -312,12 +430,21 @@ class MainScreenWidget(QWidget):
       - cartridge level visualization with threshold indicators.
     """
 
-    def __init__(self, show_cartridge: bool = True, show_graph: bool = True, show_temp_controls: bool = True):
+    def __init__(
+        self,
+        show_cartridge: bool = True,
+        show_graph: bool = True,
+        show_temp_controls: bool = True,
+        show_spine_diagram: bool = False,
+    ):
         super().__init__()
         self.show_cartridge = show_cartridge
         self.show_graph = show_graph
         self.show_temp_controls = show_temp_controls
+        self.show_spine_diagram = show_spine_diagram
         self.primary_temperature_label = "Temperature"
+        self.catheter_in_temperature_label = "Catheter In"
+        self.catheter_out_temperature_label = "Catheter Out"
         # Compact enough for Pi screens, still grows with the main layout.
         self.setMinimumSize(640, 280)
 
@@ -335,11 +462,13 @@ class MainScreenWidget(QWidget):
         self.temp_step = 0.2
         self.set_temperature = 32.0
         self.current_csf_temperature = float("nan")
+        self.current_catheter_in_temperature = float("nan")
+        self.current_catheter_out_temperature = float("nan")
         self._temp_gauge_rect = QRectF()  # Updated during paint, used for hit testing
         self._dragging_temp = False
         self.on_temperature_change_callback: Optional[Callable[[float], None]] = None
 
-        # Graph history: (timestamp, set_temp, temp1, temp2)
+        # Graph history: (timestamp, set_temp, csf_temp, catheter_in_temp)
         self._temp_history: deque = deque()
         self._x_window_minutes_options = [5, 15, 60]
         self._x_window_minutes = 5
@@ -386,21 +515,36 @@ class MainScreenWidget(QWidget):
 
         if self.show_graph and not self.show_cartridge:
             margin = 10
-            graph_width = self.width() - (2 * margin)
+            graph_height = max(180, self.height() - (2 * margin))
+            if self.show_spine_diagram:
+                right_w = self._right_controls_reserved_width()
+                graph_width = self.width() - (2 * margin) - right_w - self._CONTROLS_GRAPH_GAP
+                self._draw_temperature_graph(
+                    painter,
+                    graph_x=margin,
+                    graph_y=margin,
+                    graph_width=max(200, graph_width),
+                    graph_height=graph_height,
+                )
+                spine_x, spine_y, spine_w, spine_h = self._spine_diagram_geometry()
+                self._draw_spine_diagram(painter, spine_x, spine_y, spine_w, spine_h)
+            else:
+                graph_width = self.width() - (2 * margin)
+                if self.show_temp_controls:
+                    graph_width -= self._right_controls_reserved_width()
+                # Graph fills the full available height; the time controls live in
+                # the reserved right-hand column (see _position_graph_nav_controls).
+                self._draw_temperature_graph(
+                    painter,
+                    graph_x=margin,
+                    graph_y=margin,
+                    graph_width=max(220, graph_width),
+                    graph_height=graph_height,
+                )
             if self.show_temp_controls:
-                graph_width -= self._right_controls_reserved_width()
-            # Graph fills the full available height; the time controls live in
-            # the reserved right-hand column (see _position_graph_nav_controls).
-            self._draw_temperature_graph(
-                painter,
-                graph_x=margin,
-                graph_y=margin,
-                graph_width=max(220, graph_width),
-                graph_height=max(180, self.height() - (2 * margin)),
-            )
-            if self.show_temp_controls:
-                self._draw_csf_readout(painter)
-                self._draw_temperature_gauge(painter)
+                if not self.show_spine_diagram:
+                    self._draw_csf_readout(painter)
+                    self._draw_temperature_gauge(painter)
             return
         
         if self.show_graph:
@@ -430,16 +574,21 @@ class MainScreenWidget(QWidget):
     _GRAPH_SERIES = (
         # (history tuple index, label, color)
         (1, "Set Temp", "#0ea5e9"),
-        (2, "", "#16a34a"),
+        (2, "CSF", "#1B7A7B"),
+        (3, "Input", "#2E86C1"),
     )
     _SETPOINT_COLOR = "#0ea5e9"
-    _CSF_COLOR = "#16a34a"
+    _CSF_COLOR = "#1B7A7B"
+    _INPUT_COLOR = "#2E86C1"
     
-    def add_temperature_sample(self, temp1: float, temp2: float):
-        """Record a new sample of (set temperature, primary temp, secondary temp)."""
+    def add_temperature_sample(self, csf_temp: float, catheter_in_temp: float):
+        """Record setpoint, CSF, and catheter-input temps for the main trace."""
         now = time.monotonic()
-        self.current_csf_temperature = float(temp1)
-        self._temp_history.append((now, self.set_temperature, float(temp1), float(temp2)))
+        self.current_csf_temperature = float(csf_temp)
+        self.current_catheter_in_temperature = float(catheter_in_temp)
+        self._temp_history.append(
+            (now, self.set_temperature, float(csf_temp), float(catheter_in_temp))
+        )
         
         # Drop samples older than retained history window
         cutoff = now - self._MAX_HISTORY_SEC
@@ -462,11 +611,10 @@ class MainScreenWidget(QWidget):
         painter.setPen(QPen(QColor("#cbd5e1"), 3))
         painter.drawRoundedRect(graph_x, graph_y, graph_width, graph_height, 10, 10)
         
-        # Plot area. Padding reserves clean zones so the legend (top) and the
-        # x-axis tick labels (bottom) never overlap the gridlines or axes.
-        plot_left = graph_x + 36
+        # Plot area. Top padding holds the one-line legend; bottom holds x labels.
+        plot_left = graph_x + 42
         plot_right = graph_x + graph_width - 10
-        plot_top = graph_y + 26
+        plot_top = graph_y + 24
         plot_bottom = graph_y + graph_height - 26
         plot_width = plot_right - plot_left
         plot_height = plot_bottom - plot_top
@@ -478,39 +626,48 @@ class MainScreenWidget(QWidget):
         visible_entries = [entry for entry in self._temp_history if start_ts <= entry[0] <= end_ts]
         y_min, y_max = self._compute_visible_y_range(visible_entries)
 
-        # Y-axis grid lines and labels
-        y_ticks = self._build_y_ticks(y_min, y_max, count=4)
-        font = QFont("Arial", 10, QFont.Weight.Bold)
-        painter.setFont(font)
-        for t in y_ticks:
+        minor_pen = QPen(QColor("#e2e8f0"), 1)
+        minor_pen.setStyle(Qt.PenStyle.DotLine)
+        painter.setPen(minor_pen)
+        for i in range(6):
+            ratio = (i + 0.5) / 6.0
+            py = int(plot_bottom - ratio * plot_height)
+            painter.drawLine(plot_left, py, plot_right, py)
+        for i in range(10):
+            ratio = (i + 0.5) / 10.0
+            px = int(plot_left + ratio * plot_width)
+            painter.drawLine(px, plot_top, px, plot_bottom)
+
+        # Y-axis grid lines and labels (same 7 major ticks as expert pages).
+        painter.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+        for i in range(7):
+            t = y_min + (i / 6.0) * (y_max - y_min)
             ratio = (t - y_min) / max(0.001, (y_max - y_min))
             py = int(plot_bottom - ratio * plot_height)
-            painter.setPen(QPen(QColor("#cbd5e1"), 2))
+            painter.setPen(QPen(QColor("#e2e8f0"), 1))
             painter.drawLine(plot_left, py, plot_right, py)
             painter.setPen(QColor("#475569"))
-            label_text = (
-                f"{t:.1f}°C" if (y_max - y_min) < 10 else f"{t:.0f}°C"
-            )
             painter.drawText(
-                QRectF(graph_x + 2, py - 8, 34, 16),
+                QRectF(graph_x + 2, py - 8, 38, 16),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                label_text
+                f"{t:.0f}°C",
             )
-        
-        # X-axis labels (minutes ago)
-        painter.setPen(QColor("#334155"))
-        font = QFont("Arial", 10, QFont.Weight.Bold)
-        painter.setFont(font)
-        for i in range(6):
-            ratio = i / 5.0
+
+        # X-axis labels and vertical time gridlines
+        painter.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+        for i in range(11):
+            ratio = i / 10.0
             px = int(plot_left + ratio * plot_width)
             ts = start_ts + ratio * window_sec
             mins_ago = int(round((now - ts) / 60.0))
             label = "now" if mins_ago == 0 else f"-{mins_ago} min"
+            painter.setPen(QPen(QColor("#e2e8f0"), 1))
+            painter.drawLine(px, plot_top, px, plot_bottom)
+            painter.setPen(QColor("#334155"))
             painter.drawText(
-                QRectF(px - 28, plot_bottom + 4, 56, 14),
+                QRectF(px - 26, plot_bottom + 4, 52, 14),
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-                label
+                label,
             )
 
         # Plot axes
@@ -571,25 +728,27 @@ class MainScreenWidget(QWidget):
         self._draw_graph_legend(painter, graph_x, graph_width, graph_y)
 
     def _draw_graph_legend(self, painter: QPainter, graph_x: int, graph_width: int, top_y: int):
-        """Right-aligned Set Temp / CSF legend drawn inside the graph top."""
+        """One-line Set / CSF / Input legend in the graph top-right."""
         latest = self._temp_history[-1] if self._temp_history else None
         set_text = f"Set {latest[1]:.1f}°C" if latest else "Set --.-°C"
         csf_text = f"CSF {latest[2]:.1f}°C" if latest else "CSF --.-°C"
+        input_text = f"In {latest[3]:.1f}°C" if latest else "In --.-°C"
         entries = (
             (self._SETPOINT_COLOR, set_text, True),
             (self._CSF_COLOR, csf_text, False),
+            (self._INPUT_COLOR, input_text, False),
         )
 
         painter.setFont(QFont("Arial", 9, QFont.Weight.DemiBold))
         metrics = painter.fontMetrics()
-        swatch_w, swatch_gap, item_gap = 16, 6, 18
+        swatch_w, swatch_gap, item_gap = 16, 5, 14
         widths = [
             swatch_w + swatch_gap + metrics.horizontalAdvance(text)
             for _color, text, _dashed in entries
         ]
         total = sum(widths) + item_gap * (len(entries) - 1)
-        x = graph_x + graph_width - total - 14
-        y = top_y + 6
+        x = graph_x + graph_width - total - 12
+        y = top_y + 4
 
         for (color, text, dashed), width in zip(entries, widths):
             pen = QPen(QColor(color), 3)
@@ -611,14 +770,7 @@ class MainScreenWidget(QWidget):
         # range are clamped/clipped at draw time.
         del visible_entries
         return self._GRAPH_TEMP_MIN, self._GRAPH_TEMP_MAX
-
-    @staticmethod
-    def _build_y_ticks(y_min: float, y_max: float, count: int = 4):
-        if count < 2:
-            return [y_min, y_max]
-        step = (y_max - y_min) / float(count - 1)
-        return [y_min + i * step for i in range(count)]
-    
+ 
     # Touch-friendly gauge geometry
     _GAUGE_WIDTH = 55
     _GAUGE_MIN_HEIGHT = 80
@@ -636,6 +788,8 @@ class MainScreenWidget(QWidget):
 
     def _right_controls_reserved_width(self) -> int:
         """Horizontal space reserved for the right-side gauge column."""
+        if self.show_spine_diagram:
+            return _SPINE_COLUMN_W + self._RIGHT_MARGIN + self._CONTROLS_GRAPH_GAP
         gauge_extent = (
             self._GAUGE_TICK_LABEL_LEFT
             + self._GAUGE_WIDTH
@@ -665,17 +819,29 @@ class MainScreenWidget(QWidget):
         gauge_height = max(self._GAUGE_MIN_HEIGHT, buttons_top - gauge_y - 8)
         return int(gauge_x), gauge_y, self._GAUGE_WIDTH, gauge_height
 
+    def _spine_diagram_geometry(self) -> tuple[int, int, int, int]:
+        """Right-column rect for the catheter graphic (between nav row and +/-)."""
+        column_left, column_width = self._readout_column_geometry()
+        nav_bottom = self._GRAPH_NAV_TOP + _GRAPH_NAV_BTN_H
+        spine_top = nav_bottom + _SPINE_NAV_GAP
+        buttons_top = self._temp_buttons_top()
+        spine_height = max(60, buttons_top - _SPINE_BUTTON_GAP - spine_top)
+        return int(column_left), spine_top, int(column_width), spine_height
+
     def _readout_column_geometry(self) -> tuple[float, float]:
-        """Left edge and width for CSF/set readouts, centered on the gauge."""
+        """Left edge and width for controls column (readouts and/or +/- buttons)."""
         column_right = self._controls_column_right()
-        column_width = max(
-            self._READOUT_MIN_WIDTH,
-            self._GAUGE_WIDTH + 2 * self._GAUGE_HANDLE_OVERHANG,
-        )
+        if self.show_spine_diagram:
+            column_width = float(_SPINE_COLUMN_W)
+        else:
+            column_width = max(
+                self._READOUT_MIN_WIDTH,
+                self._GAUGE_WIDTH + 2 * self._GAUGE_HANDLE_OVERHANG,
+            )
         return column_right - column_width, column_width
 
     def _draw_csf_readout(self, painter: QPainter):
-        """Draw CSF and set-temperature readouts above the right-side gauge."""
+        """Draw CSF and set-temperature readouts above the right-side controls."""
         column_left, column_width = self._readout_column_geometry()
 
         csf_top = self._GRAPH_NAV_TOP + _GRAPH_NAV_BTN_H + 8
@@ -685,19 +851,23 @@ class MainScreenWidget(QWidget):
         else:
             csf_text = f"{self.current_csf_temperature:.1f}°C"
         painter.setPen(QColor(self._CSF_COLOR))
-        painter.setFont(QFont("Arial", 30, QFont.Weight.Bold))
+        csf_font_size = 22 if self.show_spine_diagram else 30
+        painter.setFont(QFont("Arial", csf_font_size, QFont.Weight.Bold))
         painter.drawText(
             QRectF(column_left, csf_top, column_width, csf_height),
             Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
             csf_text,
         )
 
-        set_font_size = 18
-        set_height = 24
-        _, gauge_y, _, _ = self._gauge_geometry()
-        set_top = csf_top + csf_height + (
-            (gauge_y - (csf_top + csf_height) - set_height) / 2
-        )
+        set_font_size = 22 if self.show_spine_diagram else 18
+        set_height = 30 if self.show_spine_diagram else 24
+        if self.show_spine_diagram:
+            set_top = csf_top + csf_height + 6
+        else:
+            _, gauge_y, _, _ = self._gauge_geometry()
+            set_top = csf_top + csf_height + (
+                (gauge_y - (csf_top + csf_height) - set_height) / 2
+            )
         set_text = f"{self.set_temperature:.1f}°C"
         painter.setPen(QColor(self._SETPOINT_COLOR))
         painter.setFont(QFont("Arial", set_font_size, QFont.Weight.Bold))
@@ -706,6 +876,231 @@ class MainScreenWidget(QWidget):
             Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
             set_text,
         )
+
+        if self.show_spine_diagram:
+            label_top = set_top + set_height + 2
+            painter.setPen(QColor("#64748b"))
+            painter.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+            painter.drawText(
+                QRectF(column_left, label_top, column_width, 16),
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                "Setpoint",
+            )
+    
+    def _draw_spine_diagram(
+        self, painter: QPainter, x: int, y: int, width: int, height: int
+    ) -> None:
+        """Catheter schematic sized for the right column between nav and +/-."""
+        top_label_band = 34
+        bottom_label_band = 34
+        art_y = y + top_label_band
+        art_h = max(40, height - top_label_band - bottom_label_band)
+
+        lbl_font = QFont("Segoe UI", 9)
+        val_font = QFont("Segoe UI", 10, QFont.Weight.Bold)
+
+        csf_val = (
+            f"{self.current_csf_temperature:.1f}°C"
+            if not math.isnan(self.current_csf_temperature)
+            else "--.-°C"
+        )
+        in_val = (
+            f"{self.current_catheter_in_temperature:.1f}°C"
+            if not math.isnan(self.current_catheter_in_temperature)
+            else "--.-°C"
+        )
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        def draw_name_value_row(row_y: float, name: str, value: str, value_color: str) -> None:
+            painter.setFont(lbl_font)
+            name_w = painter.fontMetrics().horizontalAdvance(name)
+            painter.setFont(val_font)
+            value_w = painter.fontMetrics().horizontalAdvance(value)
+            row_left = x + (width - (name_w + label_gap + value_w)) / 2
+            painter.setPen(QColor("#2A2A2A"))
+            painter.setFont(lbl_font)
+            painter.drawText(
+                QRectF(row_left, row_y, name_w, 16),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                name,
+            )
+            painter.setPen(QColor(value_color))
+            painter.setFont(val_font)
+            painter.drawText(
+                QRectF(row_left + name_w + label_gap, row_y, value_w, 16),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                value,
+            )
+
+        label_gap = 4
+        draw_name_value_row(
+            y + (top_label_band - 16) / 2,
+            "CSF (Tip)",
+            csf_val,
+            "#1B7A7B",
+        )
+        draw_name_value_row(
+            y + height - bottom_label_band + (bottom_label_band - 16) / 2,
+            self.catheter_in_temperature_label,
+            in_val,
+            "#2E86C1",
+        )
+
+        # Artwork viewBox includes both sensors so they are never clipped.
+        vb_w = 148.0
+        vb_y0, vb_y1 = 82.0, 552.0
+        vb_h = vb_y1 - vb_y0
+        scale = min(width / vb_w, art_h / vb_h)
+        ox = x + (width - vb_w * scale) / 2.0
+        oy = art_y + (art_h - vb_h * scale) / 2.0
+
+        def pt(sx: float, sy: float) -> QPointF:
+            return QPointF(ox + sx * scale, oy + (sy - vb_y0) * scale)
+
+        def sw(v: float) -> float:
+            return max(1.0, v * scale)
+
+        def draw_temp_sensor(cx: float, cy: float, radius: float) -> None:
+            painter.setBrush(QColor("#1B7A7B"))
+            painter.setPen(QPen(QColor("#124F50"), sw(2.4)))
+            painter.drawEllipse(pt(cx, cy), sw(radius), sw(radius))
+            painter.setPen(
+                QPen(QColor("#FFFFFF"), sw(2.8), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+            )
+            painter.drawLine(pt(cx, cy - radius * 0.38), pt(cx, cy + radius * 0.12))
+            painter.setBrush(QColor("#FF5252"))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawEllipse(pt(cx, cy + radius * 0.32), sw(radius * 0.22), sw(radius * 0.22))
+
+        def draw_chevron(cx: float, cy: float, pointing_up: bool, color: str) -> None:
+            half = 6.5
+            tip = cy - 10 if pointing_up else cy + 10
+            base = cy + 2 if pointing_up else cy - 2
+            arrow = QPainterPath()
+            arrow.moveTo(pt(cx - half, base))
+            arrow.lineTo(pt(cx, tip))
+            arrow.lineTo(pt(cx + half, base))
+            arrow.closeSubpath()
+            painter.fillPath(arrow, QColor(color))
+
+        blue = QColor("#2E86C1")
+        red = QColor("#E53935")
+        center_x = 74.0
+        cath_left, cath_right = 28.0, 120.0
+        tip_r = 24.0
+        tip_sensor_y = 108.0
+        cath_top = tip_sensor_y + tip_r * 0.45
+        cath_bottom = 428.0
+        in_x = center_x - 18.0
+        out_x = center_x + 18.0
+        lumen_bottom = cath_bottom - 8.0
+        # Compact U-turn centered at 80% of catheter height (from the bottom).
+        turn_y = cath_bottom - 0.80 * (cath_bottom - cath_top)
+        turn_r = abs(out_x - in_x) * 0.55
+        apex_y = turn_y - turn_r
+        inlet_r = 20.0
+        inlet_sensor_x, inlet_sensor_y = 20.0, 522.0
+        inlet_port_x, inlet_port_y = 40.0, 512.0
+        return_port_x, return_port_y = 128.0, 512.0
+
+        painter.setClipRect(QRectF(x, art_y, width, art_h))
+
+        cath_p1 = pt(cath_left, cath_top)
+        cath_p2 = pt(cath_right, cath_bottom)
+        cath_rect = QRectF(
+            cath_p1.x(), cath_p1.y(), cath_p2.x() - cath_p1.x(), cath_p2.y() - cath_p1.y()
+        )
+        cath_grad = QLinearGradient(cath_rect.topLeft(), cath_rect.topRight())
+        cath_grad.setColorAt(0, QColor("#8FA9B5"))
+        cath_grad.setColorAt(0.5, QColor("#E8EFF2"))
+        cath_grad.setColorAt(1, QColor("#8FA9B5"))
+        painter.setPen(QPen(QColor("#6B8794"), sw(2)))
+        painter.setBrush(cath_grad)
+        painter.drawRoundedRect(cath_rect, sw(10), sw(10))
+
+        painter.setPen(QPen(QColor("#6B8794"), sw(1.2), Qt.PenStyle.DashLine))
+        painter.drawLine(pt(center_x, cath_top + 22), pt(center_x, cath_bottom - 8))
+
+        left_branch = QPainterPath()
+        left_branch.moveTo(pt(in_x, cath_bottom - 4))
+        left_branch.cubicTo(
+            pt(in_x - 8, 452), pt(inlet_port_x + 8, 498), pt(inlet_port_x, inlet_port_y)
+        )
+        painter.setPen(
+            QPen(blue, sw(9), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        )
+        painter.drawPath(left_branch)
+        painter.setPen(
+            QPen(QColor("#7EC8E8"), sw(4.5), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        )
+        painter.drawPath(left_branch)
+
+        right_branch = QPainterPath()
+        right_branch.moveTo(pt(out_x, cath_bottom - 4))
+        right_branch.cubicTo(
+            pt(out_x + 8, 452),
+            pt(return_port_x - 10, 498),
+            pt(return_port_x, return_port_y),
+        )
+        painter.setPen(
+            QPen(QColor("#8FA9B5"), sw(8), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        )
+        painter.drawPath(right_branch)
+        painter.setPen(
+            QPen(QColor("#E8EFF2"), sw(4), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        )
+        painter.drawPath(right_branch)
+
+        flow_pen = QPen(blue, sw(5.5), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        painter.setPen(flow_pen)
+        painter.drawLine(
+            pt(inlet_sensor_x + inlet_r + 1, inlet_port_y),
+            pt(inlet_port_x, inlet_port_y),
+        )
+        painter.drawPath(left_branch)
+        painter.drawLine(pt(in_x, lumen_bottom), pt(in_x, turn_y))
+        blue_turn = QPainterPath()
+        blue_turn.moveTo(pt(in_x, turn_y))
+        blue_turn.cubicTo(
+            pt(in_x, apex_y), pt(center_x, apex_y), pt(center_x, apex_y + 1)
+        )
+        painter.drawPath(blue_turn)
+        draw_chevron(in_x, turn_y + 16, pointing_up=True, color="#2E86C1")
+        feed_arrow = QPainterPath()
+        feed_arrow.moveTo(pt(inlet_port_x - 11, inlet_port_y - 6))
+        feed_arrow.lineTo(pt(inlet_port_x, inlet_port_y))
+        feed_arrow.lineTo(pt(inlet_port_x - 11, inlet_port_y + 6))
+        feed_arrow.closeSubpath()
+        painter.fillPath(feed_arrow, blue)
+
+        flow_pen.setColor(red)
+        painter.setPen(flow_pen)
+        red_turn = QPainterPath()
+        red_turn.moveTo(pt(center_x, apex_y + 1))
+        red_turn.cubicTo(pt(out_x, apex_y), pt(out_x, turn_y), pt(out_x, turn_y))
+        painter.drawPath(red_turn)
+        painter.drawLine(pt(out_x, turn_y), pt(out_x, lumen_bottom))
+        red_to_return = QPainterPath()
+        red_to_return.moveTo(pt(out_x, lumen_bottom))
+        red_to_return.cubicTo(
+            pt(out_x + 6, 448),
+            pt(return_port_x - 16, 490),
+            pt(return_port_x - 6, return_port_y - 2),
+        )
+        painter.drawPath(red_to_return)
+        draw_chevron(out_x, (turn_y + lumen_bottom) / 2, pointing_up=False, color="#E53935")
+
+        painter.setPen(
+            QPen(QColor("#8FA9B5"), sw(5), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        )
+        painter.drawLine(pt(return_port_x, return_port_y), pt(return_port_x + 14, return_port_y))
+
+        draw_temp_sensor(center_x, tip_sensor_y, tip_r)
+        draw_temp_sensor(inlet_sensor_x, inlet_sensor_y, inlet_r)
+
+        painter.restore()
 
     def _draw_single_chamber(self, painter: QPainter):
         """Draw single chamber with liquid level and threshold markers"""
@@ -954,7 +1349,7 @@ class MainScreenWidget(QWidget):
     
     def _is_near_temp_gauge(self, pos: QPointF) -> bool:
         """Check if a mouse position is within/near the gauge track"""
-        if not self.show_temp_controls:
+        if not self.show_temp_controls or self.show_spine_diagram:
             return False
         # Extend hit area slightly beyond the track for easier interaction
         hit_rect = self._temp_gauge_rect.adjusted(-15, -10, 15, 10)
@@ -1057,17 +1452,18 @@ class MainScreenWidget(QWidget):
             self.graph_window_combo.show()
             self.graph_nav_right_button.show()
         
-        gauge_x, gauge_y, gauge_width, gauge_height = self._gauge_geometry()
-        gauge_center_x = gauge_x + gauge_width // 2
+        column_left, column_width = self._readout_column_geometry()
+        controls_center_x = int(column_left + column_width / 2)
         
         buttons_total_width = 2 * self._TEMP_BUTTON_SIZE + self._TEMP_BUTTON_GAP
-        buttons_left = gauge_center_x - buttons_total_width // 2
-        # Anchor +/- buttons just above the bottom edge of this widget, so they
-        # sit immediately above the acknowledge button row in the main window.
-        buttons_top = self.height() - self._TEMP_BUTTON_SIZE - 4
-        # Don't let them overlap the gauge if the widget is unusually short.
-        min_top = gauge_y + gauge_height + 8
-        buttons_top = max(min_top, buttons_top)
+        buttons_left = controls_center_x - buttons_total_width // 2
+        buttons_top = self._temp_buttons_top()
+        if not self.show_spine_diagram:
+            gauge_x, gauge_y, gauge_width, gauge_height = self._gauge_geometry()
+            controls_center_x = gauge_x + gauge_width // 2
+            buttons_left = controls_center_x - buttons_total_width // 2
+            min_top = gauge_y + gauge_height + 8
+            buttons_top = max(min_top, buttons_top)
         
         self.temp_minus_button.move(buttons_left, buttons_top)
         self.temp_plus_button.move(
@@ -1264,7 +1660,6 @@ class ServiceTab(QWidget):
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
-        self.on_flow_ramp_test_logging_callback: Optional[Callable[[bool], None]] = None
 
         self._create_widgets()
         self._setup_layout()
@@ -1795,14 +2190,14 @@ class ServiceTab(QWidget):
         self.jog_forward_button.setEnabled(jog_enabled)
 
     def _on_flow_ramp_test_clicked(self):
-        """Toggle the timed flow-ramp + pressure-log test."""
+        """Toggle the timed flow-ramp test."""
         if self.flow_ramp_test_active:
             self.stop_flow_ramp_test()
         else:
             self.start_flow_ramp_test()
 
     def start_flow_ramp_test(self):
-        """Start at 10 ml/min, run pump, start pressure log, ramp +10 every 2 min."""
+        """Start at 10 ml/min, run pump, ramp +10 every 2 min."""
         if self.flow_ramp_test_active:
             return
         self.stop_rpm_flow_calibration()
@@ -1818,20 +2213,16 @@ class ServiceTab(QWidget):
             flow_setpoint_ml_per_min=start_ml,
         )
         self._set_continuous_run(True)
-        if self.on_flow_ramp_test_logging_callback:
-            self.on_flow_ramp_test_logging_callback(True)
         self._flow_ramp_test_timer.start()
 
     def stop_flow_ramp_test(self):
-        """Stop the ramp timer, pressure log, and continuous pump run."""
+        """Stop the ramp timer and continuous pump run."""
         if not self.flow_ramp_test_active and not self._flow_ramp_test_timer.isActive():
             return
         self.flow_ramp_test_active = False
         self._flow_ramp_test_timer.stop()
         self._flow_ramp_test_remaining_s = FLOW_RAMP_TEST_INTERVAL_MS // 1000
         self._apply_flow_ramp_test_button_style(False)
-        if self.on_flow_ramp_test_logging_callback:
-            self.on_flow_ramp_test_logging_callback(False)
         self._set_continuous_run(False)
 
     def _on_flow_ramp_test_tick(self):
@@ -2717,108 +3108,6 @@ class PowerGraphTab(TemperatureGraphTab):
         self.add_sample(series_values)
 
 
-class PressureLoggingTab(QWidget):
-    """Service 2 page: start/stop dedicated high-rate pressure CSV capture."""
-
-    _LABEL_NEUTRAL_STYLE = "font-size: 12px; padding: 6px; color: #5c6b79;"
-    _LABEL_STRONG_TEMPLATE = "font-size: 12px; padding: 6px; color: {color}; font-weight: 600;"
-
-    def __init__(self, capture_rate_hz: float = 100.0):
-        super().__init__()
-        self.capture_rate_hz = max(1.0, float(capture_rate_hz))
-        self.pressure_csv_logging_enabled = False
-        self.on_pressure_csv_logging_toggle_callback: Optional[
-            Callable[[bool], None]
-        ] = None
-        self._create_widgets()
-        self._setup_layout()
-
-    def _create_widgets(self):
-        self.logging_group = QGroupBox("Pressure CSV Log")
-        self.logging_group.setStyleSheet(
-            ServiceTab._group_box_style("#8b5cf6", "10px", margin_top=6)
-        )
-        self.pressure_csv_logging_button = QPushButton("Logging OFF")
-        self.pressure_csv_logging_button.setMinimumHeight(44)
-        self.pressure_csv_logging_button.clicked.connect(
-            self._on_pressure_csv_logging_toggle_clicked
-        )
-        self._apply_pressure_csv_logging_button_style(False)
-        rate_txt = f"{self.capture_rate_hz:.0f} Hz"
-        self.pressure_csv_status_label = QLabel(
-            f"Toggle ON to start a new pressure CSV file ({rate_txt})."
-        )
-        self.pressure_csv_status_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-        self.pressure_csv_status_label.setWordWrap(True)
-
-    def _setup_layout(self):
-        main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(4)
-
-        logging_layout = QVBoxLayout()
-        logging_layout.setSpacing(6)
-        logging_layout.addWidget(self.pressure_csv_logging_button)
-        logging_layout.addWidget(self.pressure_csv_status_label)
-        self.logging_group.setLayout(logging_layout)
-        main_layout.addWidget(self.logging_group)
-
-        main_layout.addStretch()
-        self.setLayout(main_layout)
-
-    def _on_pressure_csv_logging_toggle_clicked(self):
-        self.set_pressure_csv_logging(not self.pressure_csv_logging_enabled)
-        if self.on_pressure_csv_logging_toggle_callback:
-            self.on_pressure_csv_logging_toggle_callback(
-                self.pressure_csv_logging_enabled
-            )
-
-    def set_pressure_csv_logging(self, enabled: bool) -> None:
-        """Update toggle state/UI without emitting the callback."""
-        self.pressure_csv_logging_enabled = bool(enabled)
-        self._apply_pressure_csv_logging_button_style(self.pressure_csv_logging_enabled)
-        rate_txt = f"{self.capture_rate_hz:.0f} Hz"
-        if self.pressure_csv_logging_enabled:
-            self.pressure_csv_status_label.setText(
-                f"Logging ON — writing a new pressure CSV at {rate_txt}."
-            )
-            self.pressure_csv_status_label.setStyleSheet(
-                self._LABEL_STRONG_TEMPLATE.format(color="#16a34a")
-            )
-        else:
-            self.pressure_csv_status_label.setText(
-                f"Toggle ON to start a new pressure CSV file ({rate_txt})."
-            )
-            self.pressure_csv_status_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-
-    def _apply_pressure_csv_logging_button_style(self, logging_enabled: bool):
-        if logging_enabled:
-            text = "Logging ON"
-            bg = "#22c55e"
-            hover = "#16a34a"
-            border = "#15803d"
-        else:
-            text = "Logging OFF"
-            bg = "#6b7280"
-            hover = "#4b5563"
-            border = "#4b5563"
-        self.pressure_csv_logging_button.setText(text)
-        self.pressure_csv_logging_button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {bg};
-                color: white;
-                font-size: 14px;
-                font-weight: 700;
-                border-radius: 10px;
-                padding: 8px 12px;
-                border: 2px solid {border};
-            }}
-            QPushButton:hover {{
-                background-color: {hover};
-            }}
-        """)
-
-
 class CalibrationTab(QWidget):
     """Advanced tab: two-point calibration controls."""
 
@@ -3016,12 +3305,11 @@ class MainScreen(QMainWindow):
         self.config = config
         self.temperature_sensor_names = self._temperature_sensor_names_from_config(config)
         self.calibration_sensor_names = self._thermocouple_sensor_names_from_config(config)
+        cooling_cfg = CoolingPowerConfig.from_config_dict(config.get("cooling_power"))
+        self.catheter_in_temperature_label = cooling_cfg.catheter_in_label
+        self.catheter_out_temperature_label = cooling_cfg.catheter_out_label
         self.primary_temperature_label = self._pick_primary_temperature_label(
             self.temperature_sensor_names
-        )
-        self.secondary_temperature_label = self._pick_secondary_temperature_label(
-            self.temperature_sensor_names,
-            self.primary_temperature_label,
         )
 
         # Callbacks (set by the host application).
@@ -3034,7 +3322,6 @@ class MainScreen(QMainWindow):
         self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_control_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_thresholds_change_callback: Optional[Callable[[float, float], None]] = None
-        self.on_pressure_csv_logging_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_temperature_calibration_callback: Optional[
             Callable[[str, float, float], tuple[bool, str]]
         ] = None
@@ -3067,16 +3354,6 @@ class MainScreen(QMainWindow):
             if "csf" in str(name).lower():
                 return name
         return sensor_names[0] if sensor_names else None
-
-    @staticmethod
-    def _pick_secondary_temperature_label(
-        sensor_names: list[str], primary_label: Optional[str]
-    ) -> Optional[str]:
-        """Choose a different sensor label for optional secondary usage."""
-        for name in sensor_names:
-            if name != primary_label:
-                return name
-        return None
 
     @staticmethod
     def _digital_sensor_names_from_config(config: dict) -> list[str]:
@@ -3227,11 +3504,16 @@ class MainScreen(QMainWindow):
     def _create_widgets(self):
         """Create UI widgets"""
         # Main screen widget: temperature graph + setpoint controls
+        ui_config = self.config.get("ui", {})
+        main_view = str(ui_config.get("main_view", "spine")).lower()
         self.main_graph_widget = MainScreenWidget(
             show_cartridge=False,
             show_graph=True,
             show_temp_controls=True,
+            show_spine_diagram=(main_view == "spine"),
         )
+        self.main_graph_widget.catheter_in_temperature_label = self.catheter_in_temperature_label
+        self.main_graph_widget.catheter_out_temperature_label = self.catheter_out_temperature_label
         if self.primary_temperature_label:
             self.main_graph_widget.primary_temperature_label = self.primary_temperature_label
         self.main_graph_widget.setMinimumHeight(280)
@@ -3263,7 +3545,6 @@ class MainScreen(QMainWindow):
         self.service_tab.on_stepper_continuous_toggle_callback = self._on_service_stepper_continuous_toggle
         self.service_tab.on_compressor_control_toggle_callback = self._on_service_compressor_control_toggle
         self.service_tab.on_compressor_thresholds_change_callback = self._on_service_compressor_thresholds_change
-        self.service_tab.on_flow_ramp_test_logging_callback = self._on_service_flow_ramp_test_logging
 
         # Status tab (digital inputs; also caches logical temperatures for graphs)
         pressure_sensor_names = self._pressure_sensor_names_from_config(self.config)
@@ -3272,19 +3553,12 @@ class MainScreen(QMainWindow):
             self.temperature_sensor_names,
             digital_sensor_names=digital_sensor_names,
         )
-        capture_rate_hz = float(
-            (self.config.get("pressure_sensors") or {}).get("capture_rate_hz", 100)
-        )
         self.pressure_service_tab = PressureServiceTab(
             pressure_sensor_names=pressure_sensor_names,
         )
         self.pressure_service_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
         self.power_graph_tab = PowerGraphTab(self.config)
         self.power_graph_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
-        self.pressure_logging_tab = PressureLoggingTab(capture_rate_hz=capture_rate_hz)
-        self.pressure_logging_tab.on_pressure_csv_logging_toggle_callback = (
-            self._on_pressure_csv_logging_toggle
-        )
         self.calibration_tab = CalibrationTab(self.calibration_sensor_names)
         self.calibration_tab.on_apply_calibration_callback = (
             self._on_temperature_graph_calibration_apply
@@ -3343,7 +3617,6 @@ class MainScreen(QMainWindow):
         ) = self._create_tabbed_page(
             [
                 ("Manual Operation", self.service_tab),
-                ("Pressure Log", self.pressure_logging_tab),
                 ("Calibration", self.calibration_tab),
             ]
         )
@@ -3374,14 +3647,20 @@ class MainScreen(QMainWindow):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
 
-        self.error_status_label = QLabel("")
+        self.error_status_label = ClickableLabel("")
         self.error_status_label.setMinimumHeight(32)
-        self.error_status_label.setMaximumWidth(300)
         self.error_status_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
         self.error_status_label.setWordWrap(True)
+        self.error_status_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         self.error_status_label.setVisible(False)
+        self.error_status_label.clicked.connect(self._on_error_status_clicked)
+        self._latched_fault_code: Optional[FaultCode] = None
+        self._latched_error_message = ""
+        self._in_error_state = False
 
         # Session timer chip: elapsed minutes since the session started.
         self._session_start_time = time.monotonic()
@@ -3475,8 +3754,8 @@ class MainScreen(QMainWindow):
         header_row = QHBoxLayout()
         header_row.setContentsMargins(0, 0, 0, 0)
         header_row.setSpacing(10)
-        header_row.addWidget(self.state_label, 1)
-        header_row.addWidget(self.error_status_label, 0)
+        header_row.addWidget(self.state_label, 3)
+        header_row.addWidget(self.error_status_label, 7)
         header_row.addWidget(self.session_timer_label, 0)
         header_row.addWidget(self.expert_view_button, 0, Qt.AlignmentFlag.AlignRight)
         header_row.addWidget(self.to_main_menu_button, 0, Qt.AlignmentFlag.AlignRight)
@@ -3542,29 +3821,6 @@ class MainScreen(QMainWindow):
     def _on_service_compressor_thresholds_change(self, off_temp_c: float, on_temp_c: float):
         if self.on_compressor_thresholds_change_callback:
             self.on_compressor_thresholds_change_callback(off_temp_c, on_temp_c)
-
-    def _on_pressure_csv_logging_toggle(self, enabled: bool):
-        """Forward Service 2 CSV capture toggle to the app callback."""
-        if self.on_pressure_csv_logging_toggle_callback:
-            self.on_pressure_csv_logging_toggle_callback(enabled)
-
-    def _set_pressure_csv_logging(self, enabled: bool, *, restart: bool = False) -> None:
-        """Set pressure CSV logging and keep the Service 2 toggle in sync."""
-        tab = self.pressure_logging_tab
-        enabled = bool(enabled)
-        if enabled and restart and tab.pressure_csv_logging_enabled:
-            tab.set_pressure_csv_logging(False)
-            if self.on_pressure_csv_logging_toggle_callback:
-                self.on_pressure_csv_logging_toggle_callback(False)
-        if tab.pressure_csv_logging_enabled == enabled:
-            return
-        tab.set_pressure_csv_logging(enabled)
-        if self.on_pressure_csv_logging_toggle_callback:
-            self.on_pressure_csv_logging_toggle_callback(enabled)
-
-    def _on_service_flow_ramp_test_logging(self, enabled: bool):
-        """Start/stop pressure CSV capture for the Service-tab flow ramp test."""
-        self._set_pressure_csv_logging(bool(enabled), restart=bool(enabled))
 
     def _toggle_window_mode(self) -> None:
         """Toggle between fullscreen and fixed-size windowed mode."""
@@ -3677,7 +3933,7 @@ class MainScreen(QMainWindow):
         self._show_page(self.expert_page)
 
     def _show_service_view(self):
-        """Show the service page: manual operation, pressure log, calibration."""
+        """Show the service page: manual operation and calibration."""
         self._show_page(self.service_page)
 
     def _set_main_action_buttons_visible(self, visible: bool):
@@ -3713,6 +3969,7 @@ class MainScreen(QMainWindow):
         state_name: str,
         error_message: Optional[str] = None,
         workflow_state_name: Optional[str] = None,
+        fault_code: Optional[FaultCode] = None,
     ):
         """
         Update state display and button visibility
@@ -3721,6 +3978,7 @@ class MainScreen(QMainWindow):
             state_name: Current state machine state
             error_message: Error message if in ERROR state
             workflow_state_name: Pre-error workflow state (kept for API compatibility)
+            fault_code: Latched catalog fault, used for the error-help popup
         """
         self._workflow_state_name = state_name
         self.state_label.setText(f"State: {state_name}")
@@ -3737,13 +3995,21 @@ class MainScreen(QMainWindow):
         )
 
         if state_name == "Error" and error_message:
-            self.error_status_label.setText(error_message)
+            self._latched_fault_code = fault_code
+            self._latched_error_message = error_message
+            self.error_status_label.setText(f"{error_message}   ⓘ")
             self.error_status_label.setStyleSheet(
                 self._status_chip_style("#f8e5db", "#d06a45", "#7e3f26")
             )
+            self.error_status_label.setToolTip("Tap for probable causes and steps")
+            self.error_status_label.set_click_enabled(True)
             self.error_status_label.setVisible(True)
             self.warnings_label.setVisible(False)
         else:
+            self._latched_fault_code = None
+            self._latched_error_message = ""
+            self.error_status_label.set_click_enabled(False)
+            self.error_status_label.setToolTip("")
             hint = self._hint_for_state(state_name)
             if hint:
                 self.error_status_label.setText(hint)
@@ -3771,6 +4037,15 @@ class MainScreen(QMainWindow):
         if not self._in_error_state:
             self.acknowledge_button.setEnabled(False)
 
+    def _on_error_status_clicked(self) -> None:
+        """Open operator help for the latched error (causes + recovery steps)."""
+        if not getattr(self, "_in_error_state", False):
+            return
+        title = self._latched_error_message or "Error"
+        causes, steps = operator_help(self._latched_fault_code)
+        dialog = FaultHelpDialog(self, title, causes, steps)
+        dialog.exec()
+
     def set_acknowledge_enabled(self, enabled: bool) -> None:
         """Enable ACK only when the latched fault condition has cleared."""
         if getattr(self, "_in_error_state", False):
@@ -3795,19 +4070,23 @@ class MainScreen(QMainWindow):
             calibration_temperatures if calibration_temperatures is not None else temperatures,
         )
         
-        # Feed first two configured channels into the main trend graph.
+        # Feed CSF and catheter-input temps into the main trend graph.
         temp1 = (
             self.service2_tab.temp_values.get(self.primary_temperature_label, 0.0)
             if self.primary_temperature_label
             else 0.0
         )
-        temp2 = (
-            self.service2_tab.temp_values.get(self.secondary_temperature_label, 0.0)
-            if self.secondary_temperature_label
-            else 0.0
+        catheter_in = self.service2_tab.temp_values.get(
+            self.catheter_in_temperature_label, float("nan")
         )
-        if temp1 == temp1 and temp2 == temp2:  # skip NaN values
-            self.main_graph_widget.add_temperature_sample(temp1, temp2)
+        catheter_out = self.service2_tab.temp_values.get(
+            self.catheter_out_temperature_label, float("nan")
+        )
+        self.main_graph_widget.current_catheter_out_temperature = float(catheter_out)
+        if temp1 == temp1 and catheter_in == catheter_in:  # skip NaN values
+            self.main_graph_widget.add_temperature_sample(temp1, catheter_in)
+        elif self.main_graph_widget.show_spine_diagram:
+            self.main_graph_widget.update()
 
         # Feed selected logical temps into advanced multi-series graph tab.
         series_values = {"Set Temp": float(self.main_graph_widget.set_temperature)}

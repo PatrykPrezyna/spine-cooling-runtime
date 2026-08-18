@@ -180,11 +180,11 @@ thermistor_sensors:
 # Optional channel_configs[].label overrides the flat labels map.
 # Linear calibration: mV → psi (same for all sensors).
 # UI / session CSV follow ui.update_interval_ms (100 ms → 10 Hz).
-# Service 2 CSV toggle runs a dedicated capture thread at capture_rate_hz.
+# A dedicated capture thread writes a 100 Hz pressure CSV for the whole session.
 pressure_sensors:
   enabled: true
   sample_rate_hz: 10
-  capture_rate_hz: 100  # pressure CSV toggle target rate
+  capture_rate_hz: 100  # dedicated pressure CSV rate for the session
   data_rate: 860        # ADS1115 SPS; needed for ~100 Hz × 4 channels
   i2c_addresses:
   - 74   # 0x4A — channels 0 (P0-P1), 1 (P2-P3)
@@ -214,13 +214,11 @@ compressor:
 logging:
   csv_directory: data/csv
   filename_format: sensor_log_%Y%m%d_%H%M%S.csv
-  # Pressure-only capture (Service 2 tab). Both formats are stamped with one
-  # session time, so sensor_log_<session>.csv pairs with every
-  # pressure_log_<session>_runNN.csv; NN increments on each ON toggle.
+  # Pressure-only capture for the whole session. Both formats share one
+  # session stamp, so sensor_log_<session>.csv pairs with
+  # pressure_log_<session>_run01.csv.
   pressure_csv_directory: data/csv/pressure
   pressure_filename_format: pressure_log_%Y%m%d_%H%M%S.csv
-  # Start high-rate capture with the session instead of waiting for the toggle.
-  pressure_autostart: true
 # Pump throughput: flow scales linearly with stepper RPM. Slope from a
 # least-squares fit (through the origin) of the measured calibration data.
 # flow_ml_per_s = pump_rpm * pump_flow_ml_per_min_per_rpm / 60
@@ -247,6 +245,7 @@ pump_control:
   kd: 5.0
   integral_limit: 2.0
 ui:
+  main_view: spine  # spine (diagram + +/- setpoint) or graph (legacy gauge layout)
   window_width: 500
   window_height: 450
   update_interval_ms: 100  # 10 Hz IO / pressure / CSV tick

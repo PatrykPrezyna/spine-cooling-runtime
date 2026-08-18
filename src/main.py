@@ -177,9 +177,6 @@ class SensorMonitorApp(QObject):
         self.csv_logger: Optional[CSVLogger] = None
         self.pressure_csv_logger: Optional[PressureCSVLogger] = None
         self._pressure_capture_loop: Optional[PressureCaptureLoop] = None
-        self.pressure_csv_autostart = bool(
-            self.config.get("logging", {}).get("pressure_autostart", True)
-        )
         self.ui: Optional[MainScreen] = None
         self.state_machine: Optional[StateMachine] = None
         self.stepper_driver: Any = None
@@ -612,6 +609,8 @@ class SensorMonitorApp(QObject):
             state.value,
             error_msg,
             workflow_state_name=workflow_state_name,
+            fault_code=self.state_machine.get_latched_fault_code()
+            if state == State.ERROR else None,
         )
         if state == State.ERROR:
             self.ui.set_acknowledge_enabled(False)
@@ -886,45 +885,16 @@ class SensorMonitorApp(QObject):
     def _autostart_pressure_capture(self) -> None:
         """Begin high-rate pressure capture alongside the session CSV.
 
-        Skipped when the reader is unavailable, which would otherwise fill a
-        100 Hz file with blank rows. Capture failure is not fatal: the session
-        CSV still carries pressures at the UI tick rate.
+        Runs for the whole session. Skipped when the reader is unavailable,
+        which would otherwise fill a 100 Hz file with blank rows. Capture
+        failure is not fatal: the session CSV still carries pressures at the
+        UI tick rate.
         """
-        if not self.pressure_csv_autostart:
-            return
         if self.pressure_reader is None or not self.pressure_reader.is_initialized:
-            print("Pressure CSV autostart skipped: pressure reader unavailable")
+            print("Pressure CSV start skipped: pressure reader unavailable")
             return
         if not self._start_pressure_capture():
-            print("Warning: pressure CSV autostart failed; continuing without it")
-
-    def _sync_pressure_logging_toggle(self) -> None:
-        """Match the Service 2 toggle to capture started before the UI existed."""
-        if self.ui is None:
-            return
-        tab = getattr(self.ui, "pressure_logging_tab", None)
-        if tab is not None:
-            tab.set_pressure_csv_logging(self._pressure_capture_loop is not None)
-
-    def on_pressure_csv_logging_toggle(self, enabled: bool) -> None:
-        """Start/stop dedicated high-rate pressure CSV capture from Service 2.
-
-        Each ON opens a new ``_runNN`` file under
-        ``logging.pressure_csv_directory`` and starts a capture thread at
-        ``pressure_sensors.capture_rate_hz``. OFF stops the thread and closes
-        the file.
-        """
-        if self.pressure_csv_logger is None:
-            return
-        if enabled:
-            if not self._start_pressure_capture():
-                if self.ui is not None:
-                    tab = getattr(self.ui, "pressure_logging_tab", None)
-                    if tab is not None:
-                        tab.set_pressure_csv_logging(False)
-        else:
-            self._stop_pressure_capture()
-            self.pressure_csv_logger.stop_logging()
+            print("Warning: pressure CSV start failed; continuing without it")
 
     def _logged_pump_set_speed_rpm(self) -> int:
         """Stepper setpoint for CSV: speed when running, else 0."""
@@ -1060,7 +1030,6 @@ class SensorMonitorApp(QObject):
             self.ui = MainScreen(self.config)
             self._wire_ui_callbacks()
             self._refresh_ui_state_display()
-            self._sync_pressure_logging_toggle()
             self.ui.set_update_callback(self.update_display)
 
             # Background IO must be started before the timer kicks off so
@@ -1100,7 +1069,6 @@ class SensorMonitorApp(QObject):
         ui.on_stepper_continuous_toggle_callback = self.on_stepper_continuous_toggle
         ui.on_compressor_control_toggle_callback = self.on_compressor_control_toggle
         ui.on_compressor_thresholds_change_callback = self.on_compressor_thresholds_changed
-        ui.on_pressure_csv_logging_toggle_callback = self.on_pressure_csv_logging_toggle
         ui.on_temperature_calibration_callback = self.on_temperature_calibration_requested
 
 

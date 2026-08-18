@@ -77,14 +77,8 @@ sweep, so temperatures cannot go much above ~16 Hz; the pressure chips run at
 | `data/csv/pressure/pressure_log_<session>_runNN.csv` | `pressure_sensors.capture_rate_hz` (100 Hz) | Pressures + pump setpoint only |
 
 Both names share one `<session>` stamp taken at startup, so a pressure file
-always pairs with the session log of the same run. `NN` starts at `01` and
-increments each time pressure capture is toggled off and on again, so one
-session can hold several captures.
-
-High-rate capture starts automatically with the session; set
-`logging.pressure_autostart: false` to require the Service 2 toggle instead.
-The toggle still works either way — turning it off closes the current run, and
-turning it back on opens the next `runNN`.
+always pairs with the session log of the same run. High-rate capture starts
+with the session and runs until shutdown (`_run01` for a normal session).
 
 To combine them, join on the timestamp — the fast file carries the detail and
 the session file supplies the temperatures around it:

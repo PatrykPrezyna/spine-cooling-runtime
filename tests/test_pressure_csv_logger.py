@@ -1,4 +1,4 @@
-"""Tests for toggleable pressure-only CSV capture."""
+"""Tests for always-on high-rate pressure CSV capture."""
 
 from __future__ import annotations
 
@@ -151,7 +151,7 @@ class PressureCsvLoggerTests(unittest.TestCase):
             ],
         )
 
-    def test_filename_uses_session_start_not_toggle_time(self) -> None:
+    def test_filename_uses_session_start(self) -> None:
         session_start = datetime(2026, 8, 17, 16, 30, 45)
         logger = PressureCSVLogger(self.config, session_start=session_start)
         self.assertTrue(logger.start_logging())
@@ -235,52 +235,6 @@ class PressureCaptureLoopTests(unittest.TestCase):
         self.assertEqual(rows[0][1], "peristaltic_pump_set_speed_rpm")
         self.assertGreaterEqual(len(rows), 2)
         self.assertEqual(rows[1][1], "45.00")
-
-
-try:
-    from PyQt6.QtWidgets import QApplication  # noqa: F401
-except Exception:  # pragma: no cover - depends on host Qt install
-    QApplication = None  # type: ignore[misc, assignment]
-
-
-@unittest.skipIf(QApplication is None, "PyQt6 unavailable on this host")
-class PressureServiceTabLoggingToggleTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        from PyQt6.QtWidgets import QApplication
-
-        cls._app = QApplication.instance() or QApplication([])
-
-    def test_toggle_flips_state_and_invokes_callback(self) -> None:
-        from gui import PressureLoggingTab
-
-        tab = PressureLoggingTab()
-        calls: list[bool] = []
-        tab.on_pressure_csv_logging_toggle_callback = calls.append
-
-        self.assertFalse(tab.pressure_csv_logging_enabled)
-        self.assertEqual(tab.pressure_csv_logging_button.text(), "Logging OFF")
-
-        tab.pressure_csv_logging_button.click()
-        self.assertTrue(tab.pressure_csv_logging_enabled)
-        self.assertEqual(tab.pressure_csv_logging_button.text(), "Logging ON")
-        self.assertEqual(calls, [True])
-
-        tab.pressure_csv_logging_button.click()
-        self.assertFalse(tab.pressure_csv_logging_enabled)
-        self.assertEqual(tab.pressure_csv_logging_button.text(), "Logging OFF")
-        self.assertEqual(calls, [True, False])
-
-    def test_set_pressure_csv_logging_does_not_emit_callback(self) -> None:
-        from gui import PressureLoggingTab
-
-        tab = PressureLoggingTab()
-        calls: list[bool] = []
-        tab.on_pressure_csv_logging_toggle_callback = calls.append
-
-        tab.set_pressure_csv_logging(True)
-        self.assertTrue(tab.pressure_csv_logging_enabled)
-        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":
