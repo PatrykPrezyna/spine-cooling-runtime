@@ -168,6 +168,17 @@ class PressureCSVLogger:
         with self._lock:
             self._stop_unlocked()
 
+    def flush(self) -> None:
+        """Push buffered rows to the OS (no-op if not logging)."""
+        with self._lock:
+            if self.file_handle is None:
+                return
+            try:
+                self.file_handle.flush()
+                self._rows_since_flush = 0
+            except Exception:
+                pass
+
     def _stop_unlocked(self) -> None:
         if not self.is_logging:
             return

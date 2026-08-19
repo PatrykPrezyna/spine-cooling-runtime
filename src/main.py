@@ -32,6 +32,17 @@ from csv_logger import CSVLogger
 from pressure_csv_logger import PressureCSVLogger, PressureCaptureLoop
 from session_log_paths import log_directory
 from status_event_logger import StatusEventLogger
+from usb_log_mirror import (
+    STATE_CATCHING_UP,
+    STATE_DISABLED,
+    STATE_EJECTING,
+    STATE_ERROR,
+    STATE_MIRRORING,
+    STATE_SAFE_TO_REMOVE,
+    STATE_WAITING,
+    UsbLogMirror,
+    disk_free_bytes,
+)
 from leak_debounce import LeakDebounceTracker
 from fault_catalog import FaultCode, Severity, get_fault, stop_priority
 from gui import MainScreen
@@ -179,6 +190,7 @@ class SensorMonitorApp(QObject):
         self.csv_logger: Optional[CSVLogger] = None
         self.pressure_csv_logger: Optional[PressureCSVLogger] = None
         self.status_event_logger: Optional[StatusEventLogger] = None
+        self._usb_mirror: Optional[UsbLogMirror] = None
         self._logged_warning_codes: set[FaultCode] = set()
         self._pressure_capture_loop: Optional[PressureCaptureLoop] = None
         self.ui: Optional[MainScreen] = None
@@ -317,6 +329,7 @@ class SensorMonitorApp(QObject):
                 return False
 
             self._autostart_pressure_capture()
+            self._start_usb_mirror()
 
             self.is_running = True
             print("All components initialized successfully")
@@ -420,6 +433,7 @@ class SensorMonitorApp(QObject):
         if self.pressure_csv_logger is not None:
             self.pressure_csv_logger.stop_logging()
         self._stop_status_logging("Session ended")
+        self._stop_usb_mirror()
 
         if self.thermocouple_reader is not None:
             try:
@@ -488,6 +502,66 @@ class SensorMonitorApp(QObject):
                     state=state,
                 )
         self._logged_warning_codes = new_codes
+
+    def _flush_session_logs(self) -> None:
+        # Sensor CSV already flushes every row. Only the 100 Hz pressure
+        # logger (and status) keep a buffer the USB copy might otherwise miss.
+        if self.pressure_csv_logger is not None:
+            self.pressure_csv_logger.flush()
+        if self.status_event_logger is not None:
+            self.status_event_logger.flush()
+
+    def _on_usb_mirror_event(self, event: str, message: str) -> None:
+        logger = self.status_event_logger
+        if logger is None:
+            return
+        logger.log(event=event, severity="info", message=message)
+
+    def _start_usb_mirror(self) -> None:
+        self._usb_mirror = UsbLogMirror(
+            self.config,
+            source_directory=Path(log_directory(self.config)),
+            on_event=self._on_usb_mirror_event,
+            flush_sources=self._flush_session_logs,
+        )
+        if not self._usb_mirror.enabled:
+            print("USB log copy disabled")
+            return
+        self._usb_mirror.start()
+        print(
+            f"USB log copy started (label {self._usb_mirror.volume_label}, "
+            f"every {self._usb_mirror.interval_s:.1f}s)"
+        )
+
+    def _stop_usb_mirror(self) -> None:
+        if self._usb_mirror is None:
+            return
+        self._usb_mirror.stop()
+        self._usb_mirror = None
+
+    def _refresh_usb_ui(self) -> None:
+        if not self.ui:
+            return
+        mirror = self._usb_mirror
+        if mirror is None:
+            self.ui.service_tab.update_usb_status(
+                state="disabled",
+                message="USB copy off",
+                can_eject=False,
+            )
+            return
+        status = mirror.status()
+        self.ui.service_tab.update_usb_status(
+            state=status.state,
+            message=status.message,
+            can_eject=status.can_eject,
+        )
+
+    def on_usb_eject(self) -> None:
+        if self._usb_mirror is None:
+            return
+        self._usb_mirror.request_eject()
+        self._refresh_usb_ui()
 
     # ------------------------------------------------------------------
     # Background IO worker plumbing
@@ -565,11 +639,42 @@ class SensorMonitorApp(QObject):
             pressures=pressures,
             pump_running=self.stepper_motor_running,
             compressor_on=self.compressor_on,
-            telemetry=TelemetrySnapshot(),
+            telemetry=self._storage_telemetry(),
             config=self.config,
             cooling_tracker=self._cooling_tracker,
             leak_tracker=self._leak_tracker,
             now=now,
+        )
+
+    def _storage_telemetry(self) -> TelemetrySnapshot:
+        """USB presence and free space for MESSAGE-severity storage warnings."""
+        local_free = disk_free_bytes(Path(log_directory(self.config)))
+        mirror = self._usb_mirror
+        if mirror is None or not mirror.enabled:
+            return TelemetrySnapshot(
+                usb_logging_enabled=False,
+                local_free_bytes=local_free,
+            )
+        status = mirror.status()
+        ejected = status.state in (STATE_EJECTING, STATE_SAFE_TO_REMOVE)
+        present = status.state in (
+            STATE_MIRRORING,
+            STATE_CATCHING_UP,
+            STATE_ERROR,
+        ) and bool(status.mount_path)
+        if status.state == STATE_WAITING:
+            present = False
+        if status.state == STATE_DISABLED:
+            return TelemetrySnapshot(
+                usb_logging_enabled=False,
+                local_free_bytes=local_free,
+            )
+        return TelemetrySnapshot(
+            usb_logging_enabled=True,
+            usb_present=present if not ejected else False,
+            usb_ejected=ejected,
+            usb_free_bytes=status.free_bytes if present and not ejected else None,
+            local_free_bytes=local_free,
         )
 
     def _evaluate_and_dispatch_safety(
@@ -787,6 +892,7 @@ class SensorMonitorApp(QObject):
                     self.state_machine.handle_sensor_error(error_message)
                 if self.ui:
                     self.ui.set_status_message(error_message, is_error=True)
+                self._refresh_usb_ui()
                 return
 
             sensor_states = sensor_states or {}
@@ -823,6 +929,7 @@ class SensorMonitorApp(QObject):
                 self._refresh_acknowledge_button(sensor_states, temperatures, pressures)
                 if self.stepper_driver:
                     self._update_stepper_ui_status()
+                self._refresh_usb_ui()
         finally:
             self._tick_in_progress = False
 
@@ -1090,6 +1197,7 @@ class SensorMonitorApp(QObject):
 
             self.ui.update_timer.start(self.update_interval_ms)
             self.ui.show()
+            self._refresh_usb_ui()
 
             if self.test_ui_enabled and self.sensor_injection is not None:
                 self.override_ui = SensorOverrideWindow(self.config, self.sensor_injection)
@@ -1122,6 +1230,7 @@ class SensorMonitorApp(QObject):
         ui.on_compressor_control_toggle_callback = self.on_compressor_control_toggle
         ui.on_compressor_thresholds_change_callback = self.on_compressor_thresholds_changed
         ui.on_temperature_calibration_callback = self.on_temperature_calibration_requested
+        ui.on_usb_eject_callback = self.on_usb_eject
 
 
 def main() -> int:

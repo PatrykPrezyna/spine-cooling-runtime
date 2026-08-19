@@ -148,6 +148,16 @@ class StatusEventLogger:
             finally:
                 self._reset_unlocked()
 
+    def flush(self) -> None:
+        """Push buffered rows to the OS (no-op if not logging)."""
+        with self._lock:
+            if self.file_handle is None:
+                return
+            try:
+                self.file_handle.flush()
+            except Exception:
+                pass
+
     def get_log_file_path(self) -> Optional[str]:
         with self._lock:
             return str(self.csv_file) if self.csv_file else None

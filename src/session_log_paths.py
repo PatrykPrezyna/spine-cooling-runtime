@@ -16,6 +16,9 @@ DEFAULT_DIRECTORY = "logs"
 DEFAULT_SENSORS_FILENAME_FORMAT = "%Y%m%d_%H%M%S_sensors.csv"
 DEFAULT_PRESSURE_FILENAME_FORMAT = "%Y%m%d_%H%M%S_pressure_100Hz.csv"
 DEFAULT_STATUS_FILENAME_FORMAT = "%Y%m%d_%H%M%S_status_and_errors.csv"
+DEFAULT_USB_VOLUME_LABEL = "SPINELOGS"
+DEFAULT_USB_DEST_SUBDIR = "logs"
+DEFAULT_USB_INTERVAL_S = 2.0
 
 
 def _logging_cfg(config: dict[str, Any] | None) -> dict[str, Any]:
@@ -58,3 +61,38 @@ def status_filename_format(config: dict[str, Any] | None) -> str:
     return str(
         cfg.get("status_filename_format") or DEFAULT_STATUS_FILENAME_FORMAT
     )
+
+
+def usb_config(config: dict[str, Any] | None) -> dict[str, Any]:
+    cfg = _logging_cfg(config).get("usb") or {}
+    return cfg if isinstance(cfg, dict) else {}
+
+
+def usb_enabled(config: dict[str, Any] | None) -> bool:
+    cfg = usb_config(config)
+    if "enabled" in cfg:
+        return bool(cfg["enabled"])
+    return True
+
+
+def usb_volume_label(config: dict[str, Any] | None) -> str:
+    return str(usb_config(config).get("volume_label") or DEFAULT_USB_VOLUME_LABEL)
+
+
+def usb_destination_subdir(config: dict[str, Any] | None) -> str:
+    return str(usb_config(config).get("destination_subdir") or DEFAULT_USB_DEST_SUBDIR)
+
+
+def usb_interval_s(config: dict[str, Any] | None) -> float:
+    try:
+        value = float(usb_config(config).get("interval_s", DEFAULT_USB_INTERVAL_S))
+    except (TypeError, ValueError):
+        value = DEFAULT_USB_INTERVAL_S
+    return max(0.2, value)
+
+
+def usb_mount_path_override(config: dict[str, Any] | None) -> str | None:
+    value = usb_config(config).get("mount_path")
+    if value is None or str(value).strip() == "":
+        return None
+    return str(value)

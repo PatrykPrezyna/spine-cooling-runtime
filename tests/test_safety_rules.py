@@ -120,6 +120,73 @@ class SafetyRulesTests(unittest.TestCase):
         )
         self.assertIn(FaultCode.BATTERY_LOW, active)
 
+    def test_usb_not_present_when_logging_enabled(self) -> None:
+        active = evaluate(
+            _ctx(
+                telemetry=TelemetrySnapshot(
+                    usb_logging_enabled=True,
+                    usb_present=False,
+                )
+            )
+        )
+        self.assertIn(FaultCode.USB_NOT_PRESENT, active)
+        self.assertNotIn(FaultCode.USB_STORAGE_LOW, active)
+
+    def test_usb_not_present_skipped_after_eject(self) -> None:
+        active = evaluate(
+            _ctx(
+                telemetry=TelemetrySnapshot(
+                    usb_logging_enabled=True,
+                    usb_present=False,
+                    usb_ejected=True,
+                )
+            )
+        )
+        self.assertNotIn(FaultCode.USB_NOT_PRESENT, active)
+
+    def test_usb_not_present_skipped_when_disabled(self) -> None:
+        active = evaluate(
+            _ctx(telemetry=TelemetrySnapshot(usb_logging_enabled=False, usb_present=False))
+        )
+        self.assertNotIn(FaultCode.USB_NOT_PRESENT, active)
+
+    def test_sd_storage_low(self) -> None:
+        active = evaluate(
+            _ctx(telemetry=TelemetrySnapshot(local_free_bytes=500 * 1024 * 1024))
+        )
+        self.assertIn(FaultCode.SD_STORAGE_LOW, active)
+        self.assertNotIn(FaultCode.USB_STORAGE_LOW, active)
+
+    def test_sd_storage_ok_above_1gb(self) -> None:
+        active = evaluate(
+            _ctx(telemetry=TelemetrySnapshot(local_free_bytes=2 * 1024 * 1024 * 1024))
+        )
+        self.assertNotIn(FaultCode.SD_STORAGE_LOW, active)
+
+    def test_usb_storage_low_only_when_present(self) -> None:
+        low = 100 * 1024 * 1024
+        active_missing = evaluate(
+            _ctx(
+                telemetry=TelemetrySnapshot(
+                    usb_logging_enabled=True,
+                    usb_present=False,
+                    usb_free_bytes=low,
+                )
+            )
+        )
+        self.assertNotIn(FaultCode.USB_STORAGE_LOW, active_missing)
+        active_present = evaluate(
+            _ctx(
+                telemetry=TelemetrySnapshot(
+                    usb_logging_enabled=True,
+                    usb_present=True,
+                    usb_free_bytes=low,
+                )
+            )
+        )
+        self.assertIn(FaultCode.USB_STORAGE_LOW, active_present)
+        self.assertNotIn(FaultCode.USB_NOT_PRESENT, active_present)
+
     def test_heat_ex_too_cold(self) -> None:
         config = {
             "alarms": {

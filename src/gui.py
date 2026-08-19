@@ -1705,6 +1705,7 @@ class ServiceTab(QWidget):
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
+        self.on_usb_eject_callback: Optional[Callable[[], None]] = None
 
         self._create_widgets()
         self._setup_layout()
@@ -1856,6 +1857,18 @@ class ServiceTab(QWidget):
         )
         self._apply_rpm_flow_calibration_button_style(False)
 
+        self.usb_group = QGroupBox("USB logging")
+        self.usb_group.setStyleSheet(self._group_box_style("#2563eb", "13px", margin_top=8))
+        self.usb_status_label = QLabel("Waiting for USB")
+        self.usb_status_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
+        self.usb_status_label.setWordWrap(True)
+        self.usb_eject_button = QPushButton("Eject")
+        self.usb_eject_button.setMinimumHeight(40)
+        self.usb_eject_button.setMaximumWidth(140)
+        self.usb_eject_button.setEnabled(False)
+        self.usb_eject_button.clicked.connect(self._on_usb_eject_clicked)
+        self._apply_usb_eject_button_style(enabled=False)
+
     def _make_temp_control_row(self, caption: str, spin: QDoubleSpinBox, down: QPushButton, up: QPushButton) -> QHBoxLayout:
         """Build a compact threshold row: label | − value +."""
         row = QHBoxLayout()
@@ -1918,6 +1931,14 @@ class ServiceTab(QWidget):
         compressor_layout.addLayout(thresholds)
         self.compressor_group.setLayout(compressor_layout)
         main_layout.addWidget(self.compressor_group)
+
+        usb_layout = QHBoxLayout()
+        usb_layout.setContentsMargins(8, 6, 8, 6)
+        usb_layout.setSpacing(8)
+        usb_layout.addWidget(self.usb_status_label, 1)
+        usb_layout.addWidget(self.usb_eject_button, 0)
+        self.usb_group.setLayout(usb_layout)
+        main_layout.addWidget(self.usb_group)
 
         # Stepper: labeled sliders, readout + calibrate, jog/run, ramp test.
         outputs_layout = QVBoxLayout()
@@ -1992,6 +2013,34 @@ class ServiceTab(QWidget):
         self.stepper_speed_label.setText(self._format_speed_text(self.stepper_speed_rpm))
         self._update_stepper_control_enabled_state()
         self.stepper_continuous_button.setEnabled(True)
+
+    def update_usb_status(
+        self,
+        state: str = "waiting",
+        message: str = "",
+        can_eject: bool = False,
+    ) -> None:
+        """Update USB mirror status and eject-button enablement."""
+        colors = {
+            "mirroring": "#16a34a",
+            "catching_up": "#0e6a76",
+            "error": "#dc2626",
+            "ejecting": "#d97706",
+            "safe_to_remove": "#2563eb",
+            "waiting": "#6b7280",
+            "disabled": "#6b7280",
+        }
+        color = colors.get(state, "#6b7280")
+        text = message or "USB logging"
+        self.usb_status_label.setText(text)
+        self.usb_status_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
+        ejecting = state == "ejecting"
+        self.usb_eject_button.setEnabled(bool(can_eject) and not ejecting)
+        self.usb_eject_button.setText("Ejecting…" if ejecting else "Eject")
+        self._apply_usb_eject_button_style(
+            enabled=bool(can_eject) and not ejecting,
+            ejecting=ejecting,
+        )
 
     def _format_speed_text(self, rpm: int) -> str:
         if self._commanded_flow_ml_per_min is not None:
@@ -2174,6 +2223,37 @@ class ServiceTab(QWidget):
                 background-color: {hover};
             }}
         """)
+
+    def _apply_usb_eject_button_style(self, enabled: bool, ejecting: bool = False) -> None:
+        if ejecting:
+            bg, hover, border = "#d97706", "#b45309", "#b45309"
+        elif enabled:
+            bg, hover, border = "#2563eb", "#1d4ed8", "#1d4ed8"
+        else:
+            bg, hover, border = "#9ca3af", "#9ca3af", "#6b7280"
+        self.usb_eject_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: white;
+                font-size: 13px;
+                font-weight: 700;
+                border-radius: 10px;
+                padding: 8px 12px;
+                border: 2px solid {border};
+            }}
+            QPushButton:hover {{
+                background-color: {hover};
+            }}
+            QPushButton:disabled {{
+                background-color: #9ca3af;
+                border-color: #6b7280;
+                color: #f9fafb;
+            }}
+        """)
+
+    def _on_usb_eject_clicked(self) -> None:
+        if self.on_usb_eject_callback:
+            self.on_usb_eject_callback()
 
     def _on_jog_pressed(self, direction: int):
         """Start jog in the given direction (-1 reverse, +1 forward)."""
@@ -3505,6 +3585,7 @@ class MainScreen(QMainWindow):
         self.on_temperature_calibration_callback: Optional[
             Callable[[str, float, float], tuple[bool, str]]
         ] = None
+        self.on_usb_eject_callback: Optional[Callable[[], None]] = None
 
         self._setup_window()
         self._create_widgets()
@@ -3725,6 +3806,7 @@ class MainScreen(QMainWindow):
         self.service_tab.on_stepper_continuous_toggle_callback = self._on_service_stepper_continuous_toggle
         self.service_tab.on_compressor_control_toggle_callback = self._on_service_compressor_control_toggle
         self.service_tab.on_compressor_thresholds_change_callback = self._on_service_compressor_thresholds_change
+        self.service_tab.on_usb_eject_callback = self._on_service_usb_eject
 
         # Status tab (digital inputs; also caches logical temperatures for graphs)
         pressure_sensor_names = self._pressure_sensor_names_from_config(self.config)
@@ -4001,6 +4083,10 @@ class MainScreen(QMainWindow):
     def _on_service_compressor_thresholds_change(self, off_temp_c: float, on_temp_c: float):
         if self.on_compressor_thresholds_change_callback:
             self.on_compressor_thresholds_change_callback(off_temp_c, on_temp_c)
+
+    def _on_service_usb_eject(self):
+        if self.on_usb_eject_callback:
+            self.on_usb_eject_callback()
 
     def _toggle_window_mode(self) -> None:
         """Toggle between fullscreen and fixed-size windowed mode."""

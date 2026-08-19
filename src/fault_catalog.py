@@ -16,6 +16,9 @@ class FaultCode(Enum):
     CSF_LOW_TEMP = "CSF_LOW_TEMP"
     IO_READ_FAILURE = "IO_READ_FAILURE"
     BATTERY_LOW = "BATTERY_LOW"
+    USB_NOT_PRESENT = "USB_NOT_PRESENT"
+    SD_STORAGE_LOW = "SD_STORAGE_LOW"
+    USB_STORAGE_LOW = "USB_STORAGE_LOW"
     FRIDGE_DEFECT = "FRIDGE_DEFECT"
     LEAK_DETECTED = "LEAK_DETECTED"
     HEAT_EX_TOO_COLD = "HEAT_EX_TOO_COLD"
@@ -139,6 +142,49 @@ FAULTS: dict[FaultCode, FaultDef] = {
             "Connect mains power or replace/charge the battery.",
             "Confirm the power lead is fully seated.",
             "Continue only if the warning clears; otherwise stop the session.",
+        ),
+    ),
+    FaultCode.USB_NOT_PRESENT: _fault(
+        FaultCode.USB_NOT_PRESENT,
+        "USB stick not present",
+        Severity.MESSAGE,
+        False,
+        (
+            "No USB stick labeled SPINELOGS is mounted.",
+            "The stick was unplugged, not formatted with that label, or failed to mount.",
+        ),
+        (
+            "Insert a USB stick labeled SPINELOGS (exFAT or FAT32).",
+            "Wait until Service → Manual Operation shows copying.",
+            "Use Eject before removing the stick.",
+        ),
+    ),
+    FaultCode.SD_STORAGE_LOW: _fault(
+        FaultCode.SD_STORAGE_LOW,
+        "SD card storage below 1 GB",
+        Severity.MESSAGE,
+        False,
+        (
+            "The SD card (local logs folder) has less than 1 GB free.",
+            "Old session CSVs are filling the card.",
+        ),
+        (
+            "Copy logs off the Pi and delete old files from logs/.",
+            "Do not start a long session until more than 1 GB is free.",
+        ),
+    ),
+    FaultCode.USB_STORAGE_LOW: _fault(
+        FaultCode.USB_STORAGE_LOW,
+        "USB stick storage below 1 GB",
+        Severity.MESSAGE,
+        False,
+        (
+            "The USB stick has less than 1 GB free.",
+            "Previous session copies are filling the stick.",
+        ),
+        (
+            "Eject the stick, copy files off, and delete old logs.",
+            "Reinsert a stick with more than 1 GB free.",
         ),
     ),
     FaultCode.FRIDGE_DEFECT: _fault(

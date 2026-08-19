@@ -163,6 +163,15 @@ class CSVLogger:
         except Exception as e:
             print(f"Error logging data: {e}")
 
+    def flush(self) -> None:
+        """Push buffered rows to the OS (no-op if not logging)."""
+        if not self.is_logging or self.file_handle is None:
+            return
+        try:
+            self.file_handle.flush()
+        except Exception:
+            pass
+
     def stop_logging(self):
         """Close the active CSV file (no-op if not logging)."""
         if not self.is_logging:

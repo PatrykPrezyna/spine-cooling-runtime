@@ -64,6 +64,22 @@ Off-Pi mode uses fakes in `src/sim/`; tweak default sensor/temp values under `si
 3 log in using port 22
 4 Go to spine-cooling-runtime/logs and double-click the selected file
 
+Or plug in a USB stick labeled **SPINELOGS** (exFAT or FAT32). The runtime
+keeps writing to `logs/` on the Pi and copies new bytes onto the stick every
+couple of seconds (`USB/logs/<same filenames>`). Use **Service → Manual
+Operation → Eject** before unplugging. Copying pauses until you unplug and
+insert the stick again (so an automatic remount after eject does not keep
+writing).
+
+Format a stick (example):
+
+```text
+Windows:  format E: /FS:exFAT /V:SPINELOGS /Q
+Linux:    sudo fatlabel /dev/sda1 SPINELOGS
+```
+
+Set `logging.usb.enabled: false` in `config.yaml` to turn this off.
+
 ### Session log files
 
 Each run writes three CSVs into `logs/`, all sharing one startup stamp.
@@ -109,6 +125,7 @@ merged = pd.merge_asof(fast, session, on="timestamp", direction="nearest")
 | `src/csv_logger.py` | 10 Hz sensor CSV logging |
 | `src/pressure_csv_logger.py` | 100 Hz pressure CSV logging |
 | `src/status_event_logger.py` | State, error, and warning CSV logging |
+| `src/usb_log_mirror.py` | Background copy of session CSVs onto a USB stick |
 | `src/sim/` | In-memory hardware fakes (used with `--sim`) |
 | `src/hardware_factory.py` | Picks real vs simulated drivers at startup |
 | `config.yaml` | Hardware mapping and runtime settings |

@@ -39,3 +39,15 @@ Thumbs.db
 
 # Mypy
 .mypy_cache/
+docs/screenshots/01_main_ready.png
+docs/screenshots/02_main_cooling.png
+docs/screenshots/04_main_error.png
+docs/screenshots/05_error_help.png
+docs/screenshots/06_main_warning.png
+docs/screenshots/07_expert_temperature.png
+docs/screenshots/08_expert_pressure.png
+docs/screenshots/09_expert_power.png
+docs/screenshots/10_expert_status.png
+docs/screenshots/11_service_manual.png
+docs/screenshots/12_service_pressure_log.png
+docs/screenshots/13_service_calibration.png

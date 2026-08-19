@@ -17,6 +17,11 @@ ACTIVE_STATES = (State.COOLING, State.PUMPING, State.PUMPING_SLOWLY)
 class TelemetrySnapshot:
     battery_pct: Optional[float] = None
     fridge_defect: Optional[bool] = None
+    usb_logging_enabled: bool = False
+    usb_present: Optional[bool] = None
+    usb_ejected: bool = False
+    usb_free_bytes: Optional[int] = None
+    local_free_bytes: Optional[int] = None
 
 
 @dataclass
@@ -56,6 +61,12 @@ def evaluate(ctx: RuleContext) -> set[FaultCode]:
         active.add(FaultCode.COOLING_INEFFECTIVE)
     if _check_battery_low(ctx):
         active.add(FaultCode.BATTERY_LOW)
+    if _check_usb_not_present(ctx):
+        active.add(FaultCode.USB_NOT_PRESENT)
+    if _check_sd_storage_low(ctx):
+        active.add(FaultCode.SD_STORAGE_LOW)
+    if _check_usb_storage_low(ctx):
+        active.add(FaultCode.USB_STORAGE_LOW)
     if _check_fridge_defect(ctx):
         active.add(FaultCode.FRIDGE_DEFECT)
     return active
@@ -147,6 +158,37 @@ def _check_battery_low(ctx: RuleContext) -> bool:
     alarms = _alarms(ctx)
     threshold = float(alarms.get("battery_low_pct", 20))
     return float(pct) < threshold
+
+
+def _storage_min_free_bytes(ctx: RuleContext) -> int:
+    alarms = _alarms(ctx)
+    if alarms.get("storage_min_free_bytes") is not None:
+        return max(0, int(alarms["storage_min_free_bytes"]))
+    gb = float(alarms.get("storage_min_free_gb", 1.0))
+    return max(0, int(gb * 1024 * 1024 * 1024))
+
+
+def _check_usb_not_present(ctx: RuleContext) -> bool:
+    tel = ctx.telemetry
+    if not tel.usb_logging_enabled or tel.usb_ejected:
+        return False
+    return tel.usb_present is False
+
+
+def _check_sd_storage_low(ctx: RuleContext) -> bool:
+    free = ctx.telemetry.local_free_bytes
+    if free is None:
+        return False
+    return int(free) < _storage_min_free_bytes(ctx)
+
+
+def _check_usb_storage_low(ctx: RuleContext) -> bool:
+    tel = ctx.telemetry
+    if not tel.usb_logging_enabled or tel.usb_present is not True:
+        return False
+    if tel.usb_free_bytes is None:
+        return False
+    return int(tel.usb_free_bytes) < _storage_min_free_bytes(ctx)
 
 
 def _check_fridge_defect(ctx: RuleContext) -> bool:

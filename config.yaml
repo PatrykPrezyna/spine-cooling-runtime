@@ -26,6 +26,8 @@ alarms:
   cooling_ineffective_timeout_s: 600
   cooling_ineffective_csf_delta_c: 0.2
   battery_low_pct: 20
+  # MESSAGE warnings when local (SD) or USB free space drops below this.
+  storage_min_free_gb: 1
 simulation:
   csf_label: Probe 2
   csf_initial_c: 37.0
@@ -222,6 +224,16 @@ logging:
   sensors_filename_format: "%Y%m%d_%H%M%S_sensors.csv"
   pressure_filename_format: "%Y%m%d_%H%M%S_pressure_100Hz.csv"
   status_filename_format: "%Y%m%d_%H%M%S_status_and_errors.csv"
+  # Background copy of the three session CSVs onto a USB stick. Local logs/
+  # stay the source of truth. Format the stick as exFAT/FAT32 with volume
+  # label SPINELOGS. Service → Manual Operation shows status and Eject.
+  usb:
+    enabled: true
+    volume_label: SPINELOGS
+    destination_subdir: logs
+    interval_s: 2.0
+    # Optional fixed folder (tests / a known mount). Empty = discover by label.
+    mount_path: ""
 # Pump throughput: flow scales linearly with stepper RPM. Slope from a
 # least-squares fit (through the origin) of the measured calibration data.
 # flow_ml_per_s = pump_rpm * pump_flow_ml_per_min_per_rpm / 60
