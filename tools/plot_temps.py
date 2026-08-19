@@ -11,15 +11,15 @@ Examples
 --------
 Plot the whole file:
 
-    python plot_temps.py data/csv/sensor_log_20260504_161226.csv
+    python plot_temps.py logs/20260504_161226_sensors.csv
 
 Plot a sub-range (any datetime-ish string pandas understands works):
 
-    python plot_temps.py data/csv/sensor_log.csv --start "2026-05-04 16:12:30" --end "2026-05-04 16:13:00"
+    python plot_temps.py logs/20260504_161226_sensors.csv --start "2026-05-04 16:12:30" --end "2026-05-04 16:13:00"
 
 Plot the last 30 seconds and save to PNG without opening a window:
 
-    python plot_temps.py data/csv/sensor_log.csv --last 30s --save out.png --no-show
+    python plot_temps.py logs/20260504_161226_sensors.csv --last 30s --save out.png --no-show
 """
 
 from __future__ import annotations

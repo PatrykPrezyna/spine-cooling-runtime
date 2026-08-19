@@ -6,15 +6,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from session_log_paths import log_directory, sensors_filename_format
+
 
 class CSVLogger:
     """Append sensor + temperature + pressure samples to a timestamped CSV file."""
 
     def __init__(self, config: dict, session_start: Optional[datetime] = None):
-        self.csv_directory = config['logging']['csv_directory']
-        self.filename_format = config['logging']['filename_format']
-        # Shared with PressureCSVLogger so the session file and the high-rate
-        # pressure files of the same run carry an identical stamp.
+        self.csv_directory = log_directory(config)
+        self.filename_format = sensors_filename_format(config)
+        # Shared with PressureCSVLogger / StatusEventLogger so every file of
+        # the same run carries an identical stamp.
         self.session_start = session_start or datetime.now()
         self.thermocouple_columns = self._thermocouple_columns_from_config(config)
         self.pressure_columns = self._pressure_columns_from_config(config)
@@ -63,7 +65,7 @@ class CSVLogger:
         header.append('pump_flow_ml_per_s')
         header.append('compressor_cooling')
         for name in pressure_columns:
-            header.append(f"{self._csv_slug(name)}_psi")
+            header.append(f"{self._csv_slug(name)}_bar")
         return header
 
     def start_logging(self) -> bool:
@@ -109,7 +111,7 @@ class CSVLogger:
         ``set_temperature_c`` is the user-selected target temperature.
         ``compressor_cooling`` is 1 when the compressor relay is on (cooling),
         0 when off (idle).
-        ``pressures`` maps label → psi (logged to two decimal places).
+        ``pressures`` maps label → bar (logged to two decimal places).
         """
         del sensor_states  # not logged anymore; kept for API compatibility
         if not self.is_logging:

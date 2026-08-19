@@ -22,10 +22,8 @@ from pressure_csv_logger import PressureCSVLogger, PressureCaptureLoop  # noqa: 
 
 _CONFIG = {
     "logging": {
-        "csv_directory": "unused",
-        "filename_format": "unused_%Y%m%d_%H%M%S.csv",
-        "pressure_csv_directory": "unused",
-        "pressure_filename_format": "pressure_log_%Y%m%d_%H%M%S.csv",
+        "directory": "unused",
+        "pressure_filename_format": "%Y%m%d_%H%M%S_pressure_100Hz.csv",
     },
     "pressure_sensors": {
         "enabled": True,
@@ -48,7 +46,7 @@ class PressureCsvLoggerTests(unittest.TestCase):
         self.config = dict(_CONFIG)
         self.config["logging"] = {
             **_CONFIG["logging"],
-            "pressure_csv_directory": self._tmpdir.name,
+            "directory": self._tmpdir.name,
         }
         self.logger = PressureCSVLogger(self.config)
 
@@ -63,10 +61,10 @@ class PressureCsvLoggerTests(unittest.TestCase):
             [
                 "timestamp",
                 "peristaltic_pump_set_speed_rpm",
-                "cartridge_input_psi",
-                "cartridge_output_psi",
-                "pump_input_psi",
-                "pump_output_psi",
+                "cartridge_input_bar",
+                "cartridge_output_bar",
+                "pump_input_bar",
+                "pump_output_bar",
             ],
         )
 
@@ -78,7 +76,8 @@ class PressureCsvLoggerTests(unittest.TestCase):
         self.assertTrue(self.logger.start_logging())
         path = Path(self.logger.get_log_file_path() or "")
         self.assertTrue(path.exists())
-        self.assertTrue(path.name.startswith("pressure_log_"))
+        self.assertTrue(path.name.endswith("_pressure_100Hz.csv"))
+        self.assertNotIn("_run", path.name)
 
         self.logger.log(
             {
@@ -114,7 +113,7 @@ class PressureCsvLoggerTests(unittest.TestCase):
         self.assertNotEqual(first, second)
         self.assertTrue(first.exists())
         self.assertTrue(second.exists())
-        files = sorted(Path(self._tmpdir.name).glob("pressure_log_*.csv"))
+        files = sorted(Path(self._tmpdir.name).glob("*_pressure_100Hz*.csv"))
         self.assertEqual(len(files), 2)
 
     def test_start_while_active_closes_previous_and_opens_new(self) -> None:
@@ -145,9 +144,9 @@ class PressureCsvLoggerTests(unittest.TestCase):
         self.assertEqual(
             names,
             [
-                f"pressure_log_{stamp}_run01.csv",
-                f"pressure_log_{stamp}_run02.csv",
-                f"pressure_log_{stamp}_run03.csv",
+                f"{stamp}_pressure_100Hz.csv",
+                f"{stamp}_pressure_100Hz_run02.csv",
+                f"{stamp}_pressure_100Hz_run03.csv",
             ],
         )
 
@@ -157,32 +156,37 @@ class PressureCsvLoggerTests(unittest.TestCase):
         self.assertTrue(logger.start_logging())
         name = Path(logger.get_log_file_path() or "").name
         logger.stop_logging()
-        self.assertEqual(name, "pressure_log_20260817_163045_run01.csv")
+        self.assertEqual(name, "20260817_163045_pressure_100Hz.csv")
 
     def test_session_and_pressure_files_share_one_stamp(self) -> None:
         from csv_logger import CSVLogger
+        from status_event_logger import StatusEventLogger
 
         session_start = datetime(2026, 8, 17, 16, 30, 45)
         config = {
             **self.config,
             "logging": {
                 **self.config["logging"],
-                "csv_directory": self._tmpdir.name,
-                "filename_format": "sensor_log_%Y%m%d_%H%M%S.csv",
+                "directory": self._tmpdir.name,
             },
         }
         session_logger = CSVLogger(config, session_start=session_start)
         pressure_logger = PressureCSVLogger(config, session_start=session_start)
+        status_logger = StatusEventLogger(config, session_start=session_start)
         self.assertTrue(session_logger.start_logging())
         self.assertTrue(pressure_logger.start_logging())
+        self.assertTrue(status_logger.start_logging())
         session_name = Path(session_logger.get_log_file_path() or "").name
         pressure_name = Path(pressure_logger.get_log_file_path() or "").name
+        status_name = Path(status_logger.get_log_file_path() or "").name
         session_logger.stop_logging()
         pressure_logger.stop_logging()
+        status_logger.stop_logging()
 
         stamp = "20260817_163045"
-        self.assertEqual(session_name, f"sensor_log_{stamp}.csv")
-        self.assertEqual(pressure_name, f"pressure_log_{stamp}_run01.csv")
+        self.assertEqual(session_name, f"{stamp}_sensors.csv")
+        self.assertEqual(pressure_name, f"{stamp}_pressure_100Hz.csv")
+        self.assertEqual(status_name, f"{stamp}_status_and_errors.csv")
 
 
 class PressureCaptureLoopTests(unittest.TestCase):
@@ -191,7 +195,7 @@ class PressureCaptureLoopTests(unittest.TestCase):
         self.config = dict(_CONFIG)
         self.config["logging"] = {
             **_CONFIG["logging"],
-            "pressure_csv_directory": self._tmpdir.name,
+            "directory": self._tmpdir.name,
         }
         self.logger = PressureCSVLogger(self.config)
         self.reads = 0

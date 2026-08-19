@@ -26,15 +26,17 @@ I2C_ADDRESS = 75
 GAIN = 16  # ±0.256 V
 SAMPLE_INTERVAL_S = 0.5  # 2 Hz print loop
 
-# Linear calibration: mV -> psi
+# Linear calibration: mV -> bar (original sensor anchors: -11.5 psi / 75.0 psi)
 MV_LO, PSI_LO = -14.858, -11.5
 MV_HI, PSI_HI = 96.9, 75.0
+PSI_TO_BAR = 0.06894757293168
+BAR_LO, BAR_HI = PSI_LO * PSI_TO_BAR, PSI_HI * PSI_TO_BAR
 
 keep_going = True
 
 
-def mv_to_psi(mv: float) -> float:
-    return PSI_LO + (mv - MV_LO) * (PSI_HI - PSI_LO) / (MV_HI - MV_LO)
+def mv_to_bar(mv: float) -> float:
+    return BAR_LO + (mv - MV_LO) * (BAR_HI - BAR_LO) / (MV_HI - MV_LO)
 
 
 def key_capture_thread() -> None:
@@ -68,8 +70,8 @@ def main() -> None:
         now = datetime.now().strftime("%H:%M:%S.%f")[:-3]
         try:
             mv = sensor.voltage * 1000.0
-            psi = mv_to_psi(mv)
-            print(f"{now}  Pressure 1 -> {mv:.2f} mV  {psi:.2f} psi  (raw={sensor.value})")
+            bar = mv_to_bar(mv)
+            print(f"{now}  Pressure 1 -> {mv:.2f} mV  {bar:.2f} bar  (raw={sensor.value})")
         except Exception as exc:
             print(f"{now}  Pressure 1 -> ERR ({exc})")
         time.sleep(SAMPLE_INTERVAL_S)

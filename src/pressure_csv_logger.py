@@ -3,11 +3,10 @@
 A background loop reads pressures and appends CSV rows at
 ``pressure_sensors.capture_rate_hz`` (default 100 Hz) for the whole session.
 
-``start_logging()`` opens ``pressure_log_<session>_runNN.csv``, where
-``<session>`` is the stamp shared with the session ``sensor_log`` and ``NN``
-counts captures within that session (normally ``01`` for a single always-on
-run). Pairing a pressure file with its session file is therefore a string
-match on the stamp rather than a guess from modification times.
+``start_logging()`` opens ``<session>_pressure_100Hz.csv`` in the shared
+``logs`` folder. If capture is restarted in the same session, later files
+are ``<session>_pressure_100Hz_run02.csv``, ``_run03``, … Pairing with the
+sensor and status files is a string match on the shared session stamp.
 """
 
 from __future__ import annotations
@@ -20,6 +19,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from session_log_paths import log_directory, pressure_filename_format
+
 
 class PressureCSVLogger:
     """Append pressure samples to a dedicated CSV file while capture is on."""
@@ -29,20 +30,9 @@ class PressureCSVLogger:
     _FLUSH_EVERY_N_ROWS = 50
 
     def __init__(self, config: dict, session_start: Optional[datetime] = None):
-        logging_cfg = config.get("logging", {})
         ps_cfg = config.get("pressure_sensors", {}) or {}
-        self.csv_directory = str(
-            logging_cfg.get(
-                "pressure_csv_directory",
-                logging_cfg.get("csv_directory", "data/csv"),
-            )
-        )
-        self.filename_format = str(
-            logging_cfg.get(
-                "pressure_filename_format",
-                "pressure_log_%Y%m%d_%H%M%S.csv",
-            )
-        )
+        self.csv_directory = log_directory(config, "pressure_csv_directory")
+        self.filename_format = pressure_filename_format(config)
         self.capture_rate_hz = max(
             1.0, float(ps_cfg.get("capture_rate_hz", 100.0))
         )
@@ -77,20 +67,24 @@ class PressureCSVLogger:
     def _build_header(self, pressure_columns: list[str]) -> list[str]:
         header = ["timestamp", "peristaltic_pump_set_speed_rpm"]
         for name in pressure_columns:
-            header.append(f"{self._csv_slug(name)}_psi")
+            header.append(f"{self._csv_slug(name)}_bar")
         return header
 
     def _next_csv_path(self) -> Path:
-        """Return the next ``_runNN`` path for the current session.
+        """Return the next path for the current session.
 
-        The stem carries the session stamp rather than start time of a later
-        capture, so the file pairs with the session CSV; ``NN`` separates
-        repeated captures if logging is restarted.
+        The first capture of a session uses ``<stamp>_pressure_100Hz.csv``.
+        Later restarts add ``_run02``, ``_run03``, … so earlier files are kept
+        and still pair with the sensor/status CSVs by stamp.
         """
         base = Path(self.csv_directory) / self.session_start.strftime(
             self.filename_format
         )
-        for index in range(self._run_index + 1, 1000):
+        if self._run_index == 0 and not base.exists():
+            self._run_index = 1
+            return base
+        start = 2 if self._run_index < 2 else self._run_index + 1
+        for index in range(start, 1000):
             candidate = base.with_name(f"{base.stem}_run{index:02d}{base.suffix}")
             if not candidate.exists():
                 self._run_index = index

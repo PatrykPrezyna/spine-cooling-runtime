@@ -3,9 +3,9 @@
 Chain under test:
   ADS1115 differential voltage (V)
     → millivolts (V * 1000)
-    → linear mV → psi calibration
+    → linear mV → bar calibration
     → labeled dict from reader
-    → UI text \"{name}: {value:.2f} psi\"
+    → UI text \"{name}: {value:.2f} bar\"
 """
 
 from __future__ import annotations
@@ -24,17 +24,19 @@ if str(SRC_DIR) not in sys.path:
 
 from ads1115_pressure_reader import (  # noqa: E402
     ADS1115PressureReader,
-    mv_to_psi,
+    mv_to_bar,
+    PSI_TO_BAR,
+    _BAR_HI,
+    _BAR_LO,
     _MV_HI,
     _MV_LO,
-    _PSI_HI,
-    _PSI_LO,
 )
 
 
 # Calibration anchors (must match example + config.yaml).
 MV_LO, PSI_LO = -14.858, -11.5
 MV_HI, PSI_HI = 96.9, 75.0
+BAR_LO, BAR_HI = PSI_LO * PSI_TO_BAR, PSI_HI * PSI_TO_BAR
 
 _PRESSURE_CONFIG = {
     "pressure_sensors": {
@@ -44,9 +46,9 @@ _PRESSURE_CONFIG = {
         "channels": [0, 1, 2, 3],
         "calibration": {
             "mv_lo": MV_LO,
-            "psi_lo": PSI_LO,
+            "bar_lo": BAR_LO,
             "mv_hi": MV_HI,
-            "psi_hi": PSI_HI,
+            "bar_hi": BAR_HI,
         },
         "labels": {
             0: "Cartridge Input",
@@ -75,34 +77,34 @@ def _reader_with_voltages(voltages_by_channel: dict[int, float]) -> ADS1115Press
     return reader
 
 
-class MvToPsiConversionTests(unittest.TestCase):
+class MvToBarConversionTests(unittest.TestCase):
     def test_module_defaults_match_calibration_anchors(self) -> None:
         self.assertEqual(_MV_LO, MV_LO)
-        self.assertEqual(_PSI_LO, PSI_LO)
+        self.assertAlmostEqual(_BAR_LO, BAR_LO, places=9)
         self.assertEqual(_MV_HI, MV_HI)
-        self.assertEqual(_PSI_HI, PSI_HI)
+        self.assertAlmostEqual(_BAR_HI, BAR_HI, places=9)
 
     def test_low_calibration_point(self) -> None:
-        self.assertAlmostEqual(mv_to_psi(MV_LO), PSI_LO, places=6)
+        self.assertAlmostEqual(mv_to_bar(MV_LO), BAR_LO, places=6)
 
     def test_high_calibration_point(self) -> None:
-        self.assertAlmostEqual(mv_to_psi(MV_HI), PSI_HI, places=6)
+        self.assertAlmostEqual(mv_to_bar(MV_HI), BAR_HI, places=6)
 
     def test_midpoint_is_linear(self) -> None:
         mid_mv = (MV_LO + MV_HI) / 2.0
-        mid_psi = (PSI_LO + PSI_HI) / 2.0
-        self.assertAlmostEqual(mv_to_psi(mid_mv), mid_psi, places=6)
+        mid_bar = (BAR_LO + BAR_HI) / 2.0
+        self.assertAlmostEqual(mv_to_bar(mid_mv), mid_bar, places=6)
 
     def test_zero_mv(self) -> None:
         # Known point on the line through the two anchors.
-        expected = PSI_LO + (0.0 - MV_LO) * (PSI_HI - PSI_LO) / (MV_HI - MV_LO)
-        self.assertAlmostEqual(mv_to_psi(0.0), expected, places=6)
+        expected = BAR_LO + (0.0 - MV_LO) * (BAR_HI - BAR_LO) / (MV_HI - MV_LO)
+        self.assertAlmostEqual(mv_to_bar(0.0), expected, places=6)
 
     def test_example_script_formula_matches(self) -> None:
         # Replicate simple_examples/ads1115_pressure.py inline.
         for mv in (MV_LO, 0.0, 41.021, MV_HI, 50.0):
-            example = PSI_LO + (mv - MV_LO) * (PSI_HI - PSI_LO) / (MV_HI - MV_LO)
-            self.assertAlmostEqual(mv_to_psi(mv), example, places=9)
+            example = BAR_LO + (mv - MV_LO) * (BAR_HI - BAR_LO) / (MV_HI - MV_LO)
+            self.assertAlmostEqual(mv_to_bar(mv), example, places=9)
 
 
 class ConfigCalibrationTests(unittest.TestCase):
@@ -115,9 +117,9 @@ class ConfigCalibrationTests(unittest.TestCase):
 
         cal = config["pressure_sensors"]["calibration"]
         self.assertAlmostEqual(float(cal["mv_lo"]), MV_LO)
-        self.assertAlmostEqual(float(cal["psi_lo"]), PSI_LO)
+        self.assertAlmostEqual(float(cal["bar_lo"]), BAR_LO, places=6)
         self.assertAlmostEqual(float(cal["mv_hi"]), MV_HI)
-        self.assertAlmostEqual(float(cal["psi_hi"]), PSI_HI)
+        self.assertAlmostEqual(float(cal["bar_hi"]), BAR_HI, places=6)
 
         labels_map = config["pressure_sensors"]["labels"]
         labels = [labels_map[i] for i in range(4)]
@@ -133,24 +135,24 @@ class ConfigCalibrationTests(unittest.TestCase):
 
 
 class ReaderMeasuringChainTests(unittest.TestCase):
-    def test_voltage_to_psi_at_calibration_anchors(self) -> None:
+    def test_voltage_to_bar_at_calibration_anchors(self) -> None:
         # AnalogIn.voltage is volts; reader multiplies by 1000 → mV.
         reader = _reader_with_voltages(
             {
-                0: MV_LO / 1000.0,  # Cartridge Input → -11.5 psi
-                1: MV_HI / 1000.0,  # Cartridge Output → 75.0 psi
+                0: MV_LO / 1000.0,  # Cartridge Input → -11.5 psi → bar
+                1: MV_HI / 1000.0,  # Cartridge Output → 75.0 psi → bar
                 2: 0.0,  # Pump Input
                 3: ((MV_LO + MV_HI) / 2.0) / 1000.0,  # Pump Output midpoint
             }
         )
 
         pressures = reader.read_pressures()
-        self.assertAlmostEqual(pressures["Cartridge Input"], PSI_LO, places=5)
-        self.assertAlmostEqual(pressures["Cartridge Output"], PSI_HI, places=5)
-        expected_zero = mv_to_psi(0.0)
+        self.assertAlmostEqual(pressures["Cartridge Input"], BAR_LO, places=5)
+        self.assertAlmostEqual(pressures["Cartridge Output"], BAR_HI, places=5)
+        expected_zero = mv_to_bar(0.0)
         self.assertAlmostEqual(pressures["Pump Input"], expected_zero, places=5)
         self.assertAlmostEqual(
-            pressures["Pump Output"], (PSI_LO + PSI_HI) / 2.0, places=5
+            pressures["Pump Output"], (BAR_LO + BAR_HI) / 2.0, places=5
         )
 
     def test_all_four_sensor_labels_present(self) -> None:
@@ -175,15 +177,15 @@ class ReaderMeasuringChainTests(unittest.TestCase):
                 "channels": [0],
                 "calibration": {
                     "mv_lo": 0.0,
-                    "psi_lo": 0.0,
+                    "bar_lo": 0.0,
                     "mv_hi": 100.0,
-                    "psi_hi": 50.0,
+                    "bar_hi": 50.0,
                 },
                 "labels": {0: "Cartridge Input"},
             }
         }
         reader = ADS1115PressureReader(config)
-        reader._analog_inputs = {0: _fake_analog(0.05)}  # 50 mV → 25 psi
+        reader._analog_inputs = {0: _fake_analog(0.05)}  # 50 mV → 25 bar
         reader.is_initialized = True
 
         pressures = reader.read_pressures()
@@ -210,16 +212,16 @@ class ReaderMeasuringChainTests(unittest.TestCase):
     def test_display_roundtrip_two_decimals(self) -> None:
         """Values the UI will show must match conversion to 2 decimal places."""
         cases = [
-            (MV_LO / 1000.0, -11.50),
-            (MV_HI / 1000.0, 75.00),
-            (0.0, round(mv_to_psi(0.0), 2)),
-            (0.05, round(mv_to_psi(50.0), 2)),  # 50 mV
+            (MV_LO / 1000.0, round(BAR_LO, 2)),
+            (MV_HI / 1000.0, round(BAR_HI, 2)),
+            (0.0, round(mv_to_bar(0.0), 2)),
+            (0.05, round(mv_to_bar(50.0), 2)),  # 50 mV
         ]
         for voltage_v, expected_display in cases:
             with self.subTest(voltage_v=voltage_v):
                 reader = _reader_with_voltages({0: voltage_v})
-                psi = reader.read_pressures()["Cartridge Input"]
-                self.assertAlmostEqual(round(psi, 2), expected_display, places=2)
+                bar = reader.read_pressures()["Cartridge Input"]
+                self.assertAlmostEqual(round(bar, 2), expected_display, places=2)
 
 
 class UiPressureFormatTests(unittest.TestCase):
@@ -233,7 +235,7 @@ class UiPressureFormatTests(unittest.TestCase):
 
         cls._app = QApplication.instance() or QApplication([])
 
-    def test_pressure_service_tab_shows_psi_and_pump_speed(self) -> None:
+    def test_pressure_service_tab_shows_bar_and_pump_speed(self) -> None:
         from gui import PressureServiceTab
 
         tab = PressureServiceTab(
@@ -258,11 +260,11 @@ class UiPressureFormatTests(unittest.TestCase):
 
         self.assertEqual(
             tab.checkboxes["Cartridge Input"].text(),
-            "Cartridge Input  -11.5 psi",
+            f"Cartridge Input  {BAR_LO:.2f} bar",
         )
         self.assertEqual(
             tab.checkboxes["Cartridge Output"].text(),
-            "Cartridge Output  75.0 psi",
+            f"Cartridge Output  {BAR_HI:.2f} bar",
         )
         flow_series = PressureServiceTab.PUMP_FLOW_SERIES
         self.assertIn(flow_series, tab.checkboxes)
@@ -270,7 +272,7 @@ class UiPressureFormatTests(unittest.TestCase):
         self.assertGreater(tab._flow_ml_per_min, 0.0)
         self.assertEqual(len(tab.graph_widget._history), 1)
         latest = tab.graph_widget._history[-1][1]
-        self.assertAlmostEqual(latest["Cartridge Input"], -11.5, places=2)
+        self.assertAlmostEqual(latest["Cartridge Input"], BAR_LO, places=2)
         self.assertAlmostEqual(latest[flow_series], tab._flow_ml_per_min, places=2)
 
     def test_pressure_tab_one_second_average_and_raw_toggle(self) -> None:
@@ -290,7 +292,7 @@ class UiPressureFormatTests(unittest.TestCase):
         latest = tab.graph_widget._history[-1][1]
         self.assertAlmostEqual(latest["Pump Out"], 15.0, places=4)
         self.assertAlmostEqual(latest[flow_series], 50.0, places=4)
-        self.assertEqual(tab.checkboxes["Pump Out"].text(), "Pump Out  15.0 psi")
+        self.assertEqual(tab.checkboxes["Pump Out"].text(), "Pump Out  15.00 bar")
 
         tab._on_smoothing_clicked(PressureServiceTab.MODE_MAX)
         self.assertEqual(tab._display_mode, PressureServiceTab.MODE_MAX)
@@ -300,7 +302,7 @@ class UiPressureFormatTests(unittest.TestCase):
         self.assertEqual(len(max_history), 2)
         self.assertAlmostEqual(max_history[0][1]["Pump Out"], 10.0, places=4)
         self.assertAlmostEqual(max_history[1][1]["Pump Out"], 20.0, places=4)
-        self.assertEqual(tab.checkboxes["Pump Out"].text(), "Pump Out  20.0 psi")
+        self.assertEqual(tab.checkboxes["Pump Out"].text(), "Pump Out  20.00 bar")
 
         tab._on_smoothing_clicked(PressureServiceTab.MODE_RAW)
         self.assertEqual(tab._display_mode, PressureServiceTab.MODE_RAW)
@@ -311,7 +313,7 @@ class UiPressureFormatTests(unittest.TestCase):
         self.assertEqual(len(raw_history), 2)
         self.assertAlmostEqual(raw_history[0][1]["Pump Out"], 10.0, places=4)
         self.assertAlmostEqual(raw_history[1][1]["Pump Out"], 20.0, places=4)
-        self.assertEqual(tab.checkboxes["Pump Out"].text(), "Pump Out  20.0 psi")
+        self.assertEqual(tab.checkboxes["Pump Out"].text(), "Pump Out  20.00 bar")
 
         tab._on_smoothing_clicked(PressureServiceTab.MODE_AVG)
         tab.update_pressures({"Pump Out": 40.0})
@@ -334,7 +336,7 @@ class UiPressureFormatTests(unittest.TestCase):
 
         latest = tab.graph_widget._history[-1][1]
         self.assertAlmostEqual(latest["Pump Out"], 30.0, places=4)
-        self.assertEqual(tab.checkboxes["Pump Out"].text(), "Pump Out  30.0 psi")
+        self.assertEqual(tab.checkboxes["Pump Out"].text(), "Pump Out  30.00 bar")
 
         tab.update_pressures({"Pump Out": 8.0})
         tab.push_latest_sample(timestamp=2.5)

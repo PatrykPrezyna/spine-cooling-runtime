@@ -30,6 +30,8 @@ except Exception:  # pragma: no cover - non-RPi environments
 from cooling_tracker import CoolingEffectivenessTracker
 from csv_logger import CSVLogger
 from pressure_csv_logger import PressureCSVLogger, PressureCaptureLoop
+from session_log_paths import log_directory
+from status_event_logger import StatusEventLogger
 from leak_debounce import LeakDebounceTracker
 from fault_catalog import FaultCode, Severity, get_fault, stop_priority
 from gui import MainScreen
@@ -171,11 +173,13 @@ class SensorMonitorApp(QObject):
         self.sensor_reader: Any = None
         self.sensor_injection: Optional[SensorInjectionController] = None
         self.override_ui: Optional[SensorOverrideWindow] = None
-        # One stamp for the whole run; both CSV loggers name their files with
-        # it so the session log and its pressure captures stay paired.
+        # One stamp for the whole run; sensor, pressure, and status CSVs
+        # all live in the same folder and share this filename prefix.
         self.session_start = datetime.now()
         self.csv_logger: Optional[CSVLogger] = None
         self.pressure_csv_logger: Optional[PressureCSVLogger] = None
+        self.status_event_logger: Optional[StatusEventLogger] = None
+        self._logged_warning_codes: set[FaultCode] = set()
         self._pressure_capture_loop: Optional[PressureCaptureLoop] = None
         self.ui: Optional[MainScreen] = None
         self.state_machine: Optional[StateMachine] = None
@@ -267,6 +271,16 @@ class SensorMonitorApp(QObject):
             print("Initializing components...")
 
             self.state_machine = StateMachine()
+            self.csv_logger = CSVLogger(self.config, session_start=self.session_start)
+            self.pressure_csv_logger = PressureCSVLogger(
+                self.config, session_start=self.session_start
+            )
+            self.status_event_logger = StatusEventLogger(
+                self.config, session_start=self.session_start
+            )
+            Path(log_directory(self.config)).mkdir(parents=True, exist_ok=True)
+            if not self.status_event_logger.start_logging():
+                print("Warning: status logging failed to start; continuing without it")
             self.state_machine.on_state_change = self._on_state_changed
 
             bundle = build_hardware(self.config, simulation=self.simulation)
@@ -285,10 +299,6 @@ class SensorMonitorApp(QObject):
                 self.state_machine.handle_init_complete(False, error_msg)
                 return False
 
-            self.csv_logger = CSVLogger(self.config, session_start=self.session_start)
-            self.pressure_csv_logger = PressureCSVLogger(
-                self.config, session_start=self.session_start
-            )
             self._log_optional_status("Thermocouple reader", self.thermocouple_reader)
             self._log_optional_status("Thermistor reader", self.thermistor_reader)
             self._log_optional_status("ADS1115 pressure reader", self.pressure_reader)
@@ -299,16 +309,6 @@ class SensorMonitorApp(QObject):
             # Keep the driver energised while service jog controls are used.
             self.stepper_driver.disable_on_idle = False
             self.stepper_driver.enable()
-
-            csv_dir = Path(self.config['logging']['csv_directory'])
-            csv_dir.mkdir(parents=True, exist_ok=True)
-            pressure_csv_dir = Path(
-                self.config.get('logging', {}).get(
-                    'pressure_csv_directory',
-                    self.config['logging']['csv_directory'],
-                )
-            )
-            pressure_csv_dir.mkdir(parents=True, exist_ok=True)
 
             if not self.csv_logger.start_logging():
                 error_msg = "Failed to start CSV logging"
@@ -413,12 +413,13 @@ class SensorMonitorApp(QObject):
 
         self._stop_io_worker()
 
-        if self.is_running and self.csv_logger:
+        if self.csv_logger:
             self.csv_logger.stop_logging()
             print("CSV logging stopped")
         self._stop_pressure_capture()
         if self.pressure_csv_logger is not None:
             self.pressure_csv_logger.stop_logging()
+        self._stop_status_logging("Session ended")
 
         if self.thermocouple_reader is not None:
             try:
@@ -451,6 +452,42 @@ class SensorMonitorApp(QObject):
         self.pressure_reader = None
 
         print("Cleanup complete")
+
+    def _stop_status_logging(self, message: str = "Session ended") -> None:
+        """Flush a session_stop row and close the status CSV."""
+        logger = self.status_event_logger
+        if logger is None or not logger.is_logging:
+            return
+        state = self.state_machine.get_current_state() if self.state_machine else None
+        logger.log_session_stop(state=state, message=message)
+        logger.stop_logging()
+
+    def _sync_warning_log(self, message_codes: list[FaultCode]) -> None:
+        """Log warning appear/clear edges (not every 10 Hz tick)."""
+        new_codes = set(message_codes)
+        if new_codes == self._logged_warning_codes:
+            return
+        state = self.state_machine.get_current_state() if self.state_machine else None
+        logger = self.status_event_logger
+        for code in sorted(
+            self._logged_warning_codes - new_codes,
+            key=lambda c: c.value,
+        ):
+            if logger is not None:
+                logger.log_warning(
+                    code,
+                    get_fault(code).message,
+                    state=state,
+                    cleared=True,
+                )
+        for code in sorted(new_codes - self._logged_warning_codes, key=lambda c: c.value):
+            if logger is not None:
+                logger.log_warning(
+                    code,
+                    get_fault(code).message,
+                    state=state,
+                )
+        self._logged_warning_codes = new_codes
 
     # ------------------------------------------------------------------
     # Background IO worker plumbing
@@ -548,13 +585,15 @@ class SensorMonitorApp(QObject):
         stop_codes = [c for c in active if get_fault(c).severity == Severity.STOP]
         if stop_codes:
             primary = min(stop_codes, key=stop_priority)
+            self._sync_warning_log([])
             self.state_machine.apply_fault(primary)
             if self.ui:
                 self.ui.update_warnings([])
             return False
 
+        message_codes = [c for c in active if get_fault(c).severity == Severity.MESSAGE]
+        self._sync_warning_log(message_codes)
         if self.ui:
-            message_codes = [c for c in active if get_fault(c).severity == Severity.MESSAGE]
             self.ui.update_warnings([get_fault(c).message for c in message_codes])
 
         return True
@@ -615,7 +654,19 @@ class SensorMonitorApp(QObject):
         if state == State.ERROR:
             self.ui.set_acknowledge_enabled(False)
 
-    def _on_state_changed(self, old_state: State, new_state: State):
+    def _on_state_changed(self, old_state: State, new_state: State, reason: str = ""):
+        if self.status_event_logger is not None:
+            fault_code = (
+                self.state_machine.get_latched_fault_code()
+                if self.state_machine is not None and new_state == State.ERROR
+                else None
+            )
+            self.status_event_logger.log_state_change(
+                old_state,
+                new_state,
+                reason,
+                fault_code=fault_code,
+            )
         self._refresh_ui_state_display()
         if new_state in (State.PUMPING, State.PUMPING_SLOWLY):
             if old_state not in (State.PUMPING, State.PUMPING_SLOWLY):
@@ -1023,6 +1074,7 @@ class SensorMonitorApp(QObject):
         try:
             if not self.initialize():
                 print("Initialization failed. Exiting.")
+                self.cleanup()
                 return 1
 
             app = QApplication(sys.argv)

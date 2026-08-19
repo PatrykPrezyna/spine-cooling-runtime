@@ -17,7 +17,7 @@ alarms:
   csf_low_temp_c: 28.0
   heat_ex_label: Plate
   heat_ex_min_c: -10.0
-  leak_pressure_delta_min: 5.0
+  leak_pressure_delta_min: 0.34  # 5.0 psi
   # Digital leak sensor: a 0/low reading means fluid detected -> immediate stop.
   leak_detection_enabled: false
   leak_sensor_label: Leak Sensor
@@ -50,10 +50,10 @@ simulation:
     Level Critical: true
     Leak Sensor: true
   pressures:
-    Pump In: 25.0
-    Pump Out: 30.0
-    Catheter In: 20.0
-    Catheter Out: 15.0
+    Pump In: 1.72
+    Pump Out: 2.07
+    Catheter In: 1.38
+    Catheter Out: 1.03
   thermistors:
     Tip: 36.5
     Cartrige Out: 22.0
@@ -178,9 +178,11 @@ thermistor_sensors:
 # two sensors: channels 0-1 on the first address, 2-3 on the second.
 # Labels match thermistor_sensors.labels (channel → display name).
 # Optional channel_configs[].label overrides the flat labels map.
-# Linear calibration: mV → psi (same for all sensors).
+# Linear calibration: mV → bar (same for all sensors).
+# Anchors are the original sensor points (-11.5 psi and 75.0 psi).
 # UI / session CSV follow ui.update_interval_ms (100 ms → 10 Hz).
-# A dedicated capture thread writes a 100 Hz pressure CSV for the whole session.
+# A dedicated capture thread writes a 100 Hz pressure CSV for the whole session
+# into the same logs/ folder as the sensor and status files.
 pressure_sensors:
   enabled: true
   sample_rate_hz: 10
@@ -202,9 +204,9 @@ pressure_sensors:
     3: Catheter Out
   calibration:
     mv_lo: -14.858
-    psi_lo: -11.5
+    bar_lo: -0.792897  # -11.5 psi
     mv_hi: 96.9
-    psi_hi: 75.0
+    bar_hi: 5.171068  # 75.0 psi
 compressor:
   relay_pin: 6
   # Must match thermistor_sensors.labels (channel used for cooling control).
@@ -212,13 +214,14 @@ compressor:
   off_below_temp_c: -9
   on_above_temp_c: -9.0
 logging:
-  csv_directory: data/csv
-  filename_format: sensor_log_%Y%m%d_%H%M%S.csv
-  # Pressure-only capture for the whole session. Both formats share one
-  # session stamp, so sensor_log_<session>.csv pairs with
-  # pressure_log_<session>_run01.csv.
-  pressure_csv_directory: data/csv/pressure
-  pressure_filename_format: pressure_log_%Y%m%d_%H%M%S.csv
+  # All three session CSVs share this folder and one startup stamp:
+  #   <stamp>_sensors.csv
+  #   <stamp>_pressure_100Hz.csv
+  #   <stamp>_status_and_errors.csv
+  directory: logs
+  sensors_filename_format: "%Y%m%d_%H%M%S_sensors.csv"
+  pressure_filename_format: "%Y%m%d_%H%M%S_pressure_100Hz.csv"
+  status_filename_format: "%Y%m%d_%H%M%S_status_and_errors.csv"
 # Pump throughput: flow scales linearly with stepper RPM. Slope from a
 # least-squares fit (through the origin) of the measured calibration data.
 # flow_ml_per_s = pump_rpm * pump_flow_ml_per_min_per_rpm / 60

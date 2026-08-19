@@ -46,7 +46,7 @@ class StateMachine:
         self.latched_fault_code: Optional[FaultCode] = None
         self.fault_context_state: Optional[State] = None
         self.state_entry_time = datetime.now()
-        self.on_state_change: Optional[Callable[[State, State], None]] = None
+        self.on_state_change: Optional[Callable[[State, State, str], None]] = None
         self._ready_hold_after_startup_s = max(0.0, float(ready_hold_after_startup_s))
         self._startup_ready_hold_until: Optional[datetime] = None
         print(f"State Machine initialized in {self.current_state.value} state")
@@ -177,5 +177,5 @@ class StateMachine:
         print(f"State transition: {old_state.value} -> {new_state.value}{reason_text}")
 
         if self.on_state_change:
-            self.on_state_change(old_state, new_state)
+            self.on_state_change(old_state, new_state, reason)
         return True

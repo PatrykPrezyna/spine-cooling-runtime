@@ -20,8 +20,8 @@ from csv_logger import CSVLogger  # noqa: E402
 
 _CONFIG = {
     "logging": {
-        "csv_directory": "unused",
-        "filename_format": "test_pressure_%Y%m%d_%H%M%S.csv",
+        "directory": "unused",
+        "sensors_filename_format": "%Y%m%d_%H%M%S_sensors.csv",
     },
     "pump_flow_ml_per_min_per_rpm": 0.5862,
     "thermocouples": {
@@ -49,7 +49,7 @@ class CsvPressureLoggingTests(unittest.TestCase):
         self.config = dict(_CONFIG)
         self.config["logging"] = {
             **_CONFIG["logging"],
-            "csv_directory": self._tmpdir.name,
+            "directory": self._tmpdir.name,
         }
         self.logger = CSVLogger(self.config)
 
@@ -58,14 +58,23 @@ class CsvPressureLoggingTests(unittest.TestCase):
             self.logger.stop_logging()
         self._tmpdir.cleanup()
 
-    def test_header_includes_pressure_psi_columns(self) -> None:
-        self.assertIn("cartridge_input_psi", self.logger.header)
-        self.assertIn("cartridge_output_psi", self.logger.header)
-        self.assertIn("pump_input_psi", self.logger.header)
-        self.assertIn("pump_output_psi", self.logger.header)
+    def test_header_includes_pressure_bar_columns(self) -> None:
+        self.assertIn("cartridge_input_bar", self.logger.header)
+        self.assertIn("cartridge_output_bar", self.logger.header)
+        self.assertIn("pump_input_bar", self.logger.header)
+        self.assertIn("pump_output_bar", self.logger.header)
         # Existing columns still present.
         self.assertIn("csf_c", self.logger.header)
         self.assertIn("compressor_cooling", self.logger.header)
+
+    def test_filename_uses_session_stamp_suffix(self) -> None:
+        from datetime import datetime
+
+        logger = CSVLogger(self.config, session_start=datetime(2026, 8, 19, 12, 58, 0))
+        self.assertTrue(logger.start_logging())
+        name = Path(logger.get_log_file_path() or "").name
+        logger.stop_logging()
+        self.assertEqual(name, "20260819_125800_sensors.csv")
 
     def test_log_writes_pressure_values_two_decimals(self) -> None:
         self.assertTrue(self.logger.start_logging())
@@ -91,10 +100,10 @@ class CsvPressureLoggingTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)  # header + one sample
         header, row = rows[0], rows[1]
         by_name = dict(zip(header, row))
-        self.assertEqual(by_name["cartridge_input_psi"], "-11.50")
-        self.assertEqual(by_name["cartridge_output_psi"], "75.00")
-        self.assertEqual(by_name["pump_input_psi"], "12.35")
-        self.assertEqual(by_name["pump_output_psi"], "")  # nan → blank
+        self.assertEqual(by_name["cartridge_input_bar"], "-11.50")
+        self.assertEqual(by_name["cartridge_output_bar"], "75.00")
+        self.assertEqual(by_name["pump_input_bar"], "12.35")
+        self.assertEqual(by_name["pump_output_bar"], "")  # nan → blank
         self.assertEqual(by_name["csf_c"], "37.000")
 
     def test_ten_hz_burst_writes_expected_row_count(self) -> None:
@@ -131,8 +140,8 @@ class CsvPressureLoggingTests(unittest.TestCase):
 
         header = rows[0]
         last = dict(zip(header, rows[-1]))
-        self.assertEqual(last["cartridge_input_psi"], "14.00")
-        self.assertEqual(last["pump_output_psi"], "17.00")
+        self.assertEqual(last["cartridge_input_bar"], "14.00")
+        self.assertEqual(last["pump_output_bar"], "17.00")
 
     def test_log_without_pressures_still_writes_temp_row(self) -> None:
         self.assertTrue(self.logger.start_logging())
@@ -150,7 +159,7 @@ class CsvPressureLoggingTests(unittest.TestCase):
             rows = list(csv.reader(fh))
         by_name = dict(zip(rows[0], rows[1]))
         self.assertEqual(by_name["csf_c"], "36.500")
-        self.assertEqual(by_name["cartridge_input_psi"], "")
+        self.assertEqual(by_name["cartridge_input_bar"], "")
 
 
 if __name__ == "__main__":

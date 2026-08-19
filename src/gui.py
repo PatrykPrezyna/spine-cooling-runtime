@@ -3016,7 +3016,7 @@ class TemperatureGraphTab(QWidget):
 
 
 class PressureServiceTab(TemperatureGraphTab):
-    """Pressure and Flow graph: pressure sensors (psi) plus pump flow (ml/min)."""
+    """Pressure and Flow graph: pressure sensors (bar) plus pump flow (ml/min)."""
 
     # Short enough to fit the shared control column next to its value + unit.
     PUMP_FLOW_SERIES = "Flow"
@@ -3038,15 +3038,15 @@ class PressureServiceTab(TemperatureGraphTab):
             else self._DEFAULT_PRESSURE_SENSOR_NAMES
         )
         series_names = list(self.pressure_sensor_names) + [self.PUMP_FLOW_SERIES]
-        series_units = {name: "psi" for name in self.pressure_sensor_names}
+        series_units = {name: "bar" for name in self.pressure_sensor_names}
         series_units[self.PUMP_FLOW_SERIES] = "ml/min"
-        series_formats = {name: "{:.1f}" for name in self.pressure_sensor_names}
+        series_formats = {name: "{:.2f}" for name in self.pressure_sensor_names}
         series_formats[self.PUMP_FLOW_SERIES] = "{:.0f}"
         graph_widget = MultiTemperatureGraphWidget(
             series_names,
-            y_unit="psi",
+            y_unit="bar",
             y_tick_format="{:.1f}",
-            default_y_range=(0.0, 40.0),
+            default_y_range=(0.0, 3.0),
             right_axis_names={self.PUMP_FLOW_SERIES},
             right_axis_unit="ml/min",
             right_tick_format="{:.0f}",
@@ -3060,8 +3060,8 @@ class PressureServiceTab(TemperatureGraphTab):
             graph_widget=graph_widget,
             series_units=series_units,
             series_formats=series_formats,
-            default_unit="psi",
-            default_format="{:.1f}",
+            default_unit="bar",
+            default_format="{:.2f}",
         )
         self.pressure_values = {
             name: float("nan") for name in self.pressure_sensor_names
@@ -3117,7 +3117,7 @@ class PressureServiceTab(TemperatureGraphTab):
         self._rebuild_graph()
 
     def update_pressures(self, pressures: Optional[dict] = None):
-        """Store the latest pressure readings (psi) for the next graph sample."""
+        """Store the latest pressure readings (bar) for the next graph sample."""
         if pressures:
             self.pressure_values.update(pressures)
 

@@ -62,32 +62,33 @@ Off-Pi mode uses fakes in `src/sim/`; tweak default sensor/temp values under `si
 1 Install Filezilla
 2 check ip adress `ifconfig`
 3 log in using port 22
-4 Go to spine-cooling-runtime/data/csv and doube cloick selected file
+4 Go to spine-cooling-runtime/logs and double-click the selected file
 
-### The two log files
+### Session log files
 
-Each run writes two kinds of CSV, because temperature and pressure are sampled
-at different rates. Eight thermistors on two ADS1115s take ~60 ms for a full
-sweep, so temperatures cannot go much above ~16 Hz; the pressure chips run at
-860 SPS specifically to sustain 100 Hz.
+Each run writes three CSVs into `logs/`, all sharing one startup stamp.
+Temperatures cannot go much above ~16 Hz (eight thermistors on two ADS1115s
+take ~60 ms for a full sweep); the pressure chips run at 860 SPS specifically
+to sustain 100 Hz. Status and faults are event-based, not periodic.
 
 | File | Rate | Contents |
 |------|------|----------|
-| `data/csv/sensor_log_<session>.csv` | `ui.update_interval_ms` (100 ms → 10 Hz) | Temperatures, setpoint, pump, compressor, pressures |
-| `data/csv/pressure/pressure_log_<session>_runNN.csv` | `pressure_sensors.capture_rate_hz` (100 Hz) | Pressures + pump setpoint only |
+| `logs/<session>_sensors.csv` | `ui.update_interval_ms` (100 ms → 10 Hz) | Temperatures, setpoint, pump, compressor, pressures |
+| `logs/<session>_pressure_100Hz.csv` | `pressure_sensors.capture_rate_hz` (100 Hz) | Pressures + pump setpoint only |
+| `logs/<session>_status_and_errors.csv` | On each event | State-machine transitions, STOP errors, and warnings (including clears) |
 
-Both names share one `<session>` stamp taken at startup, so a pressure file
-always pairs with the session log of the same run. High-rate capture starts
-with the session and runs until shutdown (`_run01` for a normal session).
+High-rate pressure capture starts with the session and runs until shutdown.
+If capture is restarted in the same session, later files are named
+`<session>_pressure_100Hz_run02.csv`, `_run03`, and so on.
 
-To combine them, join on the timestamp — the fast file carries the detail and
-the session file supplies the temperatures around it:
+To combine the periodic files, join on the timestamp — the fast file carries
+the detail and the sensor file supplies the temperatures around it:
 
 ```python
 import pandas as pd
 
-session = pd.read_csv("sensor_log_20260817_170941.csv", parse_dates=["timestamp"])
-fast = pd.read_csv("pressure/pressure_log_20260817_170941_run01.csv", parse_dates=["timestamp"])
+session = pd.read_csv("20260817_170941_sensors.csv", parse_dates=["timestamp"])
+fast = pd.read_csv("20260817_170941_pressure_100Hz.csv", parse_dates=["timestamp"])
 merged = pd.merge_asof(fast, session, on="timestamp", direction="nearest")
 ```
 
@@ -105,7 +106,9 @@ merged = pd.merge_asof(fast, session, on="timestamp", direction="nearest")
 | `src/thermistor_conversion.py` | Shared NTC V→R→°C using `data/calibration/Thermistor_MA300TA103C.csv` |
 | `src/ads1115_pressure_reader.py` | Differential pressure via 3rd+4th ADS1115 (addrs 74/75, up to 4) |
 | `src/stepper_driver.py` | Peristaltic pump stepper motor |
-| `src/csv_logger.py` | CSV session logging |
+| `src/csv_logger.py` | 10 Hz sensor CSV logging |
+| `src/pressure_csv_logger.py` | 100 Hz pressure CSV logging |
+| `src/status_event_logger.py` | State, error, and warning CSV logging |
 | `src/sim/` | In-memory hardware fakes (used with `--sim`) |
 | `src/hardware_factory.py` | Picks real vs simulated drivers at startup |
 | `config.yaml` | Hardware mapping and runtime settings |

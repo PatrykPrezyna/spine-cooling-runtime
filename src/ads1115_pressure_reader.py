@@ -1,4 +1,4 @@
-"""ADS1115 differential pressure reader (psi).
+"""ADS1115 differential pressure reader (bar).
 
 Each sensor uses one differential pair (two analog inputs), so one chip
 serves two sensors:
@@ -8,7 +8,8 @@ serves two sensors:
     channel 2 → address[1], P0-P1
     channel 3 → address[1], P2-P3
 
-Conversion matches the simple example: linear mV → psi.
+Conversion matches the simple example: linear mV → bar.
+The calibration anchors are the original sensor points (-11.5 psi / 75.0 psi).
 """
 
 from __future__ import annotations
@@ -16,9 +17,14 @@ from __future__ import annotations
 import threading
 from typing import Dict, List, Optional
 
-# Default calibration (same as simple_examples/ads1115_pressure.py).
+# 1 psi = 6894.757293168 Pa; 1 bar = 1e5 Pa.
+PSI_TO_BAR = 0.06894757293168
+
+# Default calibration (same millivolt anchors as simple_examples/ads1115_pressure.py).
 _MV_LO, _PSI_LO = -14.858, -11.5
 _MV_HI, _PSI_HI = 96.9, 75.0
+_BAR_LO = _PSI_LO * PSI_TO_BAR
+_BAR_HI = _PSI_HI * PSI_TO_BAR
 
 # Differential pin pairs on one ADS1115.
 _DIFF_PAIRS = (
@@ -30,19 +36,19 @@ _DIFF_PAIRS = (
 _DEFAULT_DATA_RATE = 860
 
 
-def mv_to_psi(
+def mv_to_bar(
     mv: float,
     mv_lo: float = _MV_LO,
-    psi_lo: float = _PSI_LO,
+    bar_lo: float = _BAR_LO,
     mv_hi: float = _MV_HI,
-    psi_hi: float = _PSI_HI,
+    bar_hi: float = _BAR_HI,
 ) -> float:
-    """Linear convert millivolts to psi between two calibration points."""
-    return psi_lo + (mv - mv_lo) * (psi_hi - psi_lo) / (mv_hi - mv_lo)
+    """Linear convert millivolts to bar between two calibration points."""
+    return bar_lo + (mv - mv_lo) * (bar_hi - bar_lo) / (mv_hi - mv_lo)
 
 
 class ADS1115PressureReader:
-    """Read up to four differential pressure channels as psi."""
+    """Read up to four differential pressure channels as bar."""
 
     def __init__(self, config: dict):
         ps_cfg = config.get("pressure_sensors", {})
@@ -57,9 +63,9 @@ class ADS1115PressureReader:
 
         cal = ps_cfg.get("calibration", {}) or {}
         self._mv_lo = float(cal.get("mv_lo", _MV_LO))
-        self._psi_lo = float(cal.get("psi_lo", _PSI_LO))
+        self._bar_lo = self._calibration_bar(cal, "bar_lo", "psi_lo", _BAR_LO)
         self._mv_hi = float(cal.get("mv_hi", _MV_HI))
-        self._psi_hi = float(cal.get("psi_hi", _PSI_HI))
+        self._bar_hi = self._calibration_bar(cal, "bar_hi", "psi_hi", _BAR_HI)
 
         self._i2c = None
         self._analog_inputs: Dict[int, object] = {}
@@ -120,6 +126,16 @@ class ADS1115PressureReader:
             self.last_error = f"ADS1115 pressure initialization failed: {exc}"
 
     @staticmethod
+    def _calibration_bar(
+        cal: dict, bar_key: str, psi_key: str, default: float
+    ) -> float:
+        if bar_key in cal:
+            return float(cal[bar_key])
+        if psi_key in cal:
+            return float(cal[psi_key]) * PSI_TO_BAR
+        return default
+
+    @staticmethod
     def _parse_addresses(ps_cfg: dict) -> List[int]:
         raw = ps_cfg.get("i2c_addresses")
         if raw is None:
@@ -170,8 +186,8 @@ class ADS1115PressureReader:
                 label = self._channel_label(channel)
                 try:
                     mv = float(analog.voltage) * 1000.0
-                    values[label] = mv_to_psi(
-                        mv, self._mv_lo, self._psi_lo, self._mv_hi, self._psi_hi
+                    values[label] = mv_to_bar(
+                        mv, self._mv_lo, self._bar_lo, self._mv_hi, self._bar_hi
                     )
                 except Exception as exc:
                     self.last_error = f"Pressure read failed on channel {channel}: {exc}"

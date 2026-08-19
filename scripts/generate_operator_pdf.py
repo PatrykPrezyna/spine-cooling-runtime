@@ -40,10 +40,10 @@ TEMPS = {
     "Plate": 4.2,
 }
 PRESSURES = {
-    "Pump In": 24.8,
-    "Pump Out": 31.4,
-    "Catheter In": 19.6,
-    "Catheter Out": 14.2,
+    "Pump In": 1.71,
+    "Pump Out": 2.16,
+    "Catheter In": 1.35,
+    "Catheter Out": 0.98,
 }
 SENSORS_OK = {
     "Level Low": True,
@@ -120,10 +120,10 @@ def _seed_graphs(ui: MainScreen) -> None:
         return (
             ts,
             {
-                "Pump In": 22.0 + 3.0 * frac,
-                "Pump Out": 28.0 + 4.0 * frac,
-                "Catheter In": 18.0 + 2.0 * frac,
-                "Catheter Out": 13.0 + 1.5 * frac,
+                "Pump In": 1.52 + 0.21 * frac,
+                "Pump Out": 1.93 + 0.28 * frac,
+                "Catheter In": 1.24 + 0.14 * frac,
+                "Catheter Out": 0.90 + 0.10 * frac,
                 "Flow": flow,
             },
         )
@@ -234,7 +234,7 @@ def _capture_all(app: QApplication, config: dict) -> list[tuple[str, str, Path]]
     add(
         "08_expert_pressure",
         "Expert — Pressure and Flow",
-        "Catheter and pump pressures (psi) with pump flow (ml/min) on the right axis.",
+        "Catheter and pump pressures (bar) with pump flow (ml/min) on the right axis.",
     )
 
     ui.expert_tab_selector.setCurrentIndex(2)
