@@ -2668,6 +2668,58 @@ class Service2Tab(QWidget):
         """Kept for API compatibility; pressures are not shown on this tab."""
 
 
+_Y_TICK_COUNT = 7
+_Y_TICK_INTERVALS = _Y_TICK_COUNT - 1
+
+
+def _tick_decimals(fmt: str) -> int:
+    """Decimal places implied by a format string such as ``{:.1f}``."""
+    try:
+        sample = fmt.format(0.0)
+    except (IndexError, ValueError):
+        return 1
+    if "." not in sample:
+        return 0
+    return len(sample.split(".", 1)[1])
+
+
+def _snap_axis_range(
+    y_min: float,
+    y_max: float,
+    decimals: int,
+    n_intervals: int = _Y_TICK_INTERVALS,
+) -> tuple[float, float]:
+    """Expand a Y range so major ticks land on values with ``decimals`` places.
+
+    Graphs draw a fixed number of equally spaced labels. Using the raw data
+    range puts those lines at values like 1.173 that then display as 1.2.
+    Integer units of ``10**(-decimals)`` keep every tick equal to its label.
+    """
+    scale = 10 ** max(0, int(decimals))
+    lo, hi = (y_min, y_max) if y_min <= y_max else (y_max, y_min)
+    i_min = math.floor(lo * scale + 1e-9)
+    i_max = math.ceil(hi * scale - 1e-9)
+    if i_max <= i_min:
+        i_max = i_min + n_intervals
+    i_step = max(1, math.ceil((i_max - i_min) / n_intervals))
+    i_max = i_min + n_intervals * i_step
+    return i_min / scale, i_max / scale
+
+
+def _axis_tick_values(
+    y_min: float,
+    y_max: float,
+    decimals: int,
+    n_intervals: int = _Y_TICK_INTERVALS,
+) -> list[float]:
+    """Major-tick values matching ``_snap_axis_range``."""
+    scale = 10 ** max(0, int(decimals))
+    i_min = int(round(y_min * scale))
+    i_max = int(round(y_max * scale))
+    i_step = max(1, (i_max - i_min) // n_intervals)
+    return [(i_min + i * i_step) / scale for i in range(n_intervals + 1)]
+
+
 class MultiTemperatureGraphWidget(QWidget):
     """Custom graph widget for plotting multiple time series.
 
@@ -2828,11 +2880,19 @@ class MultiTemperatureGraphWidget(QWidget):
             entry for entry in self._history if start_ts <= entry[0] <= end_ts
         ]
 
+        left_decimals = _tick_decimals(self._y_tick_format)
+        right_decimals = _tick_decimals(self._right_tick_format)
         y_min, y_max = self._compute_visible_y_range(
-            visible_entries, self._left_axis_names(), self._default_y_range
+            visible_entries,
+            self._left_axis_names(),
+            self._default_y_range,
+            decimals=left_decimals,
         )
         right_y_min, right_y_max = self._compute_visible_y_range(
-            visible_entries, list(self._right_axis_names), self._default_right_y_range
+            visible_entries,
+            list(self._right_axis_names),
+            self._default_right_y_range,
+            decimals=right_decimals,
         )
 
         # Dotted minor subdivisions between the major horizontal gridlines.
@@ -2844,10 +2904,12 @@ class MultiTemperatureGraphWidget(QWidget):
             py = int(plot_bottom - ratio * plot_height)
             painter.drawLine(plot_left, py, plot_right, py)
 
-        # Y grid and labels
+        # Y grid and labels. Tick values are snapped to the label precision
+        # (e.g. 0.1 for "{:.1f}") so each line sits on the number shown.
+        left_ticks = _axis_tick_values(y_min, y_max, left_decimals)
+        right_ticks = _axis_tick_values(right_y_min, right_y_max, right_decimals)
         painter.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-        for i in range(7):
-            t = y_min + (i / 6.0) * (y_max - y_min)
+        for i, t in enumerate(left_ticks):
             ratio = (t - y_min) / max(0.001, (y_max - y_min))
             py = int(plot_bottom - ratio * plot_height)
             painter.setPen(QPen(QColor("#e2e8f0"), 1))
@@ -2862,12 +2924,11 @@ class MultiTemperatureGraphWidget(QWidget):
                 left_label,
             )
             if has_right_axis:
-                rt = right_y_min + (i / 6.0) * (right_y_max - right_y_min)
                 painter.setPen(QColor("#475569"))
                 painter.drawText(
                     QRectF(plot_right + 2, py - 8, 52, 16),
                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                    self._right_tick_format.format(rt),
+                    self._right_tick_format.format(right_ticks[i]),
                 )
 
         if has_right_axis:
@@ -2965,6 +3026,7 @@ class MultiTemperatureGraphWidget(QWidget):
         visible_entries,
         series_names: Optional[list[str]] = None,
         default_range: Optional[tuple[float, float]] = None,
+        decimals: int = 1,
     ):
         names = list(series_names) if series_names is not None else list(self.series_names)
         fallback = default_range if default_range is not None else self._default_y_range
@@ -2977,7 +3039,7 @@ class MultiTemperatureGraphWidget(QWidget):
                 if not math.isnan(value):
                     values.append(value)
         if not values:
-            return fallback
+            return _snap_axis_range(fallback[0], fallback[1], decimals)
         data_min = min(values)
         data_max = max(values)
         data_range = max(0.5, data_max - data_min)
@@ -2988,7 +3050,7 @@ class MultiTemperatureGraphWidget(QWidget):
             midpoint = (y_min + y_max) / 2.0
             y_min = midpoint - 0.5
             y_max = midpoint + 0.5
-        return y_min, y_max
+        return _snap_axis_range(y_min, y_max, decimals)
 
     def _draw_legend(self, painter: QPainter, graph_x: int, y: int, graph_width: int):
         font = QFont("Arial", 8, QFont.Weight.DemiBold)
