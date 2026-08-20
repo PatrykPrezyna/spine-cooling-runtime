@@ -168,11 +168,11 @@ thermistor_sensors:
     7: Plate
   channel_configs:
     # TODO: restore AB6N2-GC14KA143E/37C after replacing the broken Tip thermistor:
-    #   table_csv: data/calibration/Thermistor_AB6N2-GC14KA143E_37C.csv
-    #   resistance_column: Resistance_Ohm
-    0:  # Tip — temporary standard MA300TA103C (broken AB6N2)
-      table_csv: data/calibration/Thermistor_MA300TA103C.csv
-      resistance_column: 10k_Ohm
+       table_csv: data/calibration/Thermistor_AB6N2-GC14KA143E_37C.csv
+       resistance_column: Resistance_Ohm
+    #`0:  # Tip — temporary standard MA300TA103C (broken AB6N2)
+    #  table_csv: data/calibration/Thermistor_MA300TA103C.csv
+    #  resistance_column: 10k_Ohm
   conversion:
     vref_v: 2.5
     rs_ohm: 100000
