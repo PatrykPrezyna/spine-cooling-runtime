@@ -515,7 +515,7 @@ class MainScreenWidget(QWidget):
 
         # Graph history: (timestamp, set_temp, csf_temp, catheter_in_temp)
         self._temp_history: deque = deque()
-        self._x_window_minutes_options = [5, 15, 60]
+        self._x_window_minutes_options = [1, 2, 5, 15, 60]
         self._x_window_minutes = 5
         self._x_pan_windows = 0
 
@@ -2612,9 +2612,11 @@ class MultiTemperatureGraphWidget(QWidget):
         self._default_right_y_range = default_right_y_range
         self._history = deque()
         self._visible = {name: True for name in self.series_names}
-        self._x_window_minutes_options = [5, 10, 15, 30, 60]
+        self._x_window_minutes_options = [1, 2, 5, 10, 15, 30, 60]
         self._x_window_minutes = 10
         self._x_pan_windows = 0
+        # Log replay sets this so the right edge is the last sample, not wall clock.
+        self.use_history_end_as_now = False
         self.setMinimumHeight(260)
 
         base_colors = [
@@ -2656,12 +2658,22 @@ class MultiTemperatureGraphWidget(QWidget):
         self._x_pan_windows = max(0, self._x_pan_windows - 1)
         self.update()
 
+    def _reference_now(self) -> float:
+        """Timestamp used as the right edge of the un-panned window.
+
+        Live expert view uses the wall/monotonic clock. Session replay sets
+        ``use_history_end_as_now`` so "now" is the last logged sample.
+        """
+        if self.use_history_end_as_now and self._history:
+            return float(self._history[-1][0])
+        return time.monotonic()
+
     def max_pan_windows(self) -> int:
         """How many full windows back the recorded history allows."""
         if not self._history:
             return 0
         oldest_ts = self._history[0][0]
-        now = time.monotonic()
+        now = self._reference_now()
         window_sec = float(self._x_window_minutes) * 60.0
         if window_sec <= 0:
             return 0
@@ -2720,7 +2732,7 @@ class MultiTemperatureGraphWidget(QWidget):
         plot_width = max(1, plot_right - plot_left)
         plot_height = max(1, plot_bottom - plot_top)
 
-        now = time.monotonic()
+        now = self._reference_now()
         window_sec = float(self._x_window_minutes) * 60.0
         end_ts = now - (self._x_pan_windows * window_sec)
         start_ts = end_ts - window_sec
