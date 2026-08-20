@@ -1608,22 +1608,23 @@ class ServiceTab(QWidget):
             QPushButton {
                 background-color: #e8eef3;
                 border: 1px solid #c5d0d9;
-                border-radius: 10px;
-                font-size: 20px;
+                border-radius: 8px;
+                font-size: 16px;
                 font-weight: 700;
                 color: #1f2937;
             }
             QPushButton:pressed { background-color: #d5dee6; }
         """
+    _COMPACT_PUMP_BUTTON_HEIGHT = 32
     _JOG_BUTTON_STYLE = """
             QPushButton {
                 background-color: #e7edf2;
                 border: 1px solid #cfd8e0;
-                font-size: 14px;
+                font-size: 11px;
                 color: #23303b;
                 font-weight: 600;
-                border-radius: 12px;
-                padding: 10px 12px;
+                border-radius: 8px;
+                padding: 4px 6px;
             }
             QPushButton:hover {
                 background-color: #dde6ed;
@@ -1697,6 +1698,7 @@ class ServiceTab(QWidget):
         self._rpm_flow_calibration_timer = QTimer(self)
         self._rpm_flow_calibration_timer.setInterval(RPM_FLOW_CALIBRATION_TICK_MS)
         self._rpm_flow_calibration_timer.timeout.connect(self._on_rpm_flow_calibration_tick)
+        self.pid_run_active: bool = False
 
         # Callbacks (set by the host window).
         self.on_compressor_control_toggle_callback: Optional[Callable[[bool], None]] = None
@@ -1705,6 +1707,7 @@ class ServiceTab(QWidget):
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
+        self.on_pid_run_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_usb_eject_callback: Optional[Callable[[], None]] = None
 
         self._create_widgets()
@@ -1721,41 +1724,44 @@ class ServiceTab(QWidget):
         self.outputs_group.setStyleSheet(self._group_box_style("#0e6a76", "13px", margin_top=8))
         
         # Output labels
-        self.compressor_label = QLabel("Compressor: OFF")
+        self.compressor_label = QLabel("OFF  HX --")
         self.compressor_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-        self.compressor_control_button = QPushButton("Control OFF")
-        self.compressor_control_button.setMinimumHeight(40)
-        self.compressor_control_button.setMaximumWidth(180)
+        self.compressor_label.setMinimumWidth(88)
+        self.compressor_control_button = QPushButton("Run")
+        self.compressor_control_button.setFixedHeight(self._COMPACT_PUMP_BUTTON_HEIGHT)
+        self.compressor_control_button.setFixedWidth(56)
+        self.compressor_control_button.setToolTip("Enable compressor temperature control")
         self.compressor_control_button.clicked.connect(self._on_compressor_control_toggle_clicked)
         self._apply_compressor_control_button_style(False)
 
         spin_style = """
             QDoubleSpinBox {
-                font-size: 18px;
+                font-size: 14px;
                 font-weight: 700;
                 background: white;
                 border: 1px solid #c5d0d9;
                 border-radius: 8px;
-                padding: 2px 4px;
+                padding: 1px 2px;
             }
         """
+        compact_h = self._COMPACT_PUMP_BUTTON_HEIGHT
         self.compressor_off_temp_spin = QDoubleSpinBox()
         self.compressor_off_temp_spin.setRange(-20.0, 80.0)
         self.compressor_off_temp_spin.setDecimals(1)
         self.compressor_off_temp_spin.setSingleStep(0.1)
         self.compressor_off_temp_spin.setValue(self.compressor_off_temp_c)
-        self.compressor_off_temp_spin.setFixedWidth(78)
-        self.compressor_off_temp_spin.setFixedHeight(44)
+        self.compressor_off_temp_spin.setFixedWidth(56)
+        self.compressor_off_temp_spin.setFixedHeight(compact_h)
         self.compressor_off_temp_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.compressor_off_temp_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         self.compressor_off_temp_spin.setStyleSheet(spin_style)
         self.compressor_off_temp_spin.valueChanged.connect(self._on_compressor_thresholds_changed)
         self.compressor_off_temp_down = QPushButton("-")
-        self.compressor_off_temp_down.setFixedSize(44, 44)
+        self.compressor_off_temp_down.setFixedSize(compact_h, compact_h)
         self.compressor_off_temp_down.setStyleSheet(self._TEMP_STEP_BUTTON_STYLE)
         self.compressor_off_temp_down.clicked.connect(lambda: self.compressor_off_temp_spin.stepBy(-1))
         self.compressor_off_temp_up = QPushButton("+")
-        self.compressor_off_temp_up.setFixedSize(44, 44)
+        self.compressor_off_temp_up.setFixedSize(compact_h, compact_h)
         self.compressor_off_temp_up.setStyleSheet(self._TEMP_STEP_BUTTON_STYLE)
         self.compressor_off_temp_up.clicked.connect(lambda: self.compressor_off_temp_spin.stepBy(1))
 
@@ -1764,25 +1770,25 @@ class ServiceTab(QWidget):
         self.compressor_on_temp_spin.setDecimals(1)
         self.compressor_on_temp_spin.setSingleStep(0.1)
         self.compressor_on_temp_spin.setValue(self.compressor_on_temp_c)
-        self.compressor_on_temp_spin.setFixedWidth(78)
-        self.compressor_on_temp_spin.setFixedHeight(44)
+        self.compressor_on_temp_spin.setFixedWidth(56)
+        self.compressor_on_temp_spin.setFixedHeight(compact_h)
         self.compressor_on_temp_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.compressor_on_temp_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         self.compressor_on_temp_spin.setStyleSheet(spin_style)
         self.compressor_on_temp_spin.valueChanged.connect(self._on_compressor_thresholds_changed)
         self.compressor_on_temp_down = QPushButton("-")
-        self.compressor_on_temp_down.setFixedSize(44, 44)
+        self.compressor_on_temp_down.setFixedSize(compact_h, compact_h)
         self.compressor_on_temp_down.setStyleSheet(self._TEMP_STEP_BUTTON_STYLE)
         self.compressor_on_temp_down.clicked.connect(lambda: self.compressor_on_temp_spin.stepBy(-1))
         self.compressor_on_temp_up = QPushButton("+")
-        self.compressor_on_temp_up.setFixedSize(44, 44)
+        self.compressor_on_temp_up.setFixedSize(compact_h, compact_h)
         self.compressor_on_temp_up.setStyleSheet(self._TEMP_STEP_BUTTON_STYLE)
         self.compressor_on_temp_up.clicked.connect(lambda: self.compressor_on_temp_spin.stepBy(1))
-        
+
         self.stepper_speed_label = QLabel(self._format_speed_text(self.stepper_speed_rpm))
         self.stepper_speed_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
-        self.stepper_speed_label.setMinimumWidth(120)
-        self.stepper_speed_label.setMinimumHeight(44)
+        self.stepper_speed_label.setMinimumWidth(108)
+        self.stepper_speed_label.setFixedHeight(self._COMPACT_PUMP_BUTTON_HEIGHT)
         self.stepper_speed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.stepper_rpm_unit_label = QLabel("RPM")
@@ -1827,21 +1833,20 @@ class ServiceTab(QWidget):
         self.stepper_flow_slider.valueChanged.connect(self._on_stepper_flow_changed)
 
         # Jog controls (hold to move)
-        self.jog_reverse_button = QPushButton("JOG REV")
-        self.jog_reverse_button.setMinimumHeight(44)
+        self.jog_reverse_button = QPushButton("Jog Rev")
+        self.jog_reverse_button.setFixedHeight(self._COMPACT_PUMP_BUTTON_HEIGHT)
         self.jog_reverse_button.setStyleSheet(self._JOG_BUTTON_STYLE)
         self.jog_reverse_button.pressed.connect(lambda: self._on_jog_pressed(-1))
         self.jog_reverse_button.released.connect(self._on_jog_released)
-        
-        self.jog_forward_button = QPushButton("JOG FWD")
-        self.jog_forward_button.setMinimumHeight(44)
+
+        self.jog_forward_button = QPushButton("Jog Fwd")
+        self.jog_forward_button.setFixedHeight(self._COMPACT_PUMP_BUTTON_HEIGHT)
         self.jog_forward_button.setStyleSheet(self._JOG_BUTTON_STYLE)
         self.jog_forward_button.pressed.connect(lambda: self._on_jog_pressed(1))
         self.jog_forward_button.released.connect(self._on_jog_released)
 
-        self.stepper_continuous_button = QPushButton("RUN")
-        self.stepper_continuous_button.setFixedHeight(44)
-        self.stepper_continuous_button.setMinimumWidth(96)
+        self.stepper_continuous_button = QPushButton("Run")
+        self.stepper_continuous_button.setFixedHeight(self._COMPACT_PUMP_BUTTON_HEIGHT)
         self.stepper_continuous_button.clicked.connect(self._on_stepper_continuous_toggle_clicked)
         self._apply_continuous_button_style(False)
 
@@ -1850,12 +1855,21 @@ class ServiceTab(QWidget):
         self.flow_ramp_test_button.clicked.connect(self._on_flow_ramp_test_clicked)
         self._apply_flow_ramp_test_button_style(False)
 
-        self.rpm_flow_calibration_button = QPushButton("Calibrate 5 min")
-        self.rpm_flow_calibration_button.setMinimumHeight(40)
+        self.rpm_flow_calibration_button = QPushButton("Run for 5 min")
+        self.rpm_flow_calibration_button.setFixedHeight(self._COMPACT_PUMP_BUTTON_HEIGHT)
         self.rpm_flow_calibration_button.clicked.connect(
             self._on_rpm_flow_calibration_clicked
         )
         self._apply_rpm_flow_calibration_button_style(False)
+
+        self.pid_run_button = QPushButton("Run with PID")
+        self.pid_run_button.setFixedHeight(self._COMPACT_PUMP_BUTTON_HEIGHT)
+        self.pid_run_button.setToolTip(
+            "Closed-loop pump: control sensor vs the main-screen setpoint "
+            "(same PID as Start Pumping)."
+        )
+        self.pid_run_button.clicked.connect(self._on_pid_run_clicked)
+        self._apply_pid_run_button_style(False)
 
         self.usb_group = QGroupBox("USB logging")
         self.usb_group.setStyleSheet(self._group_box_style("#2563eb", "13px", margin_top=8))
@@ -1869,19 +1883,25 @@ class ServiceTab(QWidget):
         self.usb_eject_button.clicked.connect(self._on_usb_eject_clicked)
         self._apply_usb_eject_button_style(enabled=False)
 
-    def _make_temp_control_row(self, caption: str, spin: QDoubleSpinBox, down: QPushButton, up: QPushButton) -> QHBoxLayout:
-        """Build a compact threshold row: label | − value +."""
+    def _make_temp_control_row(
+        self,
+        caption: str,
+        spin: QDoubleSpinBox,
+        down: QPushButton,
+        up: QPushButton,
+        tooltip: str = "",
+    ) -> QHBoxLayout:
+        """Build a compact threshold cluster: label | − value +."""
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(6)
+        row.setSpacing(3)
         label = QLabel(caption)
-        label.setStyleSheet("font-size: 13px; color: #2f3b47;")
-        label.setMinimumWidth(100)
+        label.setStyleSheet("font-size: 11px; font-weight: 700; color: #2f3b47;")
+        label.setToolTip(tooltip or caption)
         row.addWidget(label)
         row.addWidget(down)
         row.addWidget(spin)
         row.addWidget(up)
-        row.addStretch(1)
         return row
 
     def _make_slider_row(self, unit_label: QLabel, slider: QSlider) -> QHBoxLayout:
@@ -1899,36 +1919,34 @@ class ServiceTab(QWidget):
         main_layout.setContentsMargins(6, 4, 6, 4)
         main_layout.setSpacing(6)
 
-        # Compressor: status + toggle on one row, thresholds below.
+        # Compressor: status, run, and both setpoints on one row.
         compressor_layout = QVBoxLayout()
         compressor_layout.setContentsMargins(8, 6, 8, 6)
-        compressor_layout.setSpacing(6)
-        status_row = QHBoxLayout()
-        status_row.setContentsMargins(0, 0, 0, 0)
-        status_row.setSpacing(8)
-        status_row.addWidget(self.compressor_label, 1)
-        status_row.addWidget(self.compressor_control_button, 0)
-        compressor_layout.addLayout(status_row)
-        thresholds = QHBoxLayout()
-        thresholds.setContentsMargins(0, 0, 0, 0)
-        thresholds.setSpacing(16)
-        thresholds.addLayout(
+        compressor_layout.setSpacing(4)
+        compressor_row = QHBoxLayout()
+        compressor_row.setContentsMargins(0, 0, 0, 0)
+        compressor_row.setSpacing(6)
+        compressor_row.addWidget(self.compressor_label, 1)
+        compressor_row.addWidget(self.compressor_control_button, 0)
+        compressor_row.addLayout(
             self._make_temp_control_row(
-                "Off below (°C)",
+                "Off",
                 self.compressor_off_temp_spin,
                 self.compressor_off_temp_down,
                 self.compressor_off_temp_up,
+                tooltip="Off below (°C)",
             )
         )
-        thresholds.addLayout(
+        compressor_row.addLayout(
             self._make_temp_control_row(
-                "On above (°C)",
+                "On",
                 self.compressor_on_temp_spin,
                 self.compressor_on_temp_down,
                 self.compressor_on_temp_up,
+                tooltip="On above (°C)",
             )
         )
-        compressor_layout.addLayout(thresholds)
+        compressor_layout.addLayout(compressor_row)
         self.compressor_group.setLayout(compressor_layout)
         main_layout.addWidget(self.compressor_group)
 
@@ -1940,7 +1958,7 @@ class ServiceTab(QWidget):
         self.usb_group.setLayout(usb_layout)
         main_layout.addWidget(self.usb_group)
 
-        # Stepper: labeled sliders, readout + calibrate, jog/run, ramp test.
+        # Stepper: labeled sliders, readout, compact pump buttons, ramp test.
         outputs_layout = QVBoxLayout()
         outputs_layout.setContentsMargins(8, 6, 8, 6)
         outputs_layout.setSpacing(8)
@@ -1952,20 +1970,16 @@ class ServiceTab(QWidget):
             self._make_slider_row(self.stepper_flow_unit_label, self.stepper_flow_slider)
         )
 
-        readout_row = QHBoxLayout()
-        readout_row.setContentsMargins(0, 0, 0, 0)
-        readout_row.setSpacing(8)
-        readout_row.addWidget(self.rpm_flow_calibration_button, 1)
-        readout_row.addWidget(self.stepper_speed_label, 0)
-        outputs_layout.addLayout(readout_row)
-
-        jog_layout = QHBoxLayout()
-        jog_layout.setContentsMargins(0, 0, 0, 0)
-        jog_layout.setSpacing(6)
-        jog_layout.addWidget(self.jog_reverse_button, 1)
-        jog_layout.addWidget(self.jog_forward_button, 1)
-        jog_layout.addWidget(self.stepper_continuous_button, 0)
-        outputs_layout.addLayout(jog_layout)
+        pump_buttons = QHBoxLayout()
+        pump_buttons.setContentsMargins(0, 0, 0, 0)
+        pump_buttons.setSpacing(4)
+        pump_buttons.addWidget(self.rpm_flow_calibration_button, 1)
+        pump_buttons.addWidget(self.jog_reverse_button, 1)
+        pump_buttons.addWidget(self.jog_forward_button, 1)
+        pump_buttons.addWidget(self.stepper_continuous_button, 1)
+        pump_buttons.addWidget(self.pid_run_button, 1)
+        pump_buttons.addWidget(self.stepper_speed_label, 0)
+        outputs_layout.addLayout(pump_buttons)
         outputs_layout.addWidget(self.flow_ramp_test_button)
         self.outputs_group.setLayout(outputs_layout)
         main_layout.addWidget(self.outputs_group, 1)
@@ -2004,15 +2018,13 @@ class ServiceTab(QWidget):
         comp_status = "ON" if self.compressor_on else "OFF"
         comp_color = "#16a34a" if self.compressor_on else "#6b7280"
         if self.heat_ex_temp_c is not None:
-            heat_text = f"Heat Ex {self.heat_ex_temp_c:.1f}°C"
+            heat_text = f"HX {self.heat_ex_temp_c:.1f}°"
         else:
-            heat_text = "Heat Ex --"
-        control = "cooling" if self.compressor_control_enabled else "idle"
-        self.compressor_label.setText(f"Compressor: {comp_status} ({heat_text}, {control})")
+            heat_text = "HX --"
+        self.compressor_label.setText(f"{comp_status}  {heat_text}")
         self.compressor_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=comp_color))
         self.stepper_speed_label.setText(self._format_speed_text(self.stepper_speed_rpm))
         self._update_stepper_control_enabled_state()
-        self.stepper_continuous_button.setEnabled(True)
 
     def update_usb_status(
         self,
@@ -2044,9 +2056,9 @@ class ServiceTab(QWidget):
 
     def _format_speed_text(self, rpm: int) -> str:
         if self._commanded_flow_ml_per_min is not None:
-            return f"{rpm} RPM\n{self._commanded_flow_ml_per_min:d} ml/min"
+            return f"{rpm} RPM  {self._commanded_flow_ml_per_min:d} ml/min"
         ml_per_min = _pump_flow_ml_per_min(rpm, self.pump_flow_ml_per_min_per_rpm)
-        return f"{rpm} RPM\n{ml_per_min:.1f} ml/min"
+        return f"{rpm} RPM  {ml_per_min:.0f} ml/min"
 
     def _flow_setpoint_bounds(self) -> tuple[int, int]:
         """Return min/max discrete ml/min setpoints for the current RPM range."""
@@ -2199,25 +2211,30 @@ class ServiceTab(QWidget):
     def _apply_compressor_control_button_style(self, control_enabled: bool):
         # Label reflects current state; color matches state (green = active).
         if control_enabled:
-            text = "Control ON"
+            text = "Stop"
             bg = "#16a34a"
             hover = "#15803d"
             border = "#15803d"
         else:
-            text = "Control OFF"
+            text = "Run"
             bg = "#6b7280"
             hover = "#4b5563"
             border = "#4b5563"
         self.compressor_control_button.setText(text)
+        self.compressor_control_button.setToolTip(
+            "Disable compressor temperature control"
+            if control_enabled
+            else "Enable compressor temperature control"
+        )
         self.compressor_control_button.setStyleSheet(f"""
             QPushButton {{
                 background-color: {bg};
                 color: white;
-                font-size: 13px;
+                font-size: 11px;
                 font-weight: 700;
-                border-radius: 10px;
-                padding: 8px 12px;
-                border: 2px solid {border};
+                border-radius: 8px;
+                padding: 4px 6px;
+                border: 1px solid {border};
             }}
             QPushButton:hover {{
                 background-color: {hover};
@@ -2272,6 +2289,8 @@ class ServiceTab(QWidget):
     def _set_continuous_run(self, enabled: bool):
         """Set continuous run state and notify the host if it changed."""
         enabled = bool(enabled)
+        if enabled:
+            self.stop_pid_run()
         if self.stepper_continuous_on == enabled:
             return
         self.stepper_continuous_on = enabled
@@ -2283,12 +2302,12 @@ class ServiceTab(QWidget):
     def _apply_continuous_button_style(self, is_on: bool):
         # Action-oriented labels: tap RUN to start, STOP to halt.
         if is_on:
-            text = "STOP"
+            text = "Stop"
             bg = "#dc2626"
             hover = "#b91c1c"
             border = "#991b1b"
         else:
-            text = "RUN"
+            text = "Run"
             bg = "#0e6a76"
             hover = "#0b565f"
             border = "#0b565f"
@@ -2297,10 +2316,10 @@ class ServiceTab(QWidget):
             QPushButton {{
                 background-color: {bg};
                 color: white;
-                font-size: 15px;
+                font-size: 11px;
                 font-weight: 700;
-                border-radius: 12px;
-                padding: 10px 14px;
+                border-radius: 8px;
+                padding: 4px 6px;
                 border: 1px solid {border};
             }}
             QPushButton:hover {{
@@ -2309,10 +2328,16 @@ class ServiceTab(QWidget):
         """)
 
     def _update_stepper_control_enabled_state(self):
-        """Disable jog buttons while continuous run is active."""
-        jog_enabled = not self.stepper_continuous_on
+        """Disable jog / open-loop controls while a motor mode is active."""
+        jog_enabled = not self.stepper_continuous_on and not self.pid_run_active
         self.jog_reverse_button.setEnabled(jog_enabled)
         self.jog_forward_button.setEnabled(jog_enabled)
+        self.stepper_continuous_button.setEnabled(not self.pid_run_active)
+        self.rpm_flow_calibration_button.setEnabled(not self.pid_run_active)
+        self.flow_ramp_test_button.setEnabled(not self.pid_run_active)
+        sliders_enabled = not self.pid_run_active
+        self.stepper_speed_slider.setEnabled(sliders_enabled)
+        self.stepper_flow_slider.setEnabled(sliders_enabled)
 
     def _on_flow_ramp_test_clicked(self):
         """Toggle the timed flow-ramp test."""
@@ -2325,6 +2350,7 @@ class ServiceTab(QWidget):
         """Start at 10 ml/min, run pump, ramp +10 every 2 min."""
         if self.flow_ramp_test_active:
             return
+        self.stop_pid_run()
         self.stop_rpm_flow_calibration()
         lo, hi = self._flow_setpoint_bounds()
         start_ml = max(lo, min(hi, FLOW_RAMP_TEST_START_ML_PER_MIN))
@@ -2415,6 +2441,7 @@ class ServiceTab(QWidget):
         """Run the pump at the current slider RPM for 5 minutes, then stop."""
         if self.rpm_flow_calibration_active:
             return
+        self.stop_pid_run()
         self.stop_flow_ramp_test()
         self._rpm_flow_calibration_rpm = int(self.stepper_speed_rpm)
         self._rpm_flow_calibration_remaining_s = RPM_FLOW_CALIBRATION_DURATION_S
@@ -2455,15 +2482,12 @@ class ServiceTab(QWidget):
         if active:
             remaining = max(0, int(self._rpm_flow_calibration_remaining_s))
             minutes, seconds = divmod(remaining, 60)
-            text = (
-                f"Stop Cal ({self._rpm_flow_calibration_rpm} RPM "
-                f"{minutes}:{seconds:02d})"
-            )
+            text = f"Stop {minutes}:{seconds:02d}"
             bg = "#dc2626"
             hover = "#b91c1c"
             border = "#991b1b"
         else:
-            text = "Calibrate 5 min"
+            text = "Run for 5 min"
             bg = "#0e6a76"
             hover = "#0b565f"
             border = "#0b565f"
@@ -2474,12 +2498,76 @@ class ServiceTab(QWidget):
                 color: white;
                 font-size: 11px;
                 font-weight: 700;
-                border-radius: 10px;
-                padding: 8px 12px;
+                border-radius: 8px;
+                padding: 4px 6px;
                 border: 1px solid {border};
             }}
             QPushButton:hover {{
                 background-color: {hover};
+            }}
+        """)
+
+    def _on_pid_run_clicked(self):
+        """Toggle closed-loop PID pump run (same controller as Start Pumping)."""
+        if self.pid_run_active:
+            self.stop_pid_run()
+        else:
+            self.start_pid_run()
+
+    def start_pid_run(self):
+        """Start the pump under PID control vs the main-screen setpoint."""
+        if self.pid_run_active:
+            return
+        self.stop_flow_ramp_test()
+        self.stop_rpm_flow_calibration()
+        if self.stepper_continuous_on:
+            self.stepper_continuous_on = False
+            self._apply_continuous_button_style(False)
+        self.pid_run_active = True
+        self._apply_pid_run_button_style(True)
+        self._update_stepper_control_enabled_state()
+        if self.on_pid_run_toggle_callback:
+            self.on_pid_run_toggle_callback(True)
+
+    def stop_pid_run(self, *, notify: bool = True):
+        """Stop a service-page PID run and restore open-loop controls."""
+        if not self.pid_run_active:
+            return
+        self.pid_run_active = False
+        self._apply_pid_run_button_style(False)
+        self._update_stepper_control_enabled_state()
+        if notify and self.on_pid_run_toggle_callback:
+            self.on_pid_run_toggle_callback(False)
+
+    def _apply_pid_run_button_style(self, active: bool):
+        if active:
+            text = "Stop PID"
+            bg = "#dc2626"
+            hover = "#b91c1c"
+            border = "#991b1b"
+        else:
+            text = "Run with PID"
+            bg = "#0e6a76"
+            hover = "#0b565f"
+            border = "#0b565f"
+        self.pid_run_button.setText(text)
+        self.pid_run_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: white;
+                font-size: 11px;
+                font-weight: 700;
+                border-radius: 8px;
+                padding: 4px 6px;
+                border: 1px solid {border};
+            }}
+            QPushButton:hover {{
+                background-color: {hover};
+            }}
+            QPushButton:disabled {{
+                background-color: #9ca3af;
+                border-color: #6b7280;
+                color: #f9fafb;
             }}
         """)
 
@@ -3592,6 +3680,7 @@ class MainScreen(QMainWindow):
         self.on_stepper_jog_start_callback: Optional[Callable[[int], None]] = None
         self.on_stepper_jog_stop_callback: Optional[Callable[[], None]] = None
         self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
+        self.on_pid_run_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_control_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_thresholds_change_callback: Optional[Callable[[float, float], None]] = None
         self.on_temperature_calibration_callback: Optional[
@@ -3816,6 +3905,7 @@ class MainScreen(QMainWindow):
         self.service_tab.on_stepper_jog_start_callback = self._on_service_stepper_jog_start
         self.service_tab.on_stepper_jog_stop_callback = self._on_service_stepper_jog_stop
         self.service_tab.on_stepper_continuous_toggle_callback = self._on_service_stepper_continuous_toggle
+        self.service_tab.on_pid_run_toggle_callback = self._on_service_pid_run_toggle
         self.service_tab.on_compressor_control_toggle_callback = self._on_service_compressor_control_toggle
         self.service_tab.on_compressor_thresholds_change_callback = self._on_service_compressor_thresholds_change
         self.service_tab.on_usb_eject_callback = self._on_service_usb_eject
@@ -4087,6 +4177,11 @@ class MainScreen(QMainWindow):
         """Forward service-tab continuous run toggle to app callback."""
         if self.on_stepper_continuous_toggle_callback:
             self.on_stepper_continuous_toggle_callback(enabled)
+
+    def _on_service_pid_run_toggle(self, enabled: bool):
+        """Forward service-tab PID run toggle to app callback."""
+        if self.on_pid_run_toggle_callback:
+            self.on_pid_run_toggle_callback(enabled)
 
     def _on_service_compressor_control_toggle(self, enabled: bool):
         if self.on_compressor_control_toggle_callback:
@@ -4446,6 +4541,7 @@ class MainScreen(QMainWindow):
         if getattr(self, "service_tab", None) is not None:
             self.service_tab.stop_flow_ramp_test()
             self.service_tab.stop_rpm_flow_calibration()
+            self.service_tab.stop_pid_run()
         event.accept()
 
 

@@ -1,4 +1,4 @@
-control_temp_label: Probe 2
+control_temp_label: Tip
 # Logical temperatures shown in the UI / control / CSV.
 # For each name, read that same label from the chosen board.
 # Only listed names appear; order is display order.
@@ -252,7 +252,7 @@ cooling_power:
   cartridge_in_label: Cartrige In
   cartridge_out_label: Cartrige Out
 # Closed-loop pump flow during PUMPING (control_temp_label vs UI set temperature).
-# error = Probe 2 - set_temp (°C). Above full_speed_error_c → max flow;
+# error = Tip - set_temp (°C). Above full_speed_error_c → max flow;
 # between 0 and that band → PID; at/below setpoint → min flow.
 pump_control:
   max_flow_ml_per_min: 60.0

@@ -240,6 +240,7 @@ class SensorMonitorApp(QObject):
         self._last_pressures: dict = {}
         self.stepper_continuous_forward: bool = False
         self.stepper_motor_running: bool = False
+        self.service_pid_run: bool = False
         _cont_dir = int(stepper_cfg.get("continuous_direction", 1))
         self.stepper_continuous_direction: int = 1 if _cont_dir >= 0 else -1
 
@@ -692,6 +693,7 @@ class SensorMonitorApp(QObject):
             primary = min(stop_codes, key=stop_priority)
             self._sync_warning_log([])
             self.state_machine.apply_fault(primary)
+            self._stop_service_pid_run()
             if self.ui:
                 self.ui.update_warnings([])
             return False
@@ -819,9 +821,7 @@ class SensorMonitorApp(QObject):
         set_temp: Optional[float],
     ) -> None:
         """Update pump RPM from CSF error while actively pumping."""
-        if not self.state_machine:
-            return
-        if self.state_machine.get_current_state() not in (State.PUMPING, State.PUMPING_SLOWLY):
+        if not self._closed_loop_pump_active():
             return
         if csf_temp is None or set_temp is None:
             return
@@ -834,6 +834,17 @@ class SensorMonitorApp(QObject):
             self.stepper_driver.set_continuous_speed(self.stepper_speed_rpm)
         elif not self.stepper_continuous_forward:
             self.on_stepper_continuous_toggle(True)
+
+    def _closed_loop_pump_active(self) -> bool:
+        """True during workflow pumping or a service-page PID run."""
+        if self.service_pid_run:
+            return True
+        if self.state_machine is None:
+            return False
+        return self.state_machine.get_current_state() in (
+            State.PUMPING,
+            State.PUMPING_SLOWLY,
+        )
 
     def _apply_state_driven_stepper_control(self, state: State):
         """Drive the stepper from state machine transitions."""
@@ -992,10 +1003,7 @@ class SensorMonitorApp(QObject):
         self.state_machine.acknowledge_error()
 
     def on_stepper_speed_changed(self, speed_rpm: int):
-        enforce_min = (
-            self.state_machine is not None
-            and self.state_machine.get_current_state() == State.PUMPING
-        )
+        enforce_min = self._closed_loop_pump_active()
         self.stepper_speed_rpm = self._clamp_pump_speed_rpm(
             speed_rpm,
             enforce_min=enforce_min,
@@ -1096,8 +1104,45 @@ class SensorMonitorApp(QObject):
         self.stepper_motor_running = False
         self._update_stepper_ui_status()
 
+    def on_service_pid_run_toggle(self, enabled: bool) -> None:
+        """Start or stop a service-page PID run (same controller as Start Pumping)."""
+        self.service_pid_run = bool(enabled)
+        if enabled:
+            self.pump_flow_controller.reset()
+            self.stepper_speed_rpm = self._rpm_for_flow_ml_per_min(
+                self.pump_flow_controller.config.max_flow_ml_per_min,
+                enforce_min=True,
+            )
+            self.on_stepper_continuous_toggle(True)
+            return
+        self.pump_flow_controller.reset()
+        in_workflow = (
+            self.state_machine is not None
+            and self.state_machine.get_current_state()
+            in (State.PUMPING, State.PUMPING_SLOWLY)
+        )
+        if not in_workflow and self.stepper_continuous_forward:
+            self.on_stepper_continuous_toggle(False)
+
+    def _stop_service_pid_run(self) -> None:
+        """Clear service PID mode without a second motor-stop command."""
+        if not self.service_pid_run:
+            return
+        self.service_pid_run = False
+        self.pump_flow_controller.reset()
+        if self.ui is not None:
+            service_tab = getattr(self.ui, "service_tab", None)
+            if service_tab is not None:
+                service_tab.stop_pid_run(notify=False)
+
     def on_stepper_continuous_toggle(self, enabled: bool):
         """Toggle continuous movement ON/OFF (direction: ``stepper_continuous_direction`` / config)."""
+        if not enabled:
+            self.service_pid_run = False
+            if self.ui is not None:
+                service_tab = getattr(self.ui, "service_tab", None)
+                if service_tab is not None:
+                    service_tab.stop_pid_run(notify=False)
         self.stepper_continuous_forward = bool(enabled)
         if not self.stepper_driver:
             return
@@ -1227,6 +1272,7 @@ class SensorMonitorApp(QObject):
         ui.on_stepper_jog_start_callback = self.on_stepper_jog_start
         ui.on_stepper_jog_stop_callback = self.on_stepper_jog_stop
         ui.on_stepper_continuous_toggle_callback = self.on_stepper_continuous_toggle
+        ui.on_pid_run_toggle_callback = self.on_service_pid_run_toggle
         ui.on_compressor_control_toggle_callback = self.on_compressor_control_toggle
         ui.on_compressor_thresholds_change_callback = self.on_compressor_thresholds_changed
         ui.on_temperature_calibration_callback = self.on_temperature_calibration_requested
