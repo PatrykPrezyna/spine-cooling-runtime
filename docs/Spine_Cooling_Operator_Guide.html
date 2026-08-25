@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Operator guide — Spine Cooling Runtime</title>
+  <link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<div class="sheet">
+
+<header>
+  <h1>Operator guide</h1>
+  <p>Revision A &nbsp;·&nbsp; 24 August 2026 &nbsp;·&nbsp; Spine Cooling Runtime</p>
+  <nav class="docs">
+    <a href="Spine_Cooling_Operator_Guide.html">Operator guide</a>
+    <a href="verification/Verification_Protocol.html">Verification documentation</a>
+  </nav>
+</header>
+
+<p>
+  This guide explains how to run a treatment session on the Spine Cooling device.
+  It is a brief operator reference for the prototype. It is not a certified instructions-for-use
+  document and must not be used with a patient unless a later, released IFU says otherwise.
+</p>
+
+<h2>How to use it</h2>
+<ol>
+  <li>The device enters the state <em>Cooling</em> by itself. The compressor cools the plate.</li>
+  <li>Seat the cartridge until Cartridge In Place is on. Fill until Level Low and Level Critical are OK.</li>
+  <li>Place the catheter. Set the CSF target with the <strong>+</strong> and <strong>−</strong> buttons (30–35 °C).</li>
+  <li>Press the <strong>START COOLING</strong> button. The pump runs toward the setpoint.</li>
+</ol>
+<p>
+  Watch the <strong>status bar</strong> at the top of the screen for the current <strong>state</strong>
+  (Ready, Cooling, Pumping, or Error). START COOLING and STOP COOLING are buttons at the bottom of the
+  main screen.
+</p>
+
+<h2>Screens</h2>
+<p>
+  Main is the treatment page. Expert is monitoring. Service can move hardware and is one extra tap
+  away on purpose.
+</p>
+
+<figure>
+  <p class="shot-title">Main screen — Ready</p>
+  <img src="screenshots/01_main_ready.png" alt="Main screen in the Ready state. START COOLING cannot be pressed." />
+  <figcaption>The START COOLING button stays unusable until the cartridge is seated and both level switches are OK.</figcaption>
+</figure>
+
+<figure>
+  <p class="shot-title">Main screen — Cooling</p>
+  <img src="screenshots/02_main_cooling.png" alt="Main screen in the Cooling state. START COOLING can be pressed." />
+  <figcaption>The compressor is already cooling the plate. Place the catheter, set the CSF target with the + / − buttons, then press START COOLING.</figcaption>
+</figure>
+
+<figure>
+  <p class="shot-title">Main screen — Error</p>
+  <img src="screenshots/03_main_error.png" alt="Main screen in the Error state with ACKNOWLEDGE ERROR button." />
+  <figcaption>A stop fault shows Error in the status bar, stops pumping, and displays the message. Tap the message for help. The ACKNOWLEDGE ERROR button can be pressed only after the condition has cleared.</figcaption>
+</figure>
+
+<figure>
+  <p class="shot-title">Error help</p>
+  <img src="screenshots/04_error_help.png" alt="Help window listing probable causes and recovery steps." />
+  <figcaption>Tap the error message (ⓘ) in the status bar to open probable causes and recovery steps. Close the sheet, fix the cause, then press ACKNOWLEDGE ERROR.</figcaption>
+</figure>
+
+<figure>
+  <p class="shot-title">Main screen — warning</p>
+  <img src="screenshots/05_main_warning.png" alt="Main screen in Cooling with a Battery low warning banner." />
+  <figcaption>Warnings (for example battery low) do not stop the session. They appear as a yellow banner until the condition clears.</figcaption>
+</figure>
+
+<figure>
+  <p class="shot-title">Expert — Temperature</p>
+  <img src="screenshots/06_expert_temperature.png" alt="Expert Temperature tab with thermistor traces." />
+  <figcaption>Read-only traces for all thermistors plus the setpoint. Toggle series on the right. The house button returns to the main screen.</figcaption>
+</figure>
+
+<figure>
+  <p class="shot-title">Expert — Pressure and Flow</p>
+  <img src="screenshots/07_expert_pressure.png" alt="Expert Pressure and Flow tab." />
+  <figcaption>Catheter and pump pressures with pump flow on the right axis.</figcaption>
+</figure>
+
+<figure>
+  <p class="shot-title">Expert — Power</p>
+  <img src="screenshots/08_expert_power.png" alt="Expert Power tab showing catheter and cartridge watts." />
+  <figcaption>Estimated catheter and cartridge cooling power from flow and temperature difference. Use this to confirm heat is being extracted.</figcaption>
+</figure>
+
+<figure>
+  <p class="shot-title">Expert — Status</p>
+  <img src="screenshots/09_expert_status.png" alt="Expert Status tab with digital inputs all HIGH." />
+  <figcaption>Live digital inputs. HIGH means the switch is satisfied; LOW is a problem during cooling or pumping.</figcaption>
+</figure>
+
+<figure>
+  <p class="shot-title">Service — Manual Operation</p>
+  <img src="screenshots/10_service_manual.png" alt="Service Manual Operation tab with compressor and pump controls." />
+  <figcaption>Reached from the gear button on the expert page. Jog or run the pump, set flow, and enable compressor control. Do not use this during a patient session unless instructed.</figcaption>
+</figure>
+
+<figure>
+  <p class="shot-title">Service — Pressure Log</p>
+  <img src="screenshots/11_service_pressure_log.png" alt="Service Pressure Log tab showing logging on." />
+  <figcaption>Controls the dedicated high-rate pressure log for the session.</figcaption>
+</figure>
+
+<figure>
+  <p class="shot-title">Service — Calibration</p>
+  <img src="screenshots/12_service_calibration.png" alt="Service Calibration tab with two-point temperature table." />
+  <figcaption>Two-point temperature calibration (measured at 0 °C and 100 °C). Apply only after a controlled ice / boiling-water check.</figcaption>
+</figure>
+
+<h2>Error handling</h2>
+<p>
+  A <strong>stop</strong> error changes the status bar to the state <em>Error</em>, stops the pump,
+  and requires the ACKNOWLEDGE ERROR button after the cause is gone. Tap the error message for
+  causes and steps. A <strong>warning</strong> only shows a yellow banner and does not change the
+  state. If several stop errors are active, the highest-priority one is shown (sensor read failure,
+  level, cartridge, fridge, leak, CSF low, heat exchanger, cooling ineffective).
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:28%">Message</th>
+      <th>When it appears</th>
+      <th>What to do</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="msg">Level sensor failure detected</span><br /><span class="badge stop">STOP</span></td>
+      <td>Cooling or Pumping, and a level switch is not OK.</td>
+      <td>Inspect the cartridge fill level and top up if it is low. Check for leaks around the cartridge and tubing.</td>
+    </tr>
+    <tr>
+      <td><span class="msg">Cartridge removed during operation</span><br /><span class="badge stop">STOP</span></td>
+      <td>Cooling or Pumping, and the cartridge is not detected.</td>
+      <td>Fully seat the cartridge until it is locked in place. On expert Status, confirm Cartridge In Place is on.</td>
+    </tr>
+    <tr>
+      <td><span class="msg">CSF low temp</span><br /><span class="badge stop">STOP</span></td>
+      <td>CSF (Tip) below the low-temperature limit (default 28 °C).</td>
+      <td>Check the CSF temperature on the main display. Raise the setpoint if it is below the intended target.</td>
+    </tr>
+    <tr>
+      <td><span class="msg">Sensor read failure</span><br /><span class="badge stop">STOP</span></td>
+      <td>A sensor board or cable could not be read.</td>
+      <td>Check sensor board power and cables. Open expert Status and confirm readings update.</td>
+    </tr>
+    <tr>
+      <td><span class="msg">Battery low</span><br /><span class="badge warn">WARNING</span></td>
+      <td>Reported battery below 20 %.</td>
+      <td>Connect mains power or replace/charge the battery. Confirm the power lead is fully seated.</td>
+    </tr>
+    <tr>
+      <td><span class="msg">USB stick not present</span><br /><span class="badge warn">WARNING</span></td>
+      <td>USB logging is on and no SPINELOGS stick is inserted.</td>
+      <td>Insert a USB stick labeled SPINELOGS. Wait until Service → Manual Operation shows copying.</td>
+    </tr>
+    <tr>
+      <td><span class="msg">SD card storage below 1 GB</span><br /><span class="badge warn">WARNING</span></td>
+      <td>Local logs have less than 1 GB free.</td>
+      <td>Copy logs off the device and delete old files. Do not start a long session until more than 1 GB is free.</td>
+    </tr>
+    <tr>
+      <td><span class="msg">USB stick storage below 1 GB</span><br /><span class="badge warn">WARNING</span></td>
+      <td>The USB stick has less than 1 GB free.</td>
+      <td>Eject the stick, copy files off, and delete old logs. Reinsert a stick with more than 1 GB free.</td>
+    </tr>
+    <tr>
+      <td><span class="msg">Fridge defect</span><br /><span class="badge stop">STOP</span></td>
+      <td>The compressor or fridge reports a defect.</td>
+      <td>On Manual Operation, check whether the compressor is running. Check the plate temperature.</td>
+    </tr>
+    <tr>
+      <td><span class="msg">Leak detected</span><br /><span class="badge stop">STOP</span></td>
+      <td>The leak sensor stays wet. Detection can be switched off in configuration.</td>
+      <td>Do not restart cooling until the area is dry. Inspect the cartridge, catheter, and tubing for leaks.</td>
+    </tr>
+    <tr>
+      <td><span class="msg">Heat exchanger too cold</span><br /><span class="badge stop">STOP</span></td>
+      <td>Plate below the heat-exchanger minimum (default −10 °C).</td>
+      <td>Check the plate temperature. Confirm the pump is circulating coolant.</td>
+    </tr>
+    <tr>
+      <td><span class="msg">Cooling ineffective</span><br /><span class="badge stop">STOP</span></td>
+      <td>Pump and compressor on, but CSF does not drop enough within the timeout.</td>
+      <td>Confirm the catheter is placed and connected. Check pump speed, flow, and pressures on the expert page.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p class="foot">Prototype — not a certified IFU.</p>
+
+</div>
+</body>
+</html>

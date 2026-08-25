@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Verification documentation — Spine Cooling Runtime</title>
+  <link rel="stylesheet" href="../docs.css" />
+</head>
+<body>
+<div class="sheet">
+
+<header>
+  <h1>Verification documentation</h1>
+  <p>Revision A &nbsp;·&nbsp; 24 August 2026 &nbsp;·&nbsp; Spine Cooling Runtime</p>
+  <nav class="docs">
+    <a href="../Spine_Cooling_Operator_Guide.html">Operator guide</a>
+    <a href="Verification_Protocol.html">Verification documentation</a>
+  </nav>
+</header>
+
+<h2>Introduction</h2>
+<p>
+  This is a bench checklist for the Spine Cooling Runtime software. A tester walks through a normal
+  (good-weather) session, then each error and warning the software can raise, and records Pass / Fail
+  on this page. It is not a clinical procedure and must not be used with a patient.
+</p>
+<p>
+  Before beginning this verification, read the
+  <a href="../Spine_Cooling_Operator_Guide.html">Operator guide</a>
+  to become familiar with device operation.
+</p>
+
+<h2>Run record</h2>
+<div class="meta">
+  <label><span>Software version</span><i></i></label>
+  <label><span>Date</span><i></i></label>
+</div>
+<p>
+  <span class="box"></span> Cartridge seated, Level Low and Level Critical OK &nbsp;
+  <span class="box"></span> CSF (Tip) ≥ 28 °C, Plate ≥ −10 °C &nbsp;
+  <span class="box"></span> Leak sensor dry
+</p>
+
+<h2>1. Good-weather session</h2>
+<p>
+  With the cartridge seated, coolant levels OK, and temperatures in range, run a normal session.
+  Watch the <strong>status bar</strong> at the top of the screen for the current
+  <strong>state</strong> (for example, Ready or Cooling). Use the
+  <strong>START COOLING</strong> and <strong>STOP COOLING</strong> <em>buttons</em> to start and stop
+  pumping. No error or warning should appear.
+</p>
+<table>
+  <thead>
+    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>Start the device. Watch the status bar at the top of the screen.</td>
+      <td>The status bar shows the state <em>Init</em>, then the state <em>Ready</em>. The START COOLING button is visible but cannot be pressed. No error or warning is shown.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Confirm the cartridge is seated and both level sensors are OK. Wait about 10 seconds after start-up.</td>
+      <td>The status bar shows the state <em>Cooling</em>. The START COOLING button can be pressed.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Check the temperatures and pressures on the display, and confirm that the compressor is running.</td>
+      <td>The readings update. The compressor is on while the state is Cooling.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Press the START COOLING button. Wait at least 30 seconds.</td>
+      <td>The status bar shows the state <em>Pumping</em>. The button now reads STOP COOLING. The pump is running. No error or warning is shown.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>Press the STOP COOLING button. Then press START COOLING and STOP COOLING once more.</td>
+      <td>After STOP COOLING, the status bar shows the state <em>Cooling</em> and the pump stops. The START COOLING button can be pressed again. The second start/stop cycle behaves the same way, with no error or warning.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 class="case">2. Level sensor failure</h2>
+<p>
+  From the state <em>Cooling</em> or <em>Pumping</em>, trip a level sensor. The device must stop,
+  show the error in the status bar, and keep the ACKNOWLEDGE ERROR button unusable until the
+  levels are OK again.
+</p>
+<table>
+  <thead>
+    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>Reach Cooling or press the START COOLING button so the status bar shows Pumping.</td>
+      <td>The status bar shows the state <em>Cooling</em> or <em>Pumping</em>. No error is shown.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Make the Level Low sensor read not OK (leave Level Critical OK).</td>
+      <td>The status bar shows the state <em>Error</em> and the message <span class="msg">Level sensor failure detected</span>. The pump and compressor stop. The ACKNOWLEDGE ERROR button is visible but cannot be pressed.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Tap the ⓘ next to the message in the status bar.</td>
+      <td>A help window opens with causes and recovery steps.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Restore Level Low to OK. Press the ACKNOWLEDGE ERROR button.</td>
+      <td>The ACKNOWLEDGE ERROR button can now be pressed. After it is pressed, the status bar shows the state <em>Ready</em>, then <em>Cooling</em>.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>Return to Cooling or Pumping. Make the Level Critical sensor read not OK (leave Level Low OK). Restore it and press ACKNOWLEDGE ERROR.</td>
+      <td>The same error message appears. After restore and acknowledge, the status bar returns to <em>Cooling</em>.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 class="case">3. Cartridge removed during operation</h2>
+<p>
+  Removing the cartridge while the device is cooling or pumping must stop the session and show the
+  cartridge-removed error in the status bar.
+</p>
+<table>
+  <thead>
+    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>Reach Cooling or Pumping. Unseat the cartridge (or make Cartridge In Place read not OK).</td>
+      <td>The status bar shows the state <em>Error</em> and the message <span class="msg">Cartridge removed during operation</span>. The pump and compressor stop. The ACKNOWLEDGE ERROR button cannot be pressed.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Tap the ⓘ in the status bar. Try to press ACKNOWLEDGE ERROR while the cartridge is still out.</td>
+      <td>Help opens. The ACKNOWLEDGE ERROR button stays unusable. The state remains Error.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Reseat the cartridge. Press the ACKNOWLEDGE ERROR button.</td>
+      <td>The button can be pressed. The status bar shows <em>Ready</em>, then <em>Cooling</em>.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 class="case">4. CSF low temperature</h2>
+<p>
+  If CSF (Tip) falls below 28.0 °C while cooling or pumping, the device must stop. At exactly 28.0 °C
+  it must not stop.
+</p>
+<table>
+  <thead>
+    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>From Cooling or Pumping, set CSF (Tip) to 28.0 °C.</td>
+      <td>The status bar still shows <em>Cooling</em> or <em>Pumping</em>. No error is shown.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Set CSF (Tip) to 27.9 °C or lower.</td>
+      <td>The status bar shows the state <em>Error</em> and the message <span class="msg">CSF low temp</span>. The pump and compressor stop. The ACKNOWLEDGE ERROR button cannot be pressed.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Tap the ⓘ in the status bar. Raise CSF (Tip) to 28.0 °C or above, then press ACKNOWLEDGE ERROR.</td>
+      <td>Help opens. After the temperature is back in range, the ACKNOWLEDGE ERROR button can be pressed. The status bar shows <em>Ready</em>, then <em>Cooling</em>.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 class="case">5. Heat exchanger too cold</h2>
+<p>
+  If the plate (heat exchanger) falls below −10.0 °C while cooling or pumping, the device must stop.
+  At exactly −10.0 °C it must not stop.
+</p>
+<table>
+  <thead>
+    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>From Cooling or Pumping, set the Plate temperature to −10.0 °C.</td>
+      <td>The status bar still shows <em>Cooling</em> or <em>Pumping</em>. No error is shown.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Set the Plate temperature below −10.0 °C (for example −10.5 °C).</td>
+      <td>The status bar shows the state <em>Error</em> and the message <span class="msg">Heat exchanger too cold</span>. The pump and compressor stop. The ACKNOWLEDGE ERROR button cannot be pressed.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Tap the ⓘ in the status bar. Return the Plate to a safe temperature, then press ACKNOWLEDGE ERROR.</td>
+      <td>Help opens. After the plate is in range, the ACKNOWLEDGE ERROR button can be pressed. The status bar shows <em>Ready</em>, then <em>Cooling</em>.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 class="case">6. Leak detected</h2>
+<p>
+  Leak detection must be switched on for this test. A wet leak sensor held for at least half a second
+  must stop the device. A brief flicker must not.
+</p>
+<table>
+  <thead>
+    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>Switch leak detection on and restart if needed. Confirm the leak sensor is dry. Reach Ready or Cooling.</td>
+      <td>No leak error is shown.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Wet the leak sensor (or make it read wet) for less than 0.3 seconds, then dry it.</td>
+      <td>The status bar does not show Error. No leak message appears.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Keep the leak sensor wet for at least 0.5 seconds.</td>
+      <td>The status bar shows the state <em>Error</em> and the message <span class="msg">Leak detected</span>. The pump and compressor stop. The ACKNOWLEDGE ERROR button cannot be pressed.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Tap the ⓘ in the status bar. Dry the sensor, then press ACKNOWLEDGE ERROR. Switch leak detection back to its usual setting when finished.</td>
+      <td>Help opens. After the sensor is dry, the ACKNOWLEDGE ERROR button can be pressed. The status bar shows <em>Ready</em>, then <em>Cooling</em> if the cartridge and levels are OK.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 class="case">7. Cooling ineffective</h2>
+<p>
+  If the pump and compressor run for 10 minutes while CSF (Tip) does not fall by at least 0.2 °C,
+  the device must stop.
+</p>
+<table>
+  <thead>
+    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>Keep CSF (Tip) at a fixed value of 28 °C or above. Press the START COOLING button. Confirm the compressor is on. Record start time: __________</td>
+      <td>The status bar shows the state <em>Pumping</em>. The pump and compressor are running.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Do not let CSF (Tip) fall. Wait 9 minutes.</td>
+      <td>The status bar still shows <em>Pumping</em>. The cooling-ineffective error has not appeared yet.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Continue until 10 minutes have passed. Record stop time: __________</td>
+      <td>The status bar shows the state <em>Error</em> and the message <span class="msg">Cooling ineffective</span>. The pump and compressor stop.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Tap the ⓘ in the status bar. Restore a normal CSF (Tip) reading if needed, then press ACKNOWLEDGE ERROR.</td>
+      <td>Help opens. After acknowledge, the status bar shows <em>Ready</em>, then <em>Cooling</em>.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 class="case">8. Sensor read failure</h2>
+<p>
+  If a sensor board or cable fails while the device is running, the session must stop. On this test,
+  the ACKNOWLEDGE ERROR button may be pressed even if the cable is still disconnected. Prefer a
+  real device; skip this chapter if it cannot be done safely.
+</p>
+<table>
+  <thead>
+    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>From Cooling or Pumping on the device, disconnect a live sensor cable.</td>
+      <td>The status bar shows the state <em>Error</em>. The message is <span class="msg">Sensor read failure</span> or begins with <span class="msg">Error during update:</span>. The pump and compressor stop. Record the exact text: ________________</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Tap the ⓘ in the status bar. Press the ACKNOWLEDGE ERROR button without reconnecting the cable.</td>
+      <td>Help opens. The ACKNOWLEDGE ERROR button can be pressed immediately. The status bar leaves the Error state.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Reconnect the cable. If Error returns, press ACKNOWLEDGE ERROR until the status bar shows Cooling.</td>
+      <td>The device can be returned to the state <em>Cooling</em>.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 class="case">9. Fridge defect</h2>
+<p>
+  A fridge defect must stop the device and show <span class="msg">Fridge defect</span> in the
+  status bar. The current device does not yet report this signal. Mark N/A unless a later version
+  provides a fridge-defect input.
+</p>
+<table>
+  <thead>
+    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>If the device has a fridge-defect input, assert it while a session is running.</td>
+      <td>The status bar shows the state <em>Error</em> and the message <span class="msg">Fridge defect</span>. The pump and compressor stop. The ACKNOWLEDGE ERROR button cannot be pressed until the defect is cleared.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>If there is no fridge-defect input, record N/A in Notes.</td>
+      <td>N/A is marked. No other steps are required.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 class="case">10. Battery low (warning)</h2>
+<p>
+  A low battery must show a warning only. The state must not change to Error, and pumping must
+  continue. The current device does not yet report battery charge. Mark N/A unless a later version
+  provides that reading.
+</p>
+<table>
+  <thead>
+    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>If battery charge is shown, lower it below 20 % while in Cooling or Pumping.</td>
+      <td>A warning shows <span class="msg">Battery low</span>. The status bar does <em>not</em> show the state Error. If the state was Pumping, the pump keeps running.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Restore charge to 20 % or above (or reconnect power).</td>
+      <td>The warning disappears. The state is unchanged.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 class="case">11. USB stick not present (warning)</h2>
+<p>
+  If USB logging is on and the stick is pulled out without ejecting, a warning must appear. The
+  session must not stop. Using the Eject button first must not show this warning.
+</p>
+<table>
+  <thead>
+    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>Insert a USB stick labeled SPINELOGS. Wait until Service → Manual Operation shows that copying is active.</td>
+      <td>No USB warning is shown.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Pull the stick out without using the Eject button. Stay in Cooling or Pumping.</td>
+      <td>A warning shows <span class="msg">USB stick not present</span>. The status bar does <em>not</em> show the state Error. If the state was Pumping, the pump keeps running.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Reinsert the stick and wait for copying to resume.</td>
+      <td>The warning disappears.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Press the Eject button under Service → Manual Operation, then remove the stick.</td>
+      <td>The USB-not-present warning does <em>not</em> appear.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 class="case">12. USB stick storage low (warning)</h2>
+<p>
+  A SPINELOGS stick with less than 1 GB free must show a warning. The session must not stop.
+</p>
+<table>
+  <thead>
+    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>Insert a SPINELOGS stick with more than 1 GB free. Record free space: __________</td>
+      <td>No USB storage warning is shown.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Eject the stick, fill it until less than 1 GB is free, and reinsert it. Record free space: __________</td>
+      <td>A warning shows <span class="msg">USB stick storage below 1 GB</span>. The status bar does <em>not</em> show the state Error. The USB-not-present warning is not shown (the stick is present).</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Eject the stick, free more than 1 GB, and reinsert it.</td>
+      <td>The warning disappears.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 class="case">13. SD card storage low (warning)</h2>
+<p>
+  If the device has less than 1 GB free for local logs, a warning must appear. The session must not
+  stop. Do not fill the system disk until it is empty. If this cannot be done safely, mark N/A.
+</p>
+<table>
+  <thead>
+    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>Record how much free space is on the device: __________</td>
+      <td>If more than 1 GB is free, no SD storage warning is shown. If less is already free, note the baseline.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Add a large temporary file in the logs folder so that less than 1 GB is free.</td>
+      <td>A warning shows <span class="msg">SD card storage below 1 GB</span>. The status bar does <em>not</em> show the state Error.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Delete the temporary file so that more than 1 GB is free again.</td>
+      <td>The warning disappears.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Notes</h2>
+<div class="lines"></div>
+<div class="lines"></div>
+
+<h2>Sign-off</h2>
+<p>
+  Overall: <span class="box"></span> Pass &nbsp; <span class="box"></span> Fail &nbsp;
+  (N/A items justified in Notes)
+</p>
+<div class="sig">
+  <div class="line">Tester name / signature</div>
+  <div class="line">Date</div>
+  <div class="line">Reviewer name / signature</div>
+</div>
+
+</div>
+</body>
+</html>
