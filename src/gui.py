@@ -418,8 +418,9 @@ class FaultHelpDialog(QDialog):
 DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.5862
 # Discrete setpoints on the service-tab flow slider (10, 20, 30, ... ml/min).
 PUMP_FLOW_SLIDER_STEP_ML_PER_MIN = 10
-# Service-tab flow ramp test: start at 10 ml/min, +10 every 2 minutes.
+# Service-tab flow ramp test: 10 → 90 ml/min, then back down, ±10 every 2 minutes.
 FLOW_RAMP_TEST_START_ML_PER_MIN = 10
+FLOW_RAMP_TEST_MAX_ML_PER_MIN = 90
 FLOW_RAMP_TEST_STEP_ML_PER_MIN = 10
 FLOW_RAMP_TEST_INTERVAL_MS = 2 * 60 * 1000
 # RPM→flow calibration: run pump at the selected RPM for a fixed window
@@ -1689,6 +1690,7 @@ class ServiceTab(QWidget):
         self.flow_ramp_test_active: bool = False
         self._flow_ramp_test_ml_per_min: int = FLOW_RAMP_TEST_START_ML_PER_MIN
         self._flow_ramp_test_remaining_s: int = FLOW_RAMP_TEST_INTERVAL_MS // 1000
+        self._flow_ramp_test_direction: int = 1
         self._flow_ramp_test_timer = QTimer(self)
         self._flow_ramp_test_timer.setInterval(1000)
         self._flow_ramp_test_timer.timeout.connect(self._on_flow_ramp_test_tick)
@@ -2347,15 +2349,16 @@ class ServiceTab(QWidget):
             self.start_flow_ramp_test()
 
     def start_flow_ramp_test(self):
-        """Start at 10 ml/min, run pump, ramp +10 every 2 min."""
+        """Start at 10 ml/min, ramp +10 every 2 min to 90, then back down."""
         if self.flow_ramp_test_active:
             return
         self.stop_pid_run()
         self.stop_rpm_flow_calibration()
-        lo, hi = self._flow_setpoint_bounds()
+        lo, hi = self._flow_ramp_test_bounds()
         start_ml = max(lo, min(hi, FLOW_RAMP_TEST_START_ML_PER_MIN))
         self.flow_ramp_test_active = True
         self._flow_ramp_test_ml_per_min = start_ml
+        self._flow_ramp_test_direction = 1
         self._flow_ramp_test_remaining_s = FLOW_RAMP_TEST_INTERVAL_MS // 1000
         self._apply_flow_ramp_test_button_style(True)
         self._set_stepper_speed_rpm(
@@ -2372,21 +2375,36 @@ class ServiceTab(QWidget):
             return
         self.flow_ramp_test_active = False
         self._flow_ramp_test_timer.stop()
+        self._flow_ramp_test_direction = 1
         self._flow_ramp_test_remaining_s = FLOW_RAMP_TEST_INTERVAL_MS // 1000
         self._apply_flow_ramp_test_button_style(False)
         self._set_continuous_run(False)
 
+    def _flow_ramp_test_bounds(self) -> tuple[int, int]:
+        """Return min/max ml/min for the ramp test (peak capped at 90)."""
+        lo, hi = self._flow_setpoint_bounds()
+        hi = min(hi, FLOW_RAMP_TEST_MAX_ML_PER_MIN)
+        if hi < lo:
+            hi = lo
+        return lo, hi
+
     def _on_flow_ramp_test_tick(self):
-        """Count down to the next +10 ml/min step; stop at the max setpoint."""
+        """Count down to the next ±10 ml/min step; reverse at 90, stop at min."""
         if not self.flow_ramp_test_active:
             return
         self._flow_ramp_test_remaining_s -= 1
         if self._flow_ramp_test_remaining_s > 0:
             self._apply_flow_ramp_test_button_style(True)
             return
-        _lo, hi = self._flow_setpoint_bounds()
-        next_ml = self._flow_ramp_test_ml_per_min + FLOW_RAMP_TEST_STEP_ML_PER_MIN
-        if next_ml > hi:
+        lo, hi = self._flow_ramp_test_bounds()
+        next_ml = (
+            self._flow_ramp_test_ml_per_min
+            + self._flow_ramp_test_direction * FLOW_RAMP_TEST_STEP_ML_PER_MIN
+        )
+        if self._flow_ramp_test_direction > 0 and next_ml > hi:
+            self._flow_ramp_test_direction = -1
+            next_ml = self._flow_ramp_test_ml_per_min - FLOW_RAMP_TEST_STEP_ML_PER_MIN
+        if next_ml < lo:
             self.stop_flow_ramp_test()
             return
         self._flow_ramp_test_ml_per_min = next_ml
