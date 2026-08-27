@@ -21,6 +21,7 @@ smbus2>=0.4.0; sys_platform == "linux"
 SMtc; sys_platform == "linux"
 adafruit-blinka>=8.0.0; sys_platform == "linux"
 adafruit-circuitpython-ads1x15>=2.4.0; sys_platform == "linux"
+adafruit-extended-bus>=1.0.0; sys_platform == "linux"
 
 # ============================================================================
 # OPTIONAL / TOOLS

@@ -2,7 +2,7 @@ control_temp_label: Tip
 # Logical temperatures shown in the UI / control / CSV.
 # For each name, read that same label from the chosen board.
 # Only listed names appear; order is display order.
-# All 8 entries below are thermistors (ADS1115 channels 0–7).
+# All 12 entries below are thermistors (ADS1115 channels 0–11).
 temperature_sources:
   Tip: thermistor
   Cartrige Out: thermistor
@@ -12,6 +12,10 @@ temperature_sources:
   Probe 1: thermistor
   Probe 2: thermistor
   Plate: thermistor
+  Probe 3: thermistor
+  Probe 4: thermistor
+  Probe 5: thermistor
+  Probe 6: thermistor
 alarms:
   csf_label: Probe 2
   csf_low_temp_c: 28.0
@@ -65,6 +69,10 @@ simulation:
     Probe 1: 25.0
     Probe 2: 36.5
     Plate: 22.0
+    Probe 3: 25.0
+    Probe 4: 25.0
+    Probe 5: 25.0
+    Probe 6: 25.0
 acustic_signal_gpio_pin: 16
 sensors:
 - name: Level Low
@@ -136,8 +144,8 @@ thermocouples:
       8:
         measured_at_0c: 1.7
         measured_at_100c: 89.5
-# Thermistor temperatures on two ADS1115 chips (up to 8 channels).
-# Channels 0-3 → first address, 4-7 → second.
+# Thermistor temperatures on three ADS1115 chips (up to 12 channels).
+# Channels 0-3 → first address, 4-7 → second, 8-11 → third (i2c-6).
 # Conversion: V = Vref * R / (Rs + R), then R→°C from the configured R–T table.
 # Default table is MA300TA103C; channel_configs may override table per channel.
 thermistor_sensors:
@@ -145,6 +153,11 @@ thermistor_sensors:
   i2c_addresses:
   - 72   # 0x48 — thermistors 0-3
   - 73   # 0x49 — thermistors 4-7
+  - 72   # 0x48 — thermistors 8-11 (bus 6; ADDR to GND)
+  i2c_buses:
+  - 1
+  - 1
+  - 6
   gain: '1'
   data_rate: 128
   channels:
@@ -156,7 +169,11 @@ thermistor_sensors:
   - 5
   - 6
   - 7
-  # Channel index 0-7 → display names (same order as temperature_sources).
+  - 8
+  - 9
+  - 10
+  - 11
+  # Channel index 0-11 → display names (same order as temperature_sources).
   labels:
     0: Tip
     1: Cartrige Out
@@ -166,6 +183,10 @@ thermistor_sensors:
     5: Probe 1
     6: Probe 2
     7: Plate
+    8: Probe 3
+    9: Probe 4
+    10: Probe 5
+    11: Probe 6
   channel_configs:
     # TODO: restore AB6N2-GC14KA143E/37C after replacing the broken Tip thermistor:
     0:

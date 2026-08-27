@@ -17,6 +17,11 @@ Raspberry Pi 4B application for medical device with visual UI, sensor reading, a
    - Use `sudo raspi-config` and enable SSH, I2C under `Interface Options` > `I2C` > `Enable`. 
    Optional check: `ls /dev/i2c-1`
    - enable spi `sudo dtparam spi=on  `. Optional check: `sudo tee -a /boot/config.txt`
+   - Optional second I2C bus (Pi 4): GPIO 22 SDA / GPIO 23 SCL (header pins 15 / 16). Add 2.2 kΩ–4.7 kΩ pull-ups to 3.3 V, then append this line to `/boot/firmware/config.txt` (or `/boot/config.txt` on older images):
+     ```
+     dtoverlay=i2c6,pins_22_23
+     ```
+     After reboot: `ls /dev/i2c-6` and `sudo i2cdetect -y 6` (expect `0x48` for the extra thermistor ADS1115). Existing sensors stay on `/dev/i2c-1`.
    - `sudo reboot`
 4. Install pigpio (Debian/Raspberry Pi)
    - `sudo apt update` and `sudo apt install -y pigpio python3-pigpio`
@@ -83,8 +88,8 @@ Set `logging.usb.enabled: false` in `config.yaml` to turn this off.
 ### Session log files
 
 Each run writes three CSVs into `logs/`, all sharing one startup stamp.
-Temperatures cannot go much above ~16 Hz (eight thermistors on two ADS1115s
-take ~60 ms for a full sweep); the pressure chips run at 860 SPS specifically
+Temperatures cannot go much above ~10 Hz (twelve thermistors on three ADS1115s
+take ~90 ms for a full sweep at 128 SPS); the pressure chips run at 860 SPS specifically
 to sustain 100 Hz. Status and faults are event-based, not periodic.
 
 | File | Rate | Contents |
@@ -118,7 +123,7 @@ merged = pd.merge_asof(fast, session, on="timestamp", direction="nearest")
 | `src/state_machine.py` | Operating flow: Init → Ready → Cooling → Pumping |
 | `src/multi_sensor_reader.py` | Digital GPIO sensors (cartridge, level) |
 | `src/thermocouple_reader.py` | I2C thermocouple readings |
-| `src/ads1115_thermistor_reader.py` | Thermistor temps via ADS1115 (0x48 / 0x49, up to 8) |
+| `src/ads1115_thermistor_reader.py` | Thermistor temps via ADS1115 (0x48 / 0x49 on bus 1, extra 0x48 on bus 6) |
 | `src/thermistor_conversion.py` | Shared NTC V→R→°C using `data/calibration/Thermistor_MA300TA103C.csv` |
 | `src/ads1115_pressure_reader.py` | Differential pressure via 3rd+4th ADS1115 (addrs 74/75, up to 4) |
 | `src/stepper_driver.py` | Peristaltic pump stepper motor |

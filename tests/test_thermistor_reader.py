@@ -213,5 +213,39 @@ class ThermistorHardwareTests(unittest.TestCase):
         bundle.pressure_reader.cleanup()
 
 
+class ExtraBusThermistorTests(unittest.TestCase):
+    def test_channels_8_to_11_use_same_address_on_bus_6(self) -> None:
+        reader = ADS1115ThermistorReader(
+            {
+                "thermistor_sensors": {
+                    "enabled": False,
+                    "i2c_addresses": [72, 73, 72],
+                    "i2c_buses": [1, 1, 6],
+                }
+            }
+        )
+        self.assertEqual(reader._chip_key_for_channel(0), (1, 72))
+        self.assertEqual(reader._chip_key_for_channel(4), (1, 73))
+        self.assertEqual(reader._chip_key_for_channel(8), (6, 72))
+        self.assertEqual(reader._chip_key_for_channel(11), (6, 72))
+        self.assertEqual(reader._address_for_channel(8), 72)
+
+    def test_config_yaml_adds_four_thermistors_on_i2c6(self) -> None:
+        import yaml
+
+        with (PROJECT_ROOT / "config.yaml").open(encoding="utf-8") as fh:
+            config = yaml.safe_load(fh)
+        ts = config["thermistor_sensors"]
+        self.assertEqual(ts["i2c_addresses"], [72, 73, 72])
+        self.assertEqual(ts["i2c_buses"], [1, 1, 6])
+        self.assertEqual(ts["channels"], list(range(12)))
+        self.assertEqual(
+            [ts["labels"][i] for i in range(8, 12)],
+            ["Probe 3", "Probe 4", "Probe 5", "Probe 6"],
+        )
+        for name in ("Probe 3", "Probe 4", "Probe 5", "Probe 6"):
+            self.assertEqual(config["temperature_sources"][name], "thermistor")
+
+
 if __name__ == "__main__":
     unittest.main()
