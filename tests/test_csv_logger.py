@@ -66,6 +66,11 @@ class CsvPressureLoggingTests(unittest.TestCase):
         # Existing columns still present.
         self.assertIn("csf_c", self.logger.header)
         self.assertIn("compressor_cooling", self.logger.header)
+        self.assertIn("flow_sensor_ml_per_min", self.logger.header)
+        self.assertEqual(
+            self.logger.header.index("flow_sensor_ml_per_min"),
+            self.logger.header.index("pump_flow_ml_per_s") + 1,
+        )
 
     def test_filename_uses_session_stamp_suffix(self) -> None:
         from datetime import datetime
@@ -90,6 +95,7 @@ class CsvPressureLoggingTests(unittest.TestCase):
                 "Pump Input": 12.345,
                 "Pump Output": float("nan"),
             },
+            flow_sensor_ml_per_min=37.5,
         )
         self.logger.stop_logging()
 
@@ -105,6 +111,7 @@ class CsvPressureLoggingTests(unittest.TestCase):
         self.assertEqual(by_name["pump_input_bar"], "12.35")
         self.assertEqual(by_name["pump_output_bar"], "")  # nan → blank
         self.assertEqual(by_name["csf_c"], "37.000")
+        self.assertEqual(by_name["flow_sensor_ml_per_min"], "37.50")
 
     def test_ten_hz_burst_writes_expected_row_count(self) -> None:
         """Simulate ~10 Hz logging for 0.5 s → about 5 rows (+ header)."""

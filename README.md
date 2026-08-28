@@ -124,6 +124,7 @@ merged = pd.merge_asof(fast, session, on="timestamp", direction="nearest")
 | `src/multi_sensor_reader.py` | Digital GPIO sensors (cartridge, level) |
 | `src/thermocouple_reader.py` | I2C thermocouple readings |
 | `src/ads1115_thermistor_reader.py` | Thermistor temps via ADS1115 (0x48 / 0x49 on bus 1, extra 0x48 on bus 6) |
+| `src/ads1115_flow_reader.py` | 4–20 mA flow via ADS1115 0x49 AIN0 on I2C bus 6 (220 Ω shunt) |
 | `src/thermistor_conversion.py` | Shared NTC V→R→°C using `data/calibration/Thermistor_MA300TA103C.csv` |
 | `src/ads1115_pressure_reader.py` | Differential pressure via 3rd+4th ADS1115 (addrs 74/75, up to 4) |
 | `src/stepper_driver.py` | Peristaltic pump stepper motor |

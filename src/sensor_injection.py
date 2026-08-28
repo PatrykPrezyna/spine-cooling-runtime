@@ -376,6 +376,7 @@ class SensorInjectionController:
             ),
             pressure_reader=InjectablePressureReader(bundle.pressure_reader, self),
             stepper_driver=bundle.stepper_driver,
+            flow_reader=bundle.flow_reader,
         )
 
     def _push_temperature_overrides_to_inner(self, inner: Any) -> None:

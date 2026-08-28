@@ -3280,6 +3280,7 @@ class PressureServiceTab(TemperatureGraphTab):
 
     # Short enough to fit the shared control column next to its value + unit.
     PUMP_FLOW_SERIES = "Flow"
+    MEASURED_FLOW_SERIES = "Flow Sensor"
     MODE_AVG = "avg"
     MODE_MAX = "max"
     MODE_RAW = "raw"
@@ -3297,22 +3298,28 @@ class PressureServiceTab(TemperatureGraphTab):
             if pressure_sensor_names is not None
             else self._DEFAULT_PRESSURE_SENSOR_NAMES
         )
-        series_names = list(self.pressure_sensor_names) + [self.PUMP_FLOW_SERIES]
+        series_names = list(self.pressure_sensor_names) + [
+            self.PUMP_FLOW_SERIES,
+            self.MEASURED_FLOW_SERIES,
+        ]
         series_units = {name: "bar" for name in self.pressure_sensor_names}
         series_units[self.PUMP_FLOW_SERIES] = "ml/min"
+        series_units[self.MEASURED_FLOW_SERIES] = "ml/min"
         series_formats = {name: "{:.2f}" for name in self.pressure_sensor_names}
         series_formats[self.PUMP_FLOW_SERIES] = "{:.0f}"
+        series_formats[self.MEASURED_FLOW_SERIES] = "{:.1f}"
         graph_widget = MultiTemperatureGraphWidget(
             series_names,
             y_unit="bar",
             y_tick_format="{:.1f}",
             default_y_range=(0.0, 3.0),
-            right_axis_names={self.PUMP_FLOW_SERIES},
+            right_axis_names={self.PUMP_FLOW_SERIES, self.MEASURED_FLOW_SERIES},
             right_axis_unit="ml/min",
             right_tick_format="{:.0f}",
             default_right_y_range=(0.0, 70.0),
         )
         graph_widget._series_colors[self.PUMP_FLOW_SERIES] = "#0e6a76"
+        graph_widget._series_colors[self.MEASURED_FLOW_SERIES] = "#c2410c"
         self._display_mode = self.MODE_AVG
         self._samples = deque()
         super().__init__(
@@ -3329,6 +3336,7 @@ class PressureServiceTab(TemperatureGraphTab):
         self.pump_speed_rpm = 0
         self.pump_flow_ml_per_min_per_rpm = DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
         self._flow_ml_per_min = 0.0
+        self._measured_flow_ml_per_min = float("nan")
 
     def _create_widgets(self):
         super()._create_widgets()
@@ -3385,6 +3393,7 @@ class PressureServiceTab(TemperatureGraphTab):
         self,
         pump_speed_rpm: Optional[int] = None,
         flow_ml_per_min: Optional[float] = None,
+        measured_flow_ml_per_min: Optional[float] = None,
     ):
         """Store pump speed / derived flow for the next graph sample."""
         if pump_speed_rpm is not None:
@@ -3395,6 +3404,8 @@ class PressureServiceTab(TemperatureGraphTab):
             self._flow_ml_per_min = _pump_flow_ml_per_min(
                 self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
             )
+        if measured_flow_ml_per_min is not None:
+            self._measured_flow_ml_per_min = float(measured_flow_ml_per_min)
 
     def push_latest_sample(self, timestamp: Optional[float] = None) -> None:
         """Append one graph point from the latest pressure and flow values."""
@@ -3404,6 +3415,7 @@ class PressureServiceTab(TemperatureGraphTab):
             for name in self.pressure_sensor_names
         }
         raw[self.PUMP_FLOW_SERIES] = self._flow_ml_per_min
+        raw[self.MEASURED_FLOW_SERIES] = self._measured_flow_ml_per_min
         self._samples.append((now, raw))
         cutoff = now - self.graph_widget._MAX_HISTORY_SEC
         while self._samples and self._samples[0][0] < cutoff:
@@ -3416,6 +3428,9 @@ class PressureServiceTab(TemperatureGraphTab):
         displayed = self._window_pressures_at(timestamp)
         displayed[self.PUMP_FLOW_SERIES] = raw.get(
             self.PUMP_FLOW_SERIES, float("nan")
+        )
+        displayed[self.MEASURED_FLOW_SERIES] = raw.get(
+            self.MEASURED_FLOW_SERIES, float("nan")
         )
         return displayed
 
@@ -3448,6 +3463,9 @@ class PressureServiceTab(TemperatureGraphTab):
             )
             displayed[self.PUMP_FLOW_SERIES] = raw.get(
                 self.PUMP_FLOW_SERIES, float("nan")
+            )
+            displayed[self.MEASURED_FLOW_SERIES] = raw.get(
+                self.MEASURED_FLOW_SERIES, float("nan")
             )
             entries.append((ts, displayed))
         return entries
@@ -4511,6 +4529,7 @@ class MainScreen(QMainWindow):
         raw_temperatures: Optional[dict] = None,
         pressures: Optional[dict] = None,
         calibration_temperatures: Optional[dict] = None,
+        measured_flow_ml_per_min: Optional[float] = None,
     ):
         """Update sensor display"""
         self._update_session_timer()
@@ -4550,7 +4569,9 @@ class MainScreen(QMainWindow):
         # Keep compressor display stable unless updated by app logic.
         self.service_tab.update_outputs()
         self.service2_tab.update_actuators()
-        self.pressure_service_tab.update_pump_speed()
+        self.pressure_service_tab.update_pump_speed(
+            measured_flow_ml_per_min=measured_flow_ml_per_min,
+        )
         self.pressure_service_tab.push_latest_sample()
         self.power_graph_tab.update_temperatures(self.service2_tab.temp_values)
         self.power_graph_tab.update_pump_speed()

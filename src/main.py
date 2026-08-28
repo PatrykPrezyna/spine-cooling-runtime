@@ -61,9 +61,9 @@ class _BackgroundIOWorker(QObject):
     consumed back on the main thread.
     """
 
-    tick_complete = pyqtSignal(object, object, object, object, object, object)
+    tick_complete = pyqtSignal(object, object, object, object, object, object, object)
     # payload: (sensor_states, temperatures, raw_temperatures,
-    #           thermocouple_temperatures, pressures, error_message)
+    #           thermocouple_temperatures, pressures, flow_ml_per_min, error_message)
 
     def __init__(
         self,
@@ -73,12 +73,14 @@ class _BackgroundIOWorker(QObject):
         pressure_reader: Any,
         csv_logger: Optional[CSVLogger],
         config: Optional[dict] = None,
+        flow_reader: Any = None,
     ):
         super().__init__()
         self._sensor_reader = sensor_reader
         self._thermocouple_reader = thermocouple_reader
         self._thermistor_reader = thermistor_reader
         self._pressure_reader = pressure_reader
+        self._flow_reader = flow_reader
         self._csv_logger = csv_logger
         self._config = config or {}
 
@@ -96,6 +98,7 @@ class _BackgroundIOWorker(QObject):
         raw_temperatures: dict = {}
         thermistor_temperatures: dict = {}
         pressures: dict = {}
+        flow_ml_per_min: Optional[float] = None
         error_message: Optional[str] = None
         try:
             logged_stepper_speed_rpm = (
@@ -126,6 +129,10 @@ class _BackgroundIOWorker(QObject):
             )
             if self._pressure_reader is not None:
                 pressures = self._pressure_reader.read_pressures()
+            if self._flow_reader is not None and getattr(
+                self._flow_reader, "is_initialized", False
+            ):
+                flow_ml_per_min = self._flow_reader.read_flow_ml_per_min()
             if self._csv_logger is not None:
                 self._csv_logger.log(
                     sensor_states,
@@ -134,6 +141,7 @@ class _BackgroundIOWorker(QObject):
                     set_temperature_c=float(set_temperature_c),
                     compressor_cooling=int(compressor_cooling),
                     pressures=pressures,
+                    flow_sensor_ml_per_min=flow_ml_per_min,
                 )
         except Exception as exc:
             error_message = f"Error during update: {exc}"
@@ -143,6 +151,7 @@ class _BackgroundIOWorker(QObject):
             raw_temperatures,
             thermocouple_temperatures,
             pressures,
+            flow_ml_per_min,
             error_message,
         )
 
@@ -199,6 +208,7 @@ class SensorMonitorApp(QObject):
         self.thermocouple_reader: Any = None
         self.thermistor_reader: Any = None
         self.pressure_reader: Any = None
+        self.flow_reader: Any = None
         stepper_cfg = self.config.get('stepper_motor', {})
         compressor_cfg = self.config.get('compressor', {})
         self.pump_flow_ml_per_min_per_rpm: float = float(
@@ -238,6 +248,7 @@ class SensorMonitorApp(QObject):
         self._last_temperatures: dict = {}
         self._last_sensor_states: dict = {}
         self._last_pressures: dict = {}
+        self._last_measured_flow_ml_per_min: Optional[float] = None
         self.stepper_continuous_forward: bool = False
         self.stepper_motor_running: bool = False
         self.service_pid_run: bool = False
@@ -304,6 +315,7 @@ class SensorMonitorApp(QObject):
             self.thermocouple_reader = bundle.thermocouple_reader
             self.thermistor_reader = bundle.thermistor_reader
             self.pressure_reader = bundle.pressure_reader
+            self.flow_reader = bundle.flow_reader
             self.stepper_driver = bundle.stepper_driver
 
             if not self.sensor_reader.is_initialized:
@@ -315,6 +327,8 @@ class SensorMonitorApp(QObject):
             self._log_optional_status("Thermocouple reader", self.thermocouple_reader)
             self._log_optional_status("Thermistor reader", self.thermistor_reader)
             self._log_optional_status("ADS1115 pressure reader", self.pressure_reader)
+            if self.flow_reader is not None:
+                self._log_optional_status("ADS1115 flow reader", self.flow_reader)
 
             if not self.simulation:
                 self._initialize_compressor_relay()
@@ -451,6 +465,11 @@ class SensorMonitorApp(QObject):
                 self.pressure_reader.cleanup()
             except Exception:
                 pass
+        if self.flow_reader is not None:
+            try:
+                self.flow_reader.cleanup()
+            except Exception:
+                pass
 
         if self.sensor_reader:
             self.sensor_reader.cleanup()
@@ -465,6 +484,7 @@ class SensorMonitorApp(QObject):
         self.thermocouple_reader = None
         self.thermistor_reader = None
         self.pressure_reader = None
+        self.flow_reader = None
 
         print("Cleanup complete")
 
@@ -578,6 +598,7 @@ class SensorMonitorApp(QObject):
             self.pressure_reader,
             self.csv_logger,
             self.config,
+            flow_reader=self.flow_reader,
         )
         thread = QThread()
         thread.setObjectName("io_worker")
@@ -885,7 +906,7 @@ class SensorMonitorApp(QObject):
             1 if self.compressor_on else 0,
         )
 
-    @pyqtSlot(object, object, object, object, object, object)
+    @pyqtSlot(object, object, object, object, object, object, object)
     def _on_io_tick_complete(
         self,
         sensor_states,
@@ -893,6 +914,7 @@ class SensorMonitorApp(QObject):
         raw_temperatures,
         thermocouple_temperatures,
         pressures,
+        flow_ml_per_min,
         error_message,
     ):
         """Apply the worker's results back on the GUI thread."""
@@ -914,6 +936,7 @@ class SensorMonitorApp(QObject):
             self._last_temperatures = temperatures
             self._last_sensor_states = sensor_states
             self._last_pressures = pressures
+            self._last_measured_flow_ml_per_min = flow_ml_per_min
             self._apply_compressor_heat_ex_control(temperatures)
 
             body_temp = temperatures.get(self.control_temp_label)
@@ -936,6 +959,7 @@ class SensorMonitorApp(QObject):
                     raw_temperatures,
                     pressures,
                     calibration_temperatures=thermocouple_temperatures,
+                    measured_flow_ml_per_min=flow_ml_per_min,
                 )
                 self._refresh_acknowledge_button(sensor_states, temperatures, pressures)
                 if self.stepper_driver:
@@ -972,10 +996,16 @@ class SensorMonitorApp(QObject):
         self.ui.pressure_service_tab.update_pump_speed(
             pump_speed_rpm=actual_pump_speed_rpm,
             flow_ml_per_min=commanded_flow_ml_per_min,
+            measured_flow_ml_per_min=self._last_measured_flow_ml_per_min,
         )
+        power_flow = self._last_measured_flow_ml_per_min
+        if power_flow is None or (
+            isinstance(power_flow, float) and power_flow != power_flow
+        ):
+            power_flow = commanded_flow_ml_per_min
         self.ui.power_graph_tab.update_pump_speed(
             pump_speed_rpm=actual_pump_speed_rpm,
-            flow_ml_per_min=commanded_flow_ml_per_min,
+            flow_ml_per_min=power_flow,
         )
 
     # ------------------------------------------------------------------

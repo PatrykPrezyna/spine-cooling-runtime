@@ -63,6 +63,7 @@ class CSVLogger:
         header.append('set_temperature_c')
         header.append('peristaltic_pump_set_speed_rpm')
         header.append('pump_flow_ml_per_s')
+        header.append('flow_sensor_ml_per_min')
         header.append('compressor_cooling')
         for name in pressure_columns:
             header.append(f"{self._csv_slug(name)}_bar")
@@ -100,6 +101,7 @@ class CSVLogger:
         set_temperature_c: Optional[float] = None,
         compressor_cooling: Optional[int] = None,
         pressures: Optional[dict] = None,
+        flow_sensor_ml_per_min: Optional[float] = None,
     ):
         """Append a single row with temperature, actuators, and pressures.
 
@@ -112,6 +114,7 @@ class CSVLogger:
         ``compressor_cooling`` is 1 when the compressor relay is on (cooling),
         0 when off (idle).
         ``pressures`` maps label → bar (logged to two decimal places).
+        ``flow_sensor_ml_per_min`` is the 4–20 mA meter reading when present.
         """
         del sensor_states  # not logged anymore; kept for API compatibility
         if not self.is_logging:
@@ -144,6 +147,13 @@ class CSVLogger:
                 row.append(f"{flow_ml_per_s:.4f}")
             else:
                 row.append("")
+            if flow_sensor_ml_per_min is None or (
+                isinstance(flow_sensor_ml_per_min, float)
+                and math.isnan(flow_sensor_ml_per_min)
+            ):
+                row.append("")
+            else:
+                row.append(f"{float(flow_sensor_ml_per_min):.2f}")
             row.append(
                 int(compressor_cooling)
                 if compressor_cooling is not None

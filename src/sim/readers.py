@@ -474,3 +474,34 @@ class SimPressureReader:
 
     def cleanup(self) -> None:
         self.is_initialized = False
+
+
+class SimFlowReader:
+    """Flow in ml/min from ``simulation.flow_ml_per_min``."""
+
+    def __init__(self, config: dict):
+        fs_cfg = config.get("flow_sensor", {}) or {}
+        self.enabled = bool(fs_cfg.get("enabled", False))
+        self.last_error: Optional[str] = None
+        self.is_initialized = False
+        self._flow_ml_per_min = 0.0
+
+        if not self.enabled:
+            self.last_error = "Flow sensor disabled by config"
+            return
+
+        sim = config.get("simulation", {}) or {}
+        self._flow_ml_per_min = float(sim.get("flow_ml_per_min", 30.0))
+        self.is_initialized = True
+        print(f"SimFlowReader: {self._flow_ml_per_min:.1f} ml/min (simulation mode)")
+
+    def read_flow_ml_per_min(self) -> Optional[float]:
+        if not self.is_initialized:
+            return None
+        return float(self._flow_ml_per_min)
+
+    def set_flow_ml_per_min(self, value: float) -> None:
+        self._flow_ml_per_min = float(value)
+
+    def cleanup(self) -> None:
+        self.is_initialized = False

@@ -73,6 +73,7 @@ simulation:
     Probe 4: 25.0
     Probe 5: 25.0
     Probe 6: 25.0
+  flow_ml_per_min: 30.0
 acustic_signal_gpio_pin: 16
 sensors:
 - name: Level Low
@@ -200,6 +201,23 @@ thermistor_sensors:
     rs_ohm: 100000
     resistance_column: 10k_Ohm
     table_csv: data/calibration/Thermistor_MA300TA103C.csv
+# 4-20 mA flow meter on I2C bus 6, ADS1115 0x49 (73) AIN0.
+# Bus 1: 0x48/0x49 thermistors, 0x4A/0x4B (74/75) pressure.
+# Loop is dropped across a 220 Ω shunt: 4 mA → 0.88 V, 20 mA → 4.40 V.
+# Gain 2/3 (±6.144 V) is required so 4.40 V is not clipped.
+# Set flow_hi_ml_per_min from the sensor datasheet (20 mA full scale).
+flow_sensor:
+  enabled: true
+  i2c_bus: 6
+  i2c_address: 73  # 0x49
+  analog_input: 0
+  shunt_ohm: 220
+  gain: '2/3'
+  data_rate: 128
+  ma_lo: 4.0
+  ma_hi: 20.0
+  flow_lo_ml_per_min: 0.0
+  flow_hi_ml_per_min: 100.0
 # Differential pressure sensors on a third + fourth ADS1115 (up to 4 sensors).
 # Each sensor uses one differential pair (2 analog inputs), so one chip serves
 # two sensors: channels 0-1 on the first address, 2-3 on the second.

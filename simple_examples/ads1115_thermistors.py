@@ -1,7 +1,7 @@
 """Standalone readout of thermistors on I2C bus 1 and bus 6.
 
-Bus 1: ADS1115 0x48 (T1-T4), 0x49 (T5-T8)
-Bus 6: ADS1115 0x48 (T9-T12)  — GPIO 22 SDA / GPIO 23 SCL
+Bus 1: ADS1115 0x48 (T1-T4), 0x49 (T5-T8); pressure is 0x4A/0x4B
+Bus 6: ADS1115 0x48 (T9-T12); 0x49 AIN0 = 4-20 mA flow (220 Ω)
 
 Hit ENTER to stop. Pass a bus number to read only that bus:
 
@@ -35,16 +35,25 @@ from thermistor_conversion import (  # noqa: E402  # pyright: ignore[reportMissi
     DEFAULT_VREF_V,
     voltage_to_celsius,
 )
+from ads1115_flow_reader import (  # noqa: E402  # pyright: ignore[reportMissingImports]
+    voltage_to_flow_ml_per_min,
+    voltage_to_ma,
+)
 
 # (bus, address) — same layout as config.yaml thermistor_sensors.
 CHIPS = (
     (1, 0x48),  # T1-T4
     (1, 0x49),  # T5-T8
     (6, 0x48),  # T9-T12
+    (6, 0x49),  # FLOW on AIN0
 )
 # Bus-1 addresses only; ads1115_thermistor_calibrate.py still imports this.
 I2C_ADDRESSES = (0x48, 0x49)
 GAIN = 1
+FLOW_GAIN = 2 / 3  # 20 mA × 220 Ω = 4.40 V needs ±6.144 V
+FLOW_SHUNT_OHM = 220.0
+FLOW_CHIP = (6, 0x49)
+FLOW_PIN_INDEX = 0
 SAMPLE_INTERVAL_S = 0.5
 VREF_V = DEFAULT_VREF_V
 RS_OHM = DEFAULT_RS_OHM
@@ -114,11 +123,27 @@ def open_chips(
 def format_chip(bus_id: int, address: int, channels: list[AnalogIn], start: int) -> str:
     parts = []
     for i, ch in enumerate(channels):
-        label = f"T{start + i}"
+        is_flow = (bus_id, address) == FLOW_CHIP and i == FLOW_PIN_INDEX
+        if (bus_id, address) == FLOW_CHIP and not is_flow:
+            continue
         try:
-            v = ch.voltage
-            parts.append(f"{label}={voltage_to_c(v):.1f}C({v * 1000.0:.0f}mV)")
+            if is_flow:
+                ads = getattr(ch, "ads", None)
+                previous_gain = getattr(ads, "gain", None) if ads is not None else None
+                if ads is not None:
+                    ads.gain = FLOW_GAIN
+                v = ch.voltage
+                if ads is not None and previous_gain is not None:
+                    ads.gain = previous_gain
+                ma = voltage_to_ma(v, FLOW_SHUNT_OHM)
+                flow = voltage_to_flow_ml_per_min(v, shunt_ohm=FLOW_SHUNT_OHM)
+                parts.append(f"FLOW={flow:.1f}ml/min({ma:.1f}mA,{v * 1000.0:.0f}mV)")
+            else:
+                label = f"T{start + i}"
+                v = ch.voltage
+                parts.append(f"{label}={voltage_to_c(v):.1f}C({v * 1000.0:.0f}mV)")
         except Exception as exc:
+            label = "FLOW" if is_flow else f"T{start + i}"
             parts.append(f"{label}=ERR({exc})")
     return f"  i2c-{bus_id} 0x{address:X}  " + "  ".join(parts)
 

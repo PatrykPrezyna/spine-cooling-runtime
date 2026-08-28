@@ -13,12 +13,14 @@ class HardwareBundle:
     thermistor_reader: Any
     pressure_reader: Any
     stepper_driver: Any
+    flow_reader: Any = None
 
 
 def build_hardware(config: dict, *, simulation: bool) -> HardwareBundle:
     """Return hardware objects used by main.py and the IO worker."""
     if simulation:
         from sim.readers import (
+            SimFlowReader,
             SimPressureReader,
             SimSensorReader,
             SimThermocoupleReader,
@@ -33,8 +35,10 @@ def build_hardware(config: dict, *, simulation: bool) -> HardwareBundle:
             thermistor_reader=SimThermistorReader(config),
             pressure_reader=SimPressureReader(config),
             stepper_driver=SimStepperDriver(config),
+            flow_reader=SimFlowReader(config),
         )
 
+    from ads1115_flow_reader import ADS1115FlowReader
     from ads1115_pressure_reader import ADS1115PressureReader
     from ads1115_thermistor_reader import ADS1115ThermistorReader
     from multi_sensor_reader import MultiSensorReader
@@ -47,4 +51,5 @@ def build_hardware(config: dict, *, simulation: bool) -> HardwareBundle:
         thermistor_reader=ADS1115ThermistorReader(config),
         pressure_reader=ADS1115PressureReader(config),
         stepper_driver=STSPIN220Driver(config),
+        flow_reader=ADS1115FlowReader(config),
     )

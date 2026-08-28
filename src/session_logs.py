@@ -34,6 +34,7 @@ SKIP_TEMP_COLUMNS = frozenset(
         "set_temperature_c",
         "peristaltic_pump_set_speed_rpm",
         "pump_flow_ml_per_s",
+        "flow_sensor_ml_per_min",
         "compressor_cooling",
     }
 )
@@ -302,6 +303,9 @@ def _load_sensors_csv(
             extra["set_temperature_c"] = _as_float(row.get("set_temperature_c"))
             extra["pump_rpm"] = _as_float(row.get("peristaltic_pump_set_speed_rpm"))
             extra["flow_ml_per_s"] = _as_float(row.get("pump_flow_ml_per_s"))
+            extra["flow_sensor_ml_per_min"] = _as_float(
+                row.get("flow_sensor_ml_per_min")
+            )
             extra["compressor_cooling"] = _as_float(row.get("compressor_cooling"))
             for column in pressure_columns:
                 extra[csv_slug_to_label(column[:-4])] = _as_float(row.get(column))
