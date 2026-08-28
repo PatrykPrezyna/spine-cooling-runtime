@@ -181,13 +181,13 @@ thermistor_sensors:
     2: Catheter In
     3: Catheter Out
     4: Cartrige In
-    5: Probe 1
-    6: Probe 2
-    7: Plate
-    8: Probe 3
-    9: Probe 4
-    10: Probe 5
-    11: Probe 6
+    5: Plate 1
+    6: Plate 2
+    7: Body Temp
+    8: Ice Water
+    9: Probe 2
+    10: Probe 3
+    11: Probe 4
   channel_configs:
     # TODO: restore AB6N2-GC14KA143E/37C after replacing the broken Tip thermistor:
     0:
