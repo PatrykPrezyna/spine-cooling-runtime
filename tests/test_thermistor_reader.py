@@ -241,9 +241,13 @@ class ExtraBusThermistorTests(unittest.TestCase):
         self.assertEqual(ts["channels"], list(range(12)))
         self.assertEqual(
             [ts["labels"][i] for i in range(8, 12)],
-            ["Probe 3", "Probe 4", "Probe 5", "Probe 6"],
+            ["Ice Water", "Probe 2", "Probe 3", "Probe 4"],
         )
-        for name in ("Probe 3", "Probe 4", "Probe 5", "Probe 6"):
+        expected_ui = [
+            ts["labels"][i] for i in sorted(ts["labels"])
+        ]
+        self.assertEqual(list(config["temperature_sources"].keys()), expected_ui)
+        for name in expected_ui:
             self.assertEqual(config["temperature_sources"][name], "thermistor")
 
 

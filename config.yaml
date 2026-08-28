@@ -9,17 +9,17 @@ temperature_sources:
   Catheter In: thermistor
   Catheter Out: thermistor
   Cartrige In: thermistor
-  Probe 1: thermistor
+  Plate 1: thermistor
+  Plate 2: thermistor
+  Body Temp: thermistor
+  Ice Water: thermistor
   Probe 2: thermistor
-  Plate: thermistor
   Probe 3: thermistor
   Probe 4: thermistor
-  Probe 5: thermistor
-  Probe 6: thermistor
 alarms:
   csf_label: Probe 2
   csf_low_temp_c: 28.0
-  heat_ex_label: Plate
+  heat_ex_label: Plate 1
   heat_ex_min_c: -10.0
   leak_pressure_delta_min: 0.34  # 5.0 psi
   # Digital leak sensor: a 0/low reading means fluid detected -> immediate stop.
@@ -41,7 +41,7 @@ simulation:
   csf_cart_out_scale: 0.05
   csf_min_effective_pump_speed_rpm: 20
   csf_pump_speed_ref_rpm: 60
-  heat_ex_label: Plate
+  heat_ex_label: Plate 1
   heat_ex_initial_c: 22.0
   heat_ex_max_c: 22.0
   heat_ex_cool_rate_c_per_s: 0.5
@@ -66,13 +66,13 @@ simulation:
     Catheter In: 22.0
     Catheter Out: 22.0
     Cartrige In: 22.0
-    Probe 1: 25.0
+    Plate 1: 22.0
+    Plate 2: 22.0
+    Body Temp: 36.5
+    Ice Water: 4.0
     Probe 2: 36.5
-    Plate: 22.0
     Probe 3: 25.0
     Probe 4: 25.0
-    Probe 5: 25.0
-    Probe 6: 25.0
   flow_ml_per_min: 30.0
 acustic_signal_gpio_pin: 16
 sensors:
@@ -190,12 +190,12 @@ thermistor_sensors:
     11: Probe 4
   channel_configs:
     # TODO: restore AB6N2-GC14KA143E/37C after replacing the broken Tip thermistor:
-    0:
-       table_csv: data/calibration/Thermistor_AB6N2-GC14KA143E_37C.csv
-       resistance_column: Resistance_Ohm
-    #`0:  # Tip — temporary standard MA300TA103C (broken AB6N2)
-    #  table_csv: data/calibration/Thermistor_MA300TA103C.csv
-    #  resistance_column: 10k_Ohm
+    #0:
+     #  table_csv: data/calibration/Thermistor_AB6N2-GC14KA143E_37C.csv
+      # resistance_column: Resistance_Ohm
+    0:  # Tip — temporary standard MA300TA103C (broken AB6N2)
+      table_csv: data/calibration/Thermistor_MA300TA103C.csv
+      resistance_column: 10k_Ohm
   conversion:
     vref_v: 2.5
     rs_ohm: 100000
@@ -255,7 +255,7 @@ pressure_sensors:
 compressor:
   relay_pin: 6
   # Must match thermistor_sensors.labels (channel used for cooling control).
-  heat_ex_label: Plate
+  heat_ex_label: Plate 1
   off_below_temp_c: -9
   on_above_temp_c: -9.0
 logging:
