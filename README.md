@@ -139,6 +139,18 @@ merged = pd.merge_asof(fast, session, on="timestamp", direction="nearest")
 
 **`tests/`** — unit tests (state machine, temperature calibration, etc.).
 
+## Troubleshooting
+
+If temperature sensors do not work in the main app, test the I2C wiring with the standalone thermistor script (does not start the UI):
+
+```bash
+python simple_examples/ads1115_thermistors.py      # bus 1 and bus 6
+python simple_examples/ads1115_thermistors.py 1    # original 8 on /dev/i2c-1
+python simple_examples/ads1115_thermistors.py 6    # extra 4 on /dev/i2c-6
+```
+
+Live readings mean that bus and ADS1115 are OK — look at `config.yaml` labels next. No devices, or only one bus, means the I2C connector, overlay, address, or pull-ups. Check with `ls /dev/i2c-1 /dev/i2c-6` and `sudo i2cdetect -y 1` / `sudo i2cdetect -y 6`.
+
 ## Additional info
 Stepper Motor:
 sources: https://www.instructables.com/Raspberry-Pi-Python-and-a-TB6600-Stepper-Motor-Dri/
