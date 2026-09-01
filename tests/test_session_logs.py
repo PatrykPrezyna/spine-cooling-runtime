@@ -36,6 +36,9 @@ class SessionLogsTests(unittest.TestCase):
         self.assertEqual(csv_slug_to_label("cartrige_out"), "Cartrige Out")
         self.assertEqual(csv_slug_to_label("pump_in"), "Pump In")
         self.assertEqual(csv_slug_to_label("tip"), "Tip")
+        self.assertEqual(csv_slug_to_label("hot_bath1"), "Hot bath1")
+        self.assertEqual(csv_slug_to_label("plate_1"), "Plate 1")
+        self.assertEqual(csv_slug_to_label("body_temp"), "Body Temp")
 
     def test_parse_iso_timestamp(self) -> None:
         ts = parse_timestamp("2026-08-19T15:08:03.426090")

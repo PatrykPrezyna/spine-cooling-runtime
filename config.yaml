@@ -12,12 +12,12 @@ temperature_sources:
   Plate 1: thermistor
   Plate 2: thermistor
   Body Temp: thermistor
+  Hot bath1: thermistor
+  Hot bath2: thermistor
   Ice Water: thermistor
-  Probe 2: thermistor
-  Probe 3: thermistor
   Probe 4: thermistor
 alarms:
-  csf_label: Probe 2
+  csf_label: Body Temp
   csf_low_temp_c: 28.0
   heat_ex_label: Plate 1
   heat_ex_min_c: -10.0
@@ -69,9 +69,9 @@ simulation:
     Plate 1: 22.0
     Plate 2: 22.0
     Body Temp: 36.5
+    Hot bath1: 37.0
+    Hot bath2: 37.0
     Ice Water: 4.0
-    Probe 2: 36.5
-    Probe 3: 25.0
     Probe 4: 25.0
   flow_ml_per_min: 30.0
 acustic_signal_gpio_pin: 16
@@ -184,9 +184,9 @@ thermistor_sensors:
     5: Plate 1
     6: Plate 2
     7: Body Temp
-    8: Ice Water
-    9: Probe 2
-    10: Probe 3
+    8: Hot bath1
+    9: Hot bath2
+    10: Ice Water
     11: Probe 4
   channel_configs:
     # TODO: restore AB6N2-GC14KA143E/37C after replacing the broken Tip thermistor:

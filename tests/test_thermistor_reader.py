@@ -241,7 +241,7 @@ class ExtraBusThermistorTests(unittest.TestCase):
         self.assertEqual(ts["channels"], list(range(12)))
         self.assertEqual(
             [ts["labels"][i] for i in range(8, 12)],
-            ["Ice Water", "Probe 2", "Probe 3", "Probe 4"],
+            ["Hot bath1", "Hot bath2", "Ice Water", "Probe 4"],
         )
         expected_ui = [
             ts["labels"][i] for i in sorted(ts["labels"])

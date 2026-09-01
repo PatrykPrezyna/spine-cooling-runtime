@@ -35,9 +35,13 @@ TEMPS = {
     "Catheter In": 21.4,
     "Catheter Out": 24.8,
     "Cartrige In": 25.1,
-    "Probe 1": 36.1,
-    "Probe 2": 36.3,
-    "Plate": 4.2,
+    "Plate 1": 4.2,
+    "Plate 2": 4.4,
+    "Body Temp": 36.3,
+    "Hot bath1": 37.0,
+    "Hot bath2": 37.0,
+    "Ice Water": 4.0,
+    "Probe 4": 25.0,
 }
 PRESSURES = {
     "Pump In": 1.71,
@@ -91,7 +95,7 @@ def _seed_graphs(ui: MainScreen) -> None:
         return (ts, set_temp, csf, inlet)
 
     _seed_deque(ui.main_graph_widget._temp_history, n, main_point)
-    ui.main_graph_widget.current_csf_temperature = TEMPS["Probe 2"]
+    ui.main_graph_widget.current_csf_temperature = TEMPS["Body Temp"]
     ui.main_graph_widget.current_catheter_in_temperature = TEMPS["Catheter In"]
     ui.main_graph_widget.current_catheter_out_temperature = TEMPS["Catheter Out"]
 
@@ -104,8 +108,8 @@ def _seed_graphs(ui: MainScreen) -> None:
         for name, base in TEMPS.items():
             if name in temp_names:
                 values[name] = base + 0.4 * math.sin(frac * 6 + hash(name) % 7)
-        values["Probe 2"] = 36.8 - 3.2 * frac
-        values["Plate"] = 12.0 - 8.0 * frac
+        values["Body Temp"] = 36.8 - 3.2 * frac
+        values["Plate 1"] = 12.0 - 8.0 * frac
         return (ts, values)
 
     _seed_deque(graph._history, n, temp_point)
@@ -151,7 +155,7 @@ def _seed_graphs(ui: MainScreen) -> None:
     ui.service_tab.update_outputs(
         compressor_on=True,
         compressor_control_enabled=True,
-        heat_ex_temp_c=TEMPS["Plate"],
+        heat_ex_temp_c=TEMPS["Plate 1"],
         refresh_heat_ex=True,
         stepper_speed_rpm=102,
     )
@@ -471,7 +475,7 @@ def _build_pdf(shots: list[tuple[str, str, Path]], dest_path: Path | None = None
     trip_when = {
         FaultCode.LEVEL_SENSOR: "Cooling/Pumping and a level switch is LOW.",
         FaultCode.CARTRIDGE_REMOVED: "Cooling/Pumping and cartridge switch is OFF.",
-        FaultCode.CSF_LOW_TEMP: "CSF (Probe 2) below the low-temp limit (default 28 °C).",
+        FaultCode.CSF_LOW_TEMP: "CSF (Body Temp) below the low-temp limit (default 28 °C).",
         FaultCode.IO_READ_FAILURE: "A sensor board or bus read failed.",
         FaultCode.BATTERY_LOW: "Reported battery below 20% (warning only).",
         FaultCode.USB_NOT_PRESENT: "USB logging is on and no SPINELOGS stick is mounted (warning only).",
@@ -479,7 +483,7 @@ def _build_pdf(shots: list[tuple[str, str, Path]], dest_path: Path | None = None
         FaultCode.USB_STORAGE_LOW: "USB stick has less than 1 GB free (warning only).",
         FaultCode.FRIDGE_DEFECT: "Compressor/fridge defect flag is set.",
         FaultCode.LEAK_DETECTED: "Leak sensor stays LOW (wet). Detection can be disabled in config.",
-        FaultCode.HEAT_EX_TOO_COLD: "Plate below the heat-exchanger minimum (default −10 °C).",
+        FaultCode.HEAT_EX_TOO_COLD: "Plate 1 below the heat-exchanger minimum (default −10 °C).",
         FaultCode.COOLING_INEFFECTIVE: "Pump + compressor on, but CSF does not drop enough within the timeout.",
     }
     for code, fault in FAULTS.items():
