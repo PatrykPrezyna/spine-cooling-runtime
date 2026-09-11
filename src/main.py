@@ -123,7 +123,20 @@ class _BackgroundIOWorker(QObject):
                 )
                 raw_temperatures = raw_getter() if raw_getter is not None else {}
             if self._thermistor_reader is not None:
+                notify_setpoint = getattr(self._thermistor_reader, "notify_setpoint", None)
+                if notify_setpoint is not None:
+                    notify_setpoint(
+                        set_temperature_c,
+                        compressor_cooling,
+                        stepper_motor_running,
+                        logged_stepper_speed_rpm,
+                    )
                 thermistor_temperatures = self._thermistor_reader.read_temperatures()
+                raw_getter = getattr(
+                    self._thermistor_reader, "get_last_raw_temperatures", None
+                )
+                if raw_getter is not None:
+                    raw_temperatures = {**raw_temperatures, **raw_getter()}
             temperatures = select_temperatures(
                 thermocouple_temperatures, thermistor_temperatures, self._config
             )
@@ -671,6 +684,12 @@ class SensorMonitorApp(QObject):
     def _storage_telemetry(self) -> TelemetrySnapshot:
         """USB presence and free space for MESSAGE-severity storage warnings."""
         local_free = disk_free_bytes(Path(log_directory(self.config)))
+        # --sim has no physical SPINELOGS stick; skip presence/storage faults.
+        if self.simulation:
+            return TelemetrySnapshot(
+                usb_logging_enabled=False,
+                local_free_bytes=local_free,
+            )
         mirror = self._usb_mirror
         if mirror is None or not mirror.enabled:
             return TelemetrySnapshot(

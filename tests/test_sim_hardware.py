@@ -204,6 +204,55 @@ class SimHardwareTests(unittest.TestCase):
         self.assertAlmostEqual(temps["Cart Out"], temps["Cart In"], places=2)
         reader.cleanup()
 
+    def test_thermistor_tip_cools_when_pumping(self) -> None:
+        config = dict(_MINIMAL_CONFIG)
+        config["thermistor_sensors"] = {
+            "enabled": True,
+            "channels": [0, 1, 2, 3],
+            "labels": {
+                0: "Tip",
+                1: "Plate 1",
+                2: "Catheter In",
+                3: "Catheter Out",
+            },
+        }
+        config["simulation"] = dict(_MINIMAL_CONFIG["simulation"])
+        config["simulation"].update(
+            {
+                "csf_label": "Tip",
+                "heat_ex_label": "Plate 1",
+                "cart_in_label": "Catheter In",
+                "cart_out_label": "Catheter Out",
+                "thermistors": {
+                    "Tip": 36.5,
+                    "Plate 1": 20.0,
+                    "Catheter In": 22.0,
+                    "Catheter Out": 20.5,
+                },
+            }
+        )
+        bundle = build_hardware(config, simulation=True)
+        reader = bundle.thermistor_reader
+        self.assertAlmostEqual(reader.read_temperatures()["Tip"], 36.5)
+
+        reader.notify_setpoint(32.0, compressor_cooling=1, pump_running=True, pump_speed_rpm=60)
+        time.sleep(2.05)
+        reader.notify_setpoint(32.0, compressor_cooling=1, pump_running=True, pump_speed_rpm=60)
+        temps = reader.read_temperatures()
+        self.assertLess(temps["Tip"], 36.5)
+        self.assertLess(temps["Plate 1"], 20.0)
+        reader.cleanup()
+
+    def test_thermistor_override_stays_frozen(self) -> None:
+        bundle = build_hardware(_MINIMAL_CONFIG, simulation=True)
+        reader = bundle.thermistor_reader
+        reader.set_raw_temperature("Heat Ex", 21.0)
+        reader.notify_setpoint(32.0, compressor_cooling=1, pump_running=True, pump_speed_rpm=120)
+        time.sleep(0.2)
+        reader.notify_setpoint(32.0, compressor_cooling=1, pump_running=True, pump_speed_rpm=120)
+        self.assertAlmostEqual(reader.read_temperatures()["Heat Ex"], 21.0)
+        reader.cleanup()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -33,12 +33,12 @@ alarms:
   # MESSAGE warnings when local (SD) or USB free space drops below this.
   storage_min_free_gb: 1
 simulation:
-  csf_label: Probe 2
+  csf_label: Tip
   csf_initial_c: 37.0
   csf_max_c: 37.0
   csf_min_c: 25.0
   csf_rate_c_per_s: 0.1
-  csf_cart_out_scale: 0.05
+  csf_cart_out_scale: 0.25
   csf_min_effective_pump_speed_rpm: 20
   csf_pump_speed_ref_rpm: 60
   heat_ex_label: Plate 1

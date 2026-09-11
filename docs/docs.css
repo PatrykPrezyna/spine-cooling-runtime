@@ -4,6 +4,8 @@
   --wash: #f4f6f8;
   --muted: #4a5568;
   --rule: #d0d7de;
+  --orange: #c65d12;
+  --celadon: #3d8a78;
 }
 
 * { box-sizing: border-box; }
@@ -31,10 +33,27 @@ header {
 }
 
 header h1 {
-  margin: 0 0 4px;
-  font-size: 16pt;
+  margin: 0 0 6px;
+  font-size: 28pt;
+  line-height: 1.15;
   color: var(--navy);
   font-weight: 700;
+}
+
+body.doc-operator header {
+  border-bottom-color: var(--orange);
+}
+
+body.doc-operator header h1 {
+  color: var(--orange);
+}
+
+body.doc-verification header {
+  border-bottom-color: var(--celadon);
+}
+
+body.doc-verification header h1 {
+  color: var(--celadon);
 }
 
 header p { margin: 0; color: var(--muted); font-size: 10.5pt; }

@@ -283,6 +283,18 @@ class InjectableThermistorReader:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
 
+    def notify_setpoint(
+        self,
+        set_temperature_c: float,
+        compressor_cooling: int = 0,
+        pump_running: bool = False,
+        pump_speed_rpm: int = 0,
+    ) -> None:
+        notify = getattr(self._inner, "notify_setpoint", None)
+        if notify is not None:
+            notify(set_temperature_c, compressor_cooling, pump_running, pump_speed_rpm)
+        self._controller._push_thermistor_overrides_to_inner(self._inner)
+
     def read_temperatures(self) -> Dict[str, float]:
         values = dict(self._inner.read_temperatures())
         for label, override in self._controller.thermistor_overrides.items():
@@ -392,11 +404,14 @@ class SensorInjectionController:
 
     def _push_thermistor_overrides_to_inner(self, inner: Any) -> None:
         set_raw = getattr(inner, "set_raw_temperature", None)
+        release = getattr(inner, "release_temperature", None)
         if set_raw is None:
             return
         for label, value in self.thermistor_overrides.items():
             if value is not None:
                 set_raw(label, value)
+            elif release is not None:
+                release(label)
 
     def _sync_thermocouple_inner(self) -> None:
         if self._inner_thermocouple is not None:

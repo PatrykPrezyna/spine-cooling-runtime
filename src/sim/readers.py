@@ -16,6 +16,154 @@ def _sim_cfg(config: dict) -> dict:
     return config.get("simulation", {}) or {}
 
 
+class _SimThermalLoop:
+    """Shared pump/compressor temperature dynamics for simulated readers."""
+
+    def __init__(self, config: dict):
+        sim_cfg = _sim_cfg(config)
+        compressor_cfg = config.get("compressor", {}) or {}
+        stepper_cfg = config.get("stepper_motor", {}) or {}
+        self.csf_label = str(sim_cfg.get("csf_label", "CSF"))
+        self.csf_max_c = float(sim_cfg.get("csf_max_c", 37.0))
+        self.csf_min_c = float(sim_cfg.get("csf_min_c", 25.0))
+        self.csf_rate_c_per_s = float(sim_cfg.get("csf_rate_c_per_s", 0.1))
+        self.csf_cart_out_scale = float(
+            sim_cfg.get(
+                "csf_cart_out_scale",
+                sim_cfg.get("csf_heat_ex_scale", 0.05),
+            )
+        )
+        self.csf_min_effective_pump_speed_rpm = float(
+            sim_cfg.get("csf_min_effective_pump_speed_rpm", 30.0)
+        )
+        self.csf_pump_speed_ref_rpm = float(
+            sim_cfg.get(
+                "csf_pump_speed_ref_rpm",
+                stepper_cfg.get("pumping_speed_rpm", 120),
+            )
+        )
+        self.heat_ex_label = str(
+            sim_cfg.get("heat_ex_label", compressor_cfg.get("heat_ex_label", "Heat Ex"))
+        )
+        self.heat_ex_max_c = float(sim_cfg.get("heat_ex_max_c", 23.0))
+        self.heat_ex_cool_rate_c_per_s = float(
+            sim_cfg.get("heat_ex_cool_rate_c_per_s", 0.5)
+        )
+        self.heat_ex_warm_rate_c_per_s = float(
+            sim_cfg.get("heat_ex_warm_rate_c_per_s", 0.02)
+        )
+        self.cart_in_label = str(sim_cfg.get("cart_in_label", "Cart In"))
+        self.cart_out_label = str(sim_cfg.get("cart_out_label", "Cart Out"))
+        self.cart_initial_c = float(sim_cfg.get("cart_initial_c", 22.0))
+        self.cart_in_rise_rate_c_per_s = float(
+            sim_cfg.get("cart_in_rise_rate_c_per_s", 0.2)
+        )
+
+    def advance(
+        self,
+        temps: Dict[str, float],
+        *,
+        compressor_on: bool,
+        pump_running: bool,
+        pump_speed_rpm: int,
+        elapsed: float,
+        frozen: Optional[set[str]] = None,
+    ) -> list[str]:
+        """Mutate ``temps`` and return labels that were written."""
+        frozen = frozen or set()
+        changed: list[str] = []
+        if self._advance_heat_ex(temps, compressor_on, elapsed, frozen):
+            changed.append(self.heat_ex_label)
+        if pump_running and self._advance_cart_in(temps, elapsed, frozen):
+            changed.append(self.cart_in_label)
+        if self._update_cart_out(temps, pump_running, frozen):
+            changed.append(self.cart_out_label)
+        if self._advance_csf(temps, pump_speed_rpm, elapsed, frozen):
+            changed.append(self.csf_label)
+        return changed
+
+    def _advance_csf(
+        self,
+        temps: Dict[str, float],
+        pump_speed_rpm: int,
+        elapsed: float,
+        frozen: set[str],
+    ) -> bool:
+        if self.csf_label in frozen or self.csf_label not in temps:
+            return False
+        current = temps[self.csf_label]
+        if pump_speed_rpm <= 0 or pump_speed_rpm < self.csf_min_effective_pump_speed_rpm:
+            temps[self.csf_label] = min(current + self.csf_rate_c_per_s * elapsed, self.csf_max_c)
+        else:
+            cart_out = temps.get(self.cart_out_label, self.cart_initial_c)
+            speed_factor = pump_speed_rpm / max(self.csf_pump_speed_ref_rpm, 1.0)
+            rate = (
+                self.csf_rate_c_per_s
+                * self.csf_cart_out_scale
+                * (self.cart_initial_c - cart_out)
+                * speed_factor
+            )
+            new_raw = current - rate * elapsed
+            temps[self.csf_label] = max(min(new_raw, self.csf_max_c), self.csf_min_c)
+        return True
+
+    def _advance_heat_ex(
+        self,
+        temps: Dict[str, float],
+        compressor_on: bool,
+        elapsed: float,
+        frozen: set[str],
+    ) -> bool:
+        if self.heat_ex_label in frozen or self.heat_ex_label not in temps:
+            return False
+        current = temps[self.heat_ex_label]
+        if compressor_on:
+            new_raw = current - self.heat_ex_cool_rate_c_per_s * elapsed
+        else:
+            new_raw = current + self.heat_ex_warm_rate_c_per_s * elapsed
+        temps[self.heat_ex_label] = min(new_raw, self.heat_ex_max_c)
+        return True
+
+    def _advance_cart_in(
+        self,
+        temps: Dict[str, float],
+        elapsed: float,
+        frozen: set[str],
+    ) -> bool:
+        if self.cart_in_label in frozen or self.cart_in_label not in temps:
+            return False
+        if self.csf_label not in temps:
+            return False
+        target = temps[self.csf_label] * 0.8
+        current = temps[self.cart_in_label]
+        if current >= target:
+            return False
+        temps[self.cart_in_label] = min(
+            current + self.cart_in_rise_rate_c_per_s * elapsed, target
+        )
+        return True
+
+    def _update_cart_out(
+        self,
+        temps: Dict[str, float],
+        pump_running: bool,
+        frozen: set[str],
+    ) -> bool:
+        if self.cart_out_label in frozen or self.cart_out_label not in temps:
+            return False
+        if self.cart_in_label not in temps:
+            return False
+        cart_in = temps[self.cart_in_label]
+        if not pump_running:
+            temps[self.cart_out_label] = cart_in
+            return True
+        if self.heat_ex_label not in temps:
+            return False
+        heat_ex = temps[self.heat_ex_label]
+        temps[self.cart_out_label] = cart_in - (cart_in - heat_ex) * 0.75
+        return True
+
+
 class SimSensorReader:
     """Digital GPIO sensors backed by in-memory booleans."""
 
@@ -108,6 +256,7 @@ class SimThermocoupleReader:
         self._cart_out_label = str(sim_cfg.get("cart_out_label", "Cart Out"))
         self._cart_initial_c = float(sim_cfg.get("cart_initial_c", 22.0))
         self._cart_in_rise_rate_c_per_s = float(sim_cfg.get("cart_in_rise_rate_c_per_s", 0.2))
+        self._thermal = _SimThermalLoop(config)
         self._last_advance_time = time.monotonic()
         self.physics_enabled = True
         self._frozen_labels: set[str] = set()
@@ -156,98 +305,16 @@ class SimThermocoupleReader:
 
         del set_temperature_c  # CSF no longer follows the UI setpoint in sim mode
         effective_speed = int(pump_speed_rpm) if pump_running else 0
-        self._advance_heat_ex(bool(compressor_cooling), elapsed)
-        self._advance_cart_temps(bool(pump_running), elapsed)
-        self._advance_csf(effective_speed, elapsed)
-
-    def _advance_csf(self, pump_speed_rpm: int, elapsed: float) -> None:
-        if self._csf_label in self._frozen_labels:
-            return
-        if self._csf_label not in self._last_raw_temperatures:
-            return
-
-        current = self._last_raw_temperatures[self._csf_label]
-        if (
-            pump_speed_rpm <= 0
-            or pump_speed_rpm < self._csf_min_effective_pump_speed_rpm
-        ):
-            step = self._csf_rate_c_per_s * elapsed
-            new_raw = min(current + step, self._csf_max_c)
-        else:
-            cart_out = self._last_raw_temperatures.get(
-                self._cart_out_label, self._cart_initial_c
-            )
-            speed_factor = pump_speed_rpm / max(self._csf_pump_speed_ref_rpm, 1.0)
-            rate = (
-                self._csf_rate_c_per_s
-                * self._csf_cart_out_scale
-                * (self._cart_initial_c - cart_out)
-                * speed_factor
-            )
-            new_raw = current - rate * elapsed
-            new_raw = max(min(new_raw, self._csf_max_c), self._csf_min_c)
-
-        self._last_raw_temperatures[self._csf_label] = new_raw
-        self._apply_calibration_for_label(self._csf_label)
-
-    def _advance_heat_ex(self, compressor_on: bool, elapsed: float) -> None:
-        if self._heat_ex_label in self._frozen_labels:
-            return
-        if self._heat_ex_label not in self._last_raw_temperatures:
-            return
-
-        current = self._last_raw_temperatures[self._heat_ex_label]
-        if compressor_on:
-            new_raw = current - self._heat_ex_cool_rate_c_per_s * elapsed
-        else:
-            new_raw = current + self._heat_ex_warm_rate_c_per_s * elapsed
-
-        new_raw = min(new_raw, self._heat_ex_max_c)
-        self._last_raw_temperatures[self._heat_ex_label] = new_raw
-        self._apply_calibration_for_label(self._heat_ex_label)
-
-    def _advance_cart_temps(self, pump_running: bool, elapsed: float) -> None:
-        if pump_running:
-            self._advance_cart_in(elapsed)
-        self._update_cart_out(pump_running)
-
-    def _advance_cart_in(self, elapsed: float) -> None:
-        if self._cart_in_label in self._frozen_labels:
-            return
-        if self._cart_in_label not in self._last_raw_temperatures:
-            return
-        if self._csf_label not in self._last_raw_temperatures:
-            return
-
-        target = self._last_raw_temperatures[self._csf_label] * 0.8
-        current = self._last_raw_temperatures[self._cart_in_label]
-        if current >= target:
-            return
-
-        step = self._cart_in_rise_rate_c_per_s * elapsed
-        new_raw = min(current + step, target)
-        self._last_raw_temperatures[self._cart_in_label] = new_raw
-        self._apply_calibration_for_label(self._cart_in_label)
-
-    def _update_cart_out(self, pump_running: bool) -> None:
-        if self._cart_out_label in self._frozen_labels:
-            return
-        if self._cart_out_label not in self._last_raw_temperatures:
-            return
-        if self._cart_in_label not in self._last_raw_temperatures:
-            return
-
-        cart_in = self._last_raw_temperatures[self._cart_in_label]
-        if not pump_running:
-            new_raw = cart_in
-        else:
-            if self._heat_ex_label not in self._last_raw_temperatures:
-                return
-            heat_ex = self._last_raw_temperatures[self._heat_ex_label]
-            new_raw = cart_in - (cart_in - heat_ex)*0.75
-
-        self._last_raw_temperatures[self._cart_out_label] = new_raw
-        self._apply_calibration_for_label(self._cart_out_label)
+        changed = self._thermal.advance(
+            self._last_raw_temperatures,
+            compressor_on=bool(compressor_cooling),
+            pump_running=bool(pump_running),
+            pump_speed_rpm=effective_speed,
+            elapsed=elapsed,
+            frozen=self._frozen_labels,
+        )
+        for label in changed:
+            self._apply_calibration_for_label(label)
 
     def _label_to_channel(self, label: str) -> Optional[int]:
         for ch, ch_label in self.channel_labels.items():
@@ -352,7 +419,12 @@ class SimThermocoupleReader:
 
 
 class SimThermistorReader:
-    """Thermistor temperatures from config defaults (ADS1115 simulation)."""
+    """Thermistor temperatures from config defaults (ADS1115 simulation).
+
+    Uses the same pump/compressor thermal loop as ``SimThermocoupleReader``
+    for labels listed under ``simulation`` (Tip / CSF, plates, catheter).
+    Call ``notify_setpoint()`` each tick before ``read_temperatures()``.
+    """
 
     def __init__(self, config: dict):
         ts_cfg = config.get("thermistor_sensors", {})
@@ -362,6 +434,10 @@ class SimThermistorReader:
         self.last_error: Optional[str] = None
         self.is_initialized = False
         self._temperatures: Dict[str, float] = {}
+        self._thermal = _SimThermalLoop(config)
+        self._last_advance_time = time.monotonic()
+        self.physics_enabled = True
+        self._frozen_labels: set[str] = set()
 
         if not self.enabled:
             self.last_error = "ADS1115 thermistor reader disabled by config"
@@ -380,6 +456,30 @@ class SimThermistorReader:
             )
         else:
             self.last_error = "No valid thermistor channels configured"
+
+    def notify_setpoint(
+        self,
+        set_temperature_c: float,
+        compressor_cooling: int = 0,
+        pump_running: bool = False,
+        pump_speed_rpm: int = 0,
+    ) -> None:
+        """Advance simulated thermistor temperatures since the last tick."""
+        if not self.physics_enabled or not self.is_initialized:
+            return
+        del set_temperature_c
+        now = time.monotonic()
+        elapsed = max(0.0, now - self._last_advance_time)
+        self._last_advance_time = now
+        effective_speed = int(pump_speed_rpm) if pump_running else 0
+        self._thermal.advance(
+            self._temperatures,
+            compressor_on=bool(compressor_cooling),
+            pump_running=bool(pump_running),
+            pump_speed_rpm=effective_speed,
+            elapsed=elapsed,
+            frozen=self._frozen_labels,
+        )
 
     @staticmethod
     def _parse_labels(ts_cfg: dict) -> Dict[int, str]:
@@ -405,9 +505,17 @@ class SimThermistorReader:
             return {}
         return dict(self._temperatures)
 
+    def get_last_raw_temperatures(self) -> Dict[str, float]:
+        return dict(self._temperatures)
+
     def set_raw_temperature(self, label: str, raw_c: float) -> None:
-        if label in self._temperatures:
-            self._temperatures[label] = float(raw_c)
+        if label not in self._temperatures:
+            return
+        self._temperatures[label] = float(raw_c)
+        self._frozen_labels.add(label)
+
+    def release_temperature(self, label: str) -> None:
+        self._frozen_labels.discard(label)
 
     def cleanup(self) -> None:
         self.is_initialized = False
