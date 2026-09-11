@@ -46,8 +46,6 @@ class SensorOverrideWindow(QMainWindow):
 
         self._digital_value_checks: dict[str, QCheckBox] = {}
         self._digital_simulate_checks: dict[str, QCheckBox] = {}
-        self._temp_spins: dict[str, QDoubleSpinBox] = {}
-        self._temp_simulate_checks: dict[str, QCheckBox] = {}
         self._therm_spins: dict[str, QDoubleSpinBox] = {}
         self._therm_simulate_checks: dict[str, QCheckBox] = {}
         self._pressure_spins: dict[str, QDoubleSpinBox] = {}
@@ -71,16 +69,6 @@ class SensorOverrideWindow(QMainWindow):
         layout.setSpacing(10)
 
         layout.addWidget(self._build_digital_group())
-        layout.addWidget(
-            self._build_temp_family_group(
-                "Thermocouples (raw °C)",
-                self.controller.temperature_labels,
-                self._temp_spins,
-                self._temp_simulate_checks,
-                self._on_temperature_changed,
-                self._on_temperature_simulate_toggled,
-            )
-        )
         layout.addWidget(
             self._build_temp_family_group(
                 "Thermistors (°C)",
@@ -209,26 +197,6 @@ class SensorOverrideWindow(QMainWindow):
             return
         if simulate_check.isChecked():
             self.controller.set_digital(name, value_check.isChecked())
-
-    def _on_temperature_simulate_toggled(self, label: str, enabled: bool) -> None:
-        spin = self._temp_spins.get(label)
-        if spin is None:
-            return
-        if enabled:
-            self.controller.set_temperature_raw(label, float(spin.value()))
-            self.controller._sync_thermocouple_inner()
-        else:
-            self.controller.clear_override("temperature", label)
-            self.controller._sync_thermocouple_inner()
-
-    def _on_temperature_changed(self, label: str) -> None:
-        simulate_check = self._temp_simulate_checks.get(label)
-        spin = self._temp_spins.get(label)
-        if simulate_check is None or spin is None:
-            return
-        if simulate_check.isChecked():
-            self.controller.set_temperature_raw(label, float(spin.value()))
-            self.controller._sync_thermocouple_inner()
 
     def _on_thermistor_simulate_toggled(self, label: str, enabled: bool) -> None:
         spin = self._therm_spins.get(label)

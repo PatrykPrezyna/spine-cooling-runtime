@@ -146,7 +146,6 @@ def _seed_graphs(ui: MainScreen) -> None:
 
     ui.service2_tab.update_sensors(SENSORS_OK)
     ui.service2_tab.update_temperatures(TEMPS)
-    ui.calibration_tab.update_current_temperatures(TEMPS, TEMPS)
     ui.temperature_graph_tab._update_checkbox_labels(
         {**TEMPS, "Set Temp": ui.main_graph_widget.set_temperature}
     )
@@ -261,13 +260,6 @@ def _capture_all(app: QApplication, config: dict) -> list[tuple[str, str, Path]]
         "11_service_manual",
         "Service — Manual Operation",
         "Reached from the gear icon on the expert page. Jog or run the pump, set flow, and enable compressor control. Do not use this during a patient session unless instructed.",
-    )
-
-    ui.service_tab_selector.setCurrentIndex(1)
-    add(
-        "13_service_calibration",
-        "Service — Calibration",
-        "Two-point temperature calibration (measured at 0 °C and 100 °C). Apply only after a controlled ice / boiling-water check.",
     )
 
     ui.close()

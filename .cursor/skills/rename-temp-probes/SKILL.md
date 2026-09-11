@@ -13,8 +13,6 @@ Logical UI / CSV / control temperatures come from the 12 ADS1115 thermistors.
 **Source of truth** is `config.yaml` → `thermistor_sensors.labels` (channels 0–11).
 Order of those labels is display order.
 
-Do **not** change `thermocouples.labels` unless the user explicitly asks. That is a separate 8-channel board.
-
 ## Workflow
 
 1. Read `thermistor_sensors.labels` and the user's new names.
@@ -22,7 +20,7 @@ Do **not** change `thermocouples.labels` unless the user explicitly asks. That i
 3. Copy the same 12 names, same order, into every list below.
 4. Retarget config keys that still point at an old name.
 5. Keep old `KNOWN_LABELS` entries so historical CSVs still decode.
-6. Grep the old name(s) and update remaining hardcoded uses (not thermocouple labels).
+6. Grep the old name(s) and update remaining hardcoded uses.
 7. Run `python -m unittest tests.test_thermistor_reader tests.test_session_logs tests.test_flow_reader tests.test_cooling_power -v`.
 
 Preserve the `Cartrige` spelling unless the user asks to fix it.
@@ -47,9 +45,9 @@ If that probe is renamed or removed, update the key to the new name (ask only if
 - `alarms.csf_label`, `alarms.heat_ex_label`
 - `compressor.heat_ex_label`
 - `cooling_power.catheter_in_label` / `catheter_out_label` / `cartridge_in_label` / `cartridge_out_label`
-- `simulation.heat_ex_label`, `simulation.cart_in_label`, `simulation.cart_out_label`
+- `simulation.csf_label`, `simulation.heat_ex_label`, `simulation.cart_in_label`, `simulation.cart_out_label`
 
-Leave `simulation.csf_label` alone unless the user is also renaming thermocouple labels. That key drives thermocouple sim physics, not the thermistor UI list.
+`simulation.csf_label` drives thermistor sim physics (Tip / CSF cooling loop).
 
 ## Other hardcoded copies
 
@@ -62,7 +60,6 @@ CSV slug rule (same as `CSVLogger._csv_slug`): lowercase, non-alnum → `_`, col
 
 ## Do not touch
 
-- `thermocouples.labels` / calibration channel map
 - `pressure_sensors.labels`
 - Digital GPIO sensor names
 - Evaluation / historical session CSVs

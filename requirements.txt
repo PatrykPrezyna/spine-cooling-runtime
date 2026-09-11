@@ -18,7 +18,6 @@ PyYAML>=6.0
 RPi.GPIO>=0.7.1; sys_platform == "linux" and platform_machine in "aarch64|armv7l|armv6l|armv8l"
 pigpio>=1.78; sys_platform == "linux"
 smbus2>=0.4.0; sys_platform == "linux"
-SMtc; sys_platform == "linux"
 adafruit-blinka>=8.0.0; sys_platform == "linux"
 adafruit-circuitpython-ads1x15>=2.4.0; sys_platform == "linux"
 adafruit-extended-bus>=1.0.0; sys_platform == "linux"

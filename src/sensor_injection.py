@@ -5,40 +5,10 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from hardware_factory import HardwareBundle
-from temperature_calibration import (
-    IDENTITY_CALIBRATION,
-    apply_linear_calibration,
-    build_two_point_calibration,
-)
 
 
 def digital_sensor_names(config: dict) -> list[str]:
     return [str(s["name"]) for s in config.get("sensors", []) if s.get("name")]
-
-
-def thermocouple_labels_from_config(config: dict) -> list[str]:
-    """Return ordered thermocouple channel labels from config."""
-    names: list[str] = []
-    seen: set[str] = set()
-    tc_cfg = config.get("thermocouples", {})
-    channels = tc_cfg.get("channels", [])
-    raw_labels = tc_cfg.get("labels", {}) or {}
-    labels: dict[int, str] = {}
-    for key, value in raw_labels.items():
-        try:
-            labels[int(key)] = str(value)
-        except (TypeError, ValueError):
-            continue
-    for channel in channels:
-        try:
-            ch = int(channel)
-        except (TypeError, ValueError):
-            continue
-        name = labels.get(ch, f"Temp {ch}")
-        if name not in seen:
-            names.append(name)
-            seen.add(name)
-    return names
 
 
 def thermistor_labels_from_config(config: dict) -> list[str]:
@@ -77,52 +47,37 @@ def thermistor_labels_from_config(config: dict) -> list[str]:
     return names
 
 
-def temperature_sources_from_config(config: dict) -> list[tuple[str, str]]:
-    """Return ``(label, source)`` pairs for logical temperatures.
+def temperature_labels_from_config(config: dict) -> list[str]:
+    """Return ordered logical temperature labels for control / UI / CSV.
 
-    ``config["temperature_sources"]`` maps display name → ``thermocouple`` or
-    ``thermistor``. Order is preserved (YAML insertion order). When absent,
-    fall back to all thermocouple labels as ``thermocouple``.
+    ``config["temperature_sources"]`` is an ordered map of display names
+    (values are ignored; every listed name is a thermistor). When absent,
+    fall back to ``thermistor_sensors.labels`` in channel order.
     """
     raw = config.get("temperature_sources")
     if isinstance(raw, dict) and raw:
-        pairs: list[tuple[str, str]] = []
-        for label, source in raw.items():
+        names: list[str] = []
+        for label in raw:
             name = str(label).strip()
-            if not name:
-                continue
-            src = str(source or "").strip().lower()
-            if src in ("thermistor", "therm", "ntc"):
-                pairs.append((name, "thermistor"))
-            else:
-                pairs.append((name, "thermocouple"))
-        if pairs:
-            return pairs
-    return [(name, "thermocouple") for name in thermocouple_labels_from_config(config)]
-
-
-def temperature_labels_from_config(config: dict) -> list[str]:
-    """Return ordered logical temperature labels for control / UI / CSV."""
-    return [name for name, _source in temperature_sources_from_config(config)]
+            if name:
+                names.append(name)
+        if names:
+            return names
+    return thermistor_labels_from_config(config)
 
 
 def select_temperatures(
-    thermocouple_temps: Optional[dict],
     thermistor_temps: Optional[dict],
     config: dict,
 ) -> dict[str, float]:
-    """Resolve each ``temperature_sources`` name to a °C value.
+    """Resolve each logical temperature name to a °C value from thermistors.
 
-    For every entry ``Name: thermocouple|thermistor`` in config, look up
-    ``Name`` in that board's reading dict (same label string). Missing or
-    unread channels become ``nan`` so the UI still shows the row.
+    Missing or unread channels become ``nan`` so the UI still shows the row.
     """
-    tc = thermocouple_temps or {}
     th = thermistor_temps or {}
     selected: dict[str, float] = {}
-    for label, source in temperature_sources_from_config(config):
-        board = th if source == "thermistor" else tc
-        value = board.get(label)
+    for label in temperature_labels_from_config(config):
+        value = th.get(label)
         try:
             selected[label] = float(value) if value is not None else float("nan")
         except (TypeError, ValueError):
@@ -170,43 +125,6 @@ def pressure_labels_from_config(config: dict) -> list[str]:
     return names
 
 
-def _build_label_calibration(config: dict) -> dict[str, tuple[float, float]]:
-    tc_cfg = config.get("thermocouples", {})
-    channels = tc_cfg.get("channels", [])
-    raw_labels = tc_cfg.get("labels", {}) or {}
-    label_by_channel: dict[int, str] = {}
-    for key, value in raw_labels.items():
-        try:
-            label_by_channel[int(key)] = str(value)
-        except (TypeError, ValueError):
-            continue
-
-    calibration_cfg = tc_cfg.get("calibration", {}) or {}
-    default_pts = calibration_cfg.get("default", {}) or {}
-    default_cal, _ = build_two_point_calibration(
-        default_pts.get("measured_at_0c", 0.0),
-        default_pts.get("measured_at_100c", 100.0),
-    )
-    per_channel = calibration_cfg.get("channels", {}) or {}
-    result: dict[str, tuple[float, float]] = {}
-    for channel in channels:
-        try:
-            ch = int(channel)
-        except (TypeError, ValueError):
-            continue
-        label = label_by_channel.get(ch, f"Temp {ch}")
-        pts = per_channel.get(str(ch), per_channel.get(ch, default_pts))
-        if isinstance(pts, dict):
-            cal, err = build_two_point_calibration(
-                pts.get("measured_at_0c", 0.0),
-                pts.get("measured_at_100c", 100.0),
-            )
-            result[label] = cal if err is None else default_cal
-        else:
-            result[label] = default_cal
-    return result
-
-
 class InjectableDigitalReader:
     """Delegates digital reads and merges injection overrides."""
 
@@ -223,54 +141,6 @@ class InjectableDigitalReader:
             if override is not None:
                 values[name] = bool(override)
         return values
-
-
-class InjectableThermocoupleReader:
-    """Delegates thermocouple reads and merges injection overrides."""
-
-    def __init__(self, inner: Any, controller: "SensorInjectionController"):
-        self._inner = inner
-        self._controller = controller
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._inner, name)
-
-    def notify_setpoint(
-        self,
-        set_temperature_c: float,
-        compressor_cooling: int = 0,
-        pump_running: bool = False,
-        pump_speed_rpm: int = 0,
-    ) -> None:
-        notify = getattr(self._inner, "notify_setpoint", None)
-        if notify is not None:
-            notify(set_temperature_c, compressor_cooling, pump_running, pump_speed_rpm)
-        self._controller._push_temperature_overrides_to_inner(self._inner)
-
-    def read_temperatures(self) -> Dict[str, float]:
-        return self._merge_temperatures(
-            dict(self._inner.read_temperatures()),
-            dict(self._inner.get_last_raw_temperatures()),
-        )[0]
-
-    def get_last_raw_temperatures(self) -> Dict[str, float]:
-        return self._merge_temperatures(
-            dict(self._inner.read_temperatures()),
-            dict(self._inner.get_last_raw_temperatures()),
-        )[1]
-
-    def _merge_temperatures(
-        self,
-        temps: Dict[str, float],
-        raw: Dict[str, float],
-    ) -> tuple[Dict[str, float], Dict[str, float]]:
-        for label, override in self._controller.temperature_overrides.items():
-            if override is None:
-                continue
-            raw[label] = float(override)
-            gain, offset = self._controller._label_calibration.get(label, IDENTITY_CALIBRATION)
-            temps[label] = apply_linear_calibration(float(override), gain, offset)
-        return temps, raw
 
 
 class InjectableThermistorReader:
@@ -326,18 +196,13 @@ class SensorInjectionController:
 
     def __init__(self, config: dict):
         self.config = config
-        self._label_calibration = _build_label_calibration(config)
 
         self.digital_names = digital_sensor_names(config)
-        self.temperature_labels = thermocouple_labels_from_config(config)
         self.thermistor_labels = thermistor_labels_from_config(config)
         self.pressure_labels = pressure_labels_from_config(config)
 
         self.digital_overrides: Dict[str, Optional[bool]] = {
             name: None for name in self.digital_names
-        }
-        self.temperature_overrides: Dict[str, Optional[float]] = {
-            label: None for label in self.temperature_labels
         }
         self.thermistor_overrides: Dict[str, Optional[float]] = {
             label: None for label in self.thermistor_labels
@@ -346,16 +211,11 @@ class SensorInjectionController:
             label: None for label in self.pressure_labels
         }
 
-        self._inner_thermocouple: Any = None
         self._inner_thermistor: Any = None
 
     def set_digital(self, name: str, active: bool) -> None:
         if name in self.digital_overrides:
             self.digital_overrides[name] = bool(active)
-
-    def set_temperature_raw(self, label: str, raw_c: float) -> None:
-        if label in self.temperature_overrides:
-            self.temperature_overrides[label] = float(raw_c)
 
     def set_thermistor_raw(self, label: str, raw_c: float) -> None:
         if label in self.thermistor_overrides:
@@ -368,21 +228,15 @@ class SensorInjectionController:
     def clear_override(self, kind: str, name: str) -> None:
         if kind == "digital" and name in self.digital_overrides:
             self.digital_overrides[name] = None
-        elif kind == "temperature" and name in self.temperature_overrides:
-            self.temperature_overrides[name] = None
         elif kind == "thermistor" and name in self.thermistor_overrides:
             self.thermistor_overrides[name] = None
         elif kind == "pressure" and name in self.pressure_overrides:
             self.pressure_overrides[name] = None
 
     def wrap_bundle(self, bundle: HardwareBundle) -> HardwareBundle:
-        self._inner_thermocouple = bundle.thermocouple_reader
         self._inner_thermistor = bundle.thermistor_reader
         return HardwareBundle(
             sensor_reader=InjectableDigitalReader(bundle.sensor_reader, self),
-            thermocouple_reader=InjectableThermocoupleReader(
-                bundle.thermocouple_reader, self
-            ),
             thermistor_reader=InjectableThermistorReader(
                 bundle.thermistor_reader, self
             ),
@@ -390,17 +244,6 @@ class SensorInjectionController:
             stepper_driver=bundle.stepper_driver,
             flow_reader=bundle.flow_reader,
         )
-
-    def _push_temperature_overrides_to_inner(self, inner: Any) -> None:
-        set_raw = getattr(inner, "set_raw_temperature", None)
-        release = getattr(inner, "release_temperature", None)
-        if set_raw is None:
-            return
-        for label, value in self.temperature_overrides.items():
-            if value is not None:
-                set_raw(label, value)
-            elif release is not None:
-                release(label)
 
     def _push_thermistor_overrides_to_inner(self, inner: Any) -> None:
         set_raw = getattr(inner, "set_raw_temperature", None)
@@ -412,10 +255,6 @@ class SensorInjectionController:
                 set_raw(label, value)
             elif release is not None:
                 release(label)
-
-    def _sync_thermocouple_inner(self) -> None:
-        if self._inner_thermocouple is not None:
-            self._push_temperature_overrides_to_inner(self._inner_thermocouple)
 
     def _sync_thermistor_inner(self) -> None:
         if self._inner_thermistor is not None:

@@ -27,15 +27,10 @@ _TEST_CONFIG = {
         {"name": "Level Critical"},
         {"name": "Cartridge In Place"},
     ],
-    "thermocouples": {
-        "enabled": True,
-        "channels": [1, 2, 5],
-        "labels": {1: "CSF 2", 2: "CSF", 5: "Heat Ex"},
-    },
     "thermistor_sensors": {
         "enabled": True,
-        "channels": [0],
-        "labels": {0: "CSF 2"},
+        "channels": [0, 1],
+        "labels": {0: "CSF 2", 1: "Heat Ex"},
     },
     "pressure_sensors": {
         "enabled": True,
@@ -57,7 +52,7 @@ _TEST_CONFIG = {
             "Level Critical": True,
         },
         "pressures": {"Cartridge Input": 20.0, "Cartridge Output": 15.0},
-        "thermistors": {"CSF 2": 25.0},
+        "thermistors": {"CSF 2": 25.0, "Heat Ex": 22.0},
     },
 }
 
@@ -85,9 +80,9 @@ class SensorInjectionTests(unittest.TestCase):
         bundle = build_hardware(_TEST_CONFIG, simulation=True)
         wrapped = controller.wrap_bundle(bundle)
 
-        controller.set_temperature_raw("CSF 2", 30.0)
-        controller._sync_thermocouple_inner()
-        temps = wrapped.thermocouple_reader.read_temperatures()
+        controller.set_thermistor_raw("CSF 2", 30.0)
+        controller._sync_thermistor_inner()
+        temps = wrapped.thermistor_reader.read_temperatures()
         self.assertAlmostEqual(temps["CSF 2"], 30.0)
 
     def test_pressure_override_when_simulated(self) -> None:
@@ -113,13 +108,13 @@ class SensorInjectionTests(unittest.TestCase):
         controller = SensorInjectionController(_TEST_CONFIG)
         bundle = build_hardware(_TEST_CONFIG, simulation=True)
         wrapped = controller.wrap_bundle(bundle)
-        controller.set_temperature_raw("CSF 2", 30.0)
-        controller._sync_thermocouple_inner()
+        controller.set_thermistor_raw("CSF 2", 30.0)
+        controller._sync_thermistor_inner()
 
-        notify = getattr(wrapped.thermocouple_reader, "notify_setpoint", None)
+        notify = getattr(wrapped.thermistor_reader, "notify_setpoint", None)
         self.assertIsNotNone(notify)
         notify(32.0, 1, True)
-        temps = wrapped.thermocouple_reader.read_temperatures()
+        temps = wrapped.thermistor_reader.read_temperatures()
         self.assertAlmostEqual(temps["CSF 2"], 30.0)
 
 

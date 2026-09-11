@@ -122,7 +122,6 @@ merged = pd.merge_asof(fast, session, on="timestamp", direction="nearest")
 | `src/gui.py` | PyQt6 touchscreen UI (the main piece you can work on without a Pi) |
 | `src/state_machine.py` | Operating flow: Init → Ready → Cooling → Pumping |
 | `src/multi_sensor_reader.py` | Digital GPIO sensors (cartridge, level) |
-| `src/thermocouple_reader.py` | I2C thermocouple readings |
 | `src/ads1115_thermistor_reader.py` | Thermistor temps via ADS1115 (0x48 / 0x49 on bus 1, extra 0x48 on bus 6) |
 | `src/ads1115_flow_reader.py` | 4–20 mA flow via ADS1115 0x49 AIN0 on I2C bus 6 (220 Ω shunt) |
 | `src/thermistor_conversion.py` | Shared NTC V→R→°C using `data/calibration/Thermistor_MA300TA103C.csv` |
@@ -136,7 +135,7 @@ merged = pd.merge_asof(fast, session, on="timestamp", direction="nearest")
 | `src/hardware_factory.py` | Picks real vs simulated drivers at startup |
 | `config.yaml` | Hardware mapping and runtime settings |
 
-**`simple_examples/`** — small standalone scripts to test one subsystem at a time (GPIO, stepper, thermocouples, UART).
+**`simple_examples/`** — small standalone scripts to test one subsystem at a time (GPIO, stepper, thermistors, UART). The SMtc thermocouple HAT is not used by the main app; a one-channel example lives in `simple_examples/thermocouple/`.
 
 **`tests/`** — unit tests (state machine, temperature calibration, etc.).
 

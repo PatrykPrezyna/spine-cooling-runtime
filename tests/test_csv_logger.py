@@ -24,10 +24,9 @@ _CONFIG = {
         "sensors_filename_format": "%Y%m%d_%H%M%S_sensors.csv",
     },
     "pump_flow_ml_per_min_per_rpm": 0.5862,
-    "thermocouples": {
-        "enabled": True,
-        "channels": [1, 2],
-        "labels": {1: "CSF", 2: "Heat Ex"},
+    "temperature_sources": {
+        "CSF": "thermistor",
+        "Heat Ex": "thermistor",
     },
     "pressure_sensors": {
         "enabled": True,

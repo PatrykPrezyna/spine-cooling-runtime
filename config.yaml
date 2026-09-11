@@ -1,8 +1,8 @@
 control_temp_label: Tip
 # Logical temperatures shown in the UI / control / CSV.
-# For each name, read that same label from the chosen board.
+# Keys are display names; every listed name is a thermistor.
 # Only listed names appear; order is display order.
-# All 12 entries below are thermistors (ADS1115 channels 0–11).
+# All 12 entries below match thermistor_sensors.labels (channels 0–11).
 temperature_sources:
   Tip: thermistor
   Cartrige Out: thermistor
@@ -94,57 +94,6 @@ sensors:
   active_high: true
   pull_up: true
 sample_rate_hz: 1.0
-thermocouples:
-  enabled: true
-  stack: 0
-  i2c_bus: 1
-  sensor_types:
-    1: T
-    2: T
-    3: K
-    4: K
-    5: K
-    6: K
-    7: K
-    8: K
-  channels:
-  - 1
-  - 2
-  - 3
-  - 4
-  - 5
-  - 6
-  - 7
-  - 8
-  labels:
-    1: Tip
-    2: Cartrige Out
-    3: Catheter In
-    4: Catheter Out
-    5: Cartrige In
-    6: Probe 1
-    7: Probe 2
-    8: Plate
-  calibration:
-    default:
-      measured_at_0c: 0.0
-      measured_at_100c: 100.0
-    channels:
-      1:
-        measured_at_0c: 0.0
-        measured_at_100c: 97.7
-      2:
-        measured_at_0c: 0.3
-        measured_at_100c: 99.1
-      6:
-        measured_at_0c: 0.3
-        measured_at_100c: 98.3
-      7:
-        measured_at_0c: -0.3
-        measured_at_100c: 98.3
-      8:
-        measured_at_0c: 1.7
-        measured_at_100c: 89.5
 # Thermistor temperatures on three ADS1115 chips (up to 12 channels).
 # Channels 0-3 → first address, 4-7 → second, 8-11 → third (i2c-6).
 # Conversion: V = Vref * R / (Rs + R), then R→°C from the configured R–T table.

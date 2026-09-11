@@ -18,14 +18,14 @@ class CSVLogger:
         # Shared with PressureCSVLogger / StatusEventLogger so every file of
         # the same run carries an identical stamp.
         self.session_start = session_start or datetime.now()
-        self.thermocouple_columns = self._thermocouple_columns_from_config(config)
+        self.temperature_columns = self._temperature_columns_from_config(config)
         self.pressure_columns = self._pressure_columns_from_config(config)
         # Linear pump model: flow_ml_per_s = rpm * slope / 60.
         self.pump_flow_ml_per_min_per_rpm = float(
             config.get('pump_flow_ml_per_min_per_rpm', 0.5862)
         )
         self.header = self._build_header(
-            self.thermocouple_columns, self.pressure_columns
+            self.temperature_columns, self.pressure_columns
         )
 
         self.csv_file: Optional[Path] = None
@@ -36,7 +36,7 @@ class CSVLogger:
         Path(self.csv_directory).mkdir(parents=True, exist_ok=True)
 
     @staticmethod
-    def _thermocouple_columns_from_config(config: dict) -> list[str]:
+    def _temperature_columns_from_config(config: dict) -> list[str]:
         from sensor_injection import temperature_labels_from_config
 
         return temperature_labels_from_config(config)
@@ -55,10 +55,10 @@ class CSVLogger:
         return slug or "temp"
 
     def _build_header(
-        self, thermocouple_columns: list[str], pressure_columns: list[str]
+        self, temperature_columns: list[str], pressure_columns: list[str]
     ) -> list[str]:
         header = ['timestamp']
-        for name in thermocouple_columns:
+        for name in temperature_columns:
             header.append(f"{self._csv_slug(name)}_c")
         header.append('set_temperature_c')
         header.append('peristaltic_pump_set_speed_rpm')
@@ -125,7 +125,7 @@ class CSVLogger:
             temperatures = temperatures or {}
             pressures = pressures or {}
             row: list = [timestamp]
-            for column in self.thermocouple_columns:
+            for column in self.temperature_columns:
                 value = temperatures.get(column)
                 row.append(f"{float(value):.3f}" if value is not None else "")
             row.append(
@@ -228,7 +228,7 @@ if __name__ == "__main__":
 
     for i in range(10):
         sample_temps = {}
-        for idx, name in enumerate(logger.thermocouple_columns):
+        for idx, name in enumerate(logger.temperature_columns):
             sample_temps[name] = 22.0 + i * 0.1 + idx
         sample_pressures = {
             name: 10.0 + i + idx * 0.1

@@ -14,7 +14,6 @@ from ads1115_thermistor_reader import ADS1115ThermistorReader  # noqa: E402
 from hardware_factory import build_hardware  # noqa: E402
 from sensor_injection import (  # noqa: E402
     temperature_labels_from_config,
-    thermocouple_labels_from_config,
     thermistor_labels_from_config,
 )
 from thermistor_conversion import (  # noqa: E402
@@ -27,11 +26,6 @@ from thermistor_conversion import (  # noqa: E402
 
 _CONFIG = {
     "sensors": [{"name": "Level Low"}],
-    "thermocouples": {
-        "enabled": True,
-        "channels": [1],
-        "labels": {1: "CSF"},
-    },
     "thermistor_sensors": {
         "enabled": True,
         "i2c_addresses": [72, 73],
@@ -146,26 +140,20 @@ class ThermistorConversionTests(unittest.TestCase):
 
 
 class ThermistorHardwareTests(unittest.TestCase):
-    def test_labels_split_by_family_with_shared_names(self) -> None:
-        self.assertEqual(temperature_labels_from_config(_CONFIG), ["CSF"])
-        self.assertEqual(thermocouple_labels_from_config(_CONFIG), ["CSF"])
+    def test_labels_use_thermistor_order_when_sources_absent(self) -> None:
+        self.assertEqual(temperature_labels_from_config(_CONFIG), ["CSF", "Heat Ex"])
         self.assertEqual(thermistor_labels_from_config(_CONFIG), ["CSF", "Heat Ex"])
 
-    def test_temperature_sources_select_backend(self) -> None:
+    def test_temperature_sources_select_thermistor_values(self) -> None:
         from sensor_injection import select_temperatures
 
         cfg = {
             **_CONFIG,
             "temperature_sources": {
-                "CSF": "thermocouple",
+                "CSF": "thermistor",
                 "Cart In": "thermistor",
                 "Heat Ex": "thermistor",
                 "Room Temp": "thermistor",
-            },
-            "thermocouples": {
-                "enabled": True,
-                "channels": [1, 5],
-                "labels": {1: "CSF", 5: "Heat Ex"},
             },
         }
         self.assertEqual(
@@ -173,14 +161,12 @@ class ThermistorHardwareTests(unittest.TestCase):
             ["CSF", "Cart In", "Heat Ex", "Room Temp"],
         )
         selected = select_temperatures(
-            {"CSF": 30.0, "Heat Ex": 10.0, "Cart In": 99.0},
-            {"Cart In": 22.0, "Heat Ex": 18.0, "Room Temp": 21.5},
+            {"CSF": 30.0, "Cart In": 22.0, "Heat Ex": 18.0, "Room Temp": 21.5},
             cfg,
         )
-        # Same label name, value taken from the board named in temperature_sources.
-        self.assertAlmostEqual(selected["CSF"], 30.0)  # thermocouple
-        self.assertAlmostEqual(selected["Cart In"], 22.0)  # thermistor (not 99)
-        self.assertAlmostEqual(selected["Heat Ex"], 18.0)  # thermistor (not 10)
+        self.assertAlmostEqual(selected["CSF"], 30.0)
+        self.assertAlmostEqual(selected["Cart In"], 22.0)
+        self.assertAlmostEqual(selected["Heat Ex"], 18.0)
         self.assertAlmostEqual(selected["Room Temp"], 21.5)
         self.assertEqual(list(selected.keys()), ["CSF", "Cart In", "Heat Ex", "Room Temp"])
 
@@ -189,17 +175,14 @@ class ThermistorHardwareTests(unittest.TestCase):
         import math
 
         cfg = {
-            "temperature_sources": {"CSF": "thermocouple", "Room Temp": "thermistor"},
+            "temperature_sources": {"CSF": "thermistor", "Room Temp": "thermistor"},
         }
-        selected = select_temperatures({"CSF": 37.0}, {}, cfg)
+        selected = select_temperatures({"CSF": 37.0}, cfg)
         self.assertAlmostEqual(selected["CSF"], 37.0)
         self.assertTrue(math.isnan(selected["Room Temp"]))
 
     def test_sim_reads_thermistors_and_pressure_separately(self) -> None:
         bundle = build_hardware(_CONFIG, simulation=True)
-        temps = bundle.thermocouple_reader.read_temperatures()
-        self.assertAlmostEqual(temps["CSF"], 37.0)
-
         therms = bundle.thermistor_reader.read_temperatures()
         self.assertAlmostEqual(therms["CSF"], 36.5)
         self.assertAlmostEqual(therms["Heat Ex"], 22.0)
@@ -208,7 +191,6 @@ class ThermistorHardwareTests(unittest.TestCase):
         self.assertAlmostEqual(pressures["Cartridge Input"], 20.0)
         self.assertEqual(len(pressures), 4)
 
-        bundle.thermocouple_reader.cleanup()
         bundle.thermistor_reader.cleanup()
         bundle.pressure_reader.cleanup()
 

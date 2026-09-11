@@ -9,7 +9,6 @@ from typing import Any
 @dataclass
 class HardwareBundle:
     sensor_reader: Any
-    thermocouple_reader: Any
     thermistor_reader: Any
     pressure_reader: Any
     stepper_driver: Any
@@ -23,7 +22,6 @@ def build_hardware(config: dict, *, simulation: bool) -> HardwareBundle:
             SimFlowReader,
             SimPressureReader,
             SimSensorReader,
-            SimThermocoupleReader,
             SimThermistorReader,
         )
         from sim.stepper import SimStepperDriver
@@ -31,7 +29,6 @@ def build_hardware(config: dict, *, simulation: bool) -> HardwareBundle:
         print("Building simulated hardware (--sim)")
         return HardwareBundle(
             sensor_reader=SimSensorReader(config),
-            thermocouple_reader=SimThermocoupleReader(config),
             thermistor_reader=SimThermistorReader(config),
             pressure_reader=SimPressureReader(config),
             stepper_driver=SimStepperDriver(config),
@@ -43,11 +40,9 @@ def build_hardware(config: dict, *, simulation: bool) -> HardwareBundle:
     from ads1115_thermistor_reader import ADS1115ThermistorReader
     from multi_sensor_reader import MultiSensorReader
     from stepper_driver import STSPIN220Driver
-    from thermocouple_reader import ThermocoupleReader
 
     return HardwareBundle(
         sensor_reader=MultiSensorReader(config),
-        thermocouple_reader=ThermocoupleReader(config),
         thermistor_reader=ADS1115ThermistorReader(config),
         pressure_reader=ADS1115PressureReader(config),
         stepper_driver=STSPIN220Driver(config),
