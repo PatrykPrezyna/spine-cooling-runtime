@@ -227,9 +227,10 @@ logging:
     # Optional fixed folder (tests / a known mount). Empty = discover by label.
     mount_path: ""
 # Pump throughput: flow scales linearly with stepper RPM. Slope from a
-# least-squares fit (through the origin) of the measured calibration data.
+# least-squares fit (through the origin) of the measured calibration data
+# for Tygon PVC 1/8" ID × 1/4" OD tubing.
 # flow_ml_per_s = pump_rpm * pump_flow_ml_per_min_per_rpm / 60
-pump_flow_ml_per_min_per_rpm: 0.5862
+pump_flow_ml_per_min_per_rpm: 0.8034
 # Cooling power (Expert Power tab): P = m_dot * cp * dT, with m_dot from pump flow.
 # Catheter: heat picked up by water (T_out - T_in). Cartridge: heat extracted
 # from water at the cartridge outlet (T_in - T_out). Labels match temperature_sources.
@@ -262,11 +263,11 @@ stepper_motor:
   steps_per_revolution: 200
   microstepping: 16
   default_speed_rpm: 20
-  # ~60 ml/min and ~10 ml/min at pump_flow_ml_per_min_per_rpm = 0.5862
-  pumping_speed_rpm: 102
-  pumping_slow_speed_rpm: 17
+  # ~60 ml/min and ~10 ml/min at pump_flow_ml_per_min_per_rpm = 0.8034
+  pumping_speed_rpm: 75
+  pumping_slow_speed_rpm: 12
   max_speed_rpm: 390
-  min_pump_speed_rpm: 17
+  min_pump_speed_rpm: 12
   min_speed_rpm: 1
   ramp_start_fraction: 0.5
   continuous_direction: -1

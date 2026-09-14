@@ -414,7 +414,7 @@ class FaultHelpDialog(QDialog):
 
 
 # Default linear pump model (overridden from config): flow_ml_min = rpm * slope.
-DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.5862
+DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.8034
 # Discrete setpoints on the service-tab flow slider (10, 20, 30, ... ml/min).
 PUMP_FLOW_SLIDER_STEP_ML_PER_MIN = 10
 # Service-tab flow ramp test: 10 → 90 ml/min, then back down, ±10 every 2 minutes.

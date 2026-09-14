@@ -196,7 +196,7 @@ class SensorMonitorApp(QObject):
         stepper_cfg = self.config.get('stepper_motor', {})
         compressor_cfg = self.config.get('compressor', {})
         self.pump_flow_ml_per_min_per_rpm: float = float(
-            self.config.get("pump_flow_ml_per_min_per_rpm", 0.5862)
+            self.config.get("pump_flow_ml_per_min_per_rpm", 0.8034)
         )
         self.pump_flow_controller = PumpFlowController.from_config_dict(
             self.config.get("pump_control")

@@ -151,7 +151,7 @@ class SessionLogsTests(unittest.TestCase):
             self.assertEqual(len(session.events), 2)
             self.assertIn("Catheter", session.power_samples[0][1])
             self.assertIn("Flow", session.pressure_samples[0][1])
-            self.assertAlmostEqual(session.pressure_samples[0][1]["Flow"], 102.0 * 0.5862, places=2)
+            self.assertAlmostEqual(session.pressure_samples[0][1]["Flow"], 102.0 * 0.8034, places=2)
             tip = series_stats(session.temperature_samples, "Tip")
             self.assertAlmostEqual(tip["min"], 35.0)
             self.assertAlmostEqual(tip["max"], 36.1)

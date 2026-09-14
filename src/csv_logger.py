@@ -22,7 +22,7 @@ class CSVLogger:
         self.pressure_columns = self._pressure_columns_from_config(config)
         # Linear pump model: flow_ml_per_s = rpm * slope / 60.
         self.pump_flow_ml_per_min_per_rpm = float(
-            config.get('pump_flow_ml_per_min_per_rpm', 0.5862)
+            config.get('pump_flow_ml_per_min_per_rpm', 0.8034)
         )
         self.header = self._build_header(
             self.temperature_columns, self.pressure_columns
