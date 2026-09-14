@@ -35,7 +35,6 @@ from PyQt6.QtWidgets import (
 )
 
 from gui import (
-    DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM,
     PowerGraphTab,
     PressureServiceTab,
     SCREEN_HEIGHT,
@@ -378,9 +377,6 @@ class LogAnalyzerWindow(QMainWindow):
         self.pressure_tab = PressureServiceTab(
             pressure_sensor_names=list(_DEFAULT_PRESSURE_NAMES)
         )
-        self.pressure_tab.pump_flow_ml_per_min_per_rpm = (
-            DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
-        )
         self.power_tab = PowerGraphTab({})
         self.status_tab = SessionStatusTab()
         self._prepare_graph(self.temperature_tab)
@@ -469,9 +465,6 @@ class LogAnalyzerWindow(QMainWindow):
 
         self.temperature_tab = TemperatureGraphTab(temp_names)
         self.pressure_tab = PressureServiceTab(pressure_sensor_names=pressure_names)
-        self.pressure_tab.pump_flow_ml_per_min_per_rpm = (
-            DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
-        )
         self.power_tab = PowerGraphTab({"cooling_power": {}})
         self._prepare_graph(self.temperature_tab)
         self._prepare_graph(self.pressure_tab)

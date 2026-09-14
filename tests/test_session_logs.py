@@ -22,6 +22,7 @@ from session_logs import (  # noqa: E402
     parse_timestamp,
     series_stats,
 )
+from pump_flow_control import rpm_to_flow_ml_per_min  # noqa: E402
 
 
 def _write_csv(path: Path, header: list[str], rows: list[list[object]]) -> None:
@@ -151,7 +152,11 @@ class SessionLogsTests(unittest.TestCase):
             self.assertEqual(len(session.events), 2)
             self.assertIn("Catheter", session.power_samples[0][1])
             self.assertIn("Flow", session.pressure_samples[0][1])
-            self.assertAlmostEqual(session.pressure_samples[0][1]["Flow"], 102.0 * 0.8034, places=2)
+            self.assertAlmostEqual(
+                session.pressure_samples[0][1]["Flow"],
+                rpm_to_flow_ml_per_min(102.0),
+                places=2,
+            )
             tip = series_stats(session.temperature_samples, "Tip")
             self.assertAlmostEqual(tip["min"], 35.0)
             self.assertAlmostEqual(tip["max"], 36.1)

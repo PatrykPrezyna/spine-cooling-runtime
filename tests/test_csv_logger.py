@@ -23,7 +23,6 @@ _CONFIG = {
         "directory": "unused",
         "sensors_filename_format": "%Y%m%d_%H%M%S_sensors.csv",
     },
-    "pump_flow_ml_per_min_per_rpm": 0.8034,
     "temperature_sources": {
         "CSF": "thermistor",
         "Heat Ex": "thermistor",

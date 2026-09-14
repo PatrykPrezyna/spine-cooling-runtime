@@ -22,6 +22,7 @@ from cooling_power import (
     cartridge_cooling_power_w,
     catheter_cooling_power_w,
 )
+from pump_flow_control import rpm_to_flow_ml_per_min
 
 STAMP_RE = re.compile(r"^(\d{8}_\d{6})")
 SENSORS_SUFFIX = "_sensors.csv"
@@ -64,7 +65,6 @@ KNOWN_LABELS = {
     "csf": "CSF",
 }
 
-DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.8034
 _MAX_PLOT_POINTS = 12000
 
 
@@ -202,7 +202,6 @@ def downsample(entries: list, max_points: int = _MAX_PLOT_POINTS) -> list:
 def load_session(
     path: Path,
     *,
-    pump_flow_ml_per_min_per_rpm: float = DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM,
     power_config: Optional[CoolingPowerConfig] = None,
     max_plot_points: int = _MAX_PLOT_POINTS,
 ) -> SessionData:
@@ -225,9 +224,7 @@ def load_session(
         extras = downsample(extras, max_plot_points)
 
     if pressure_path is not None:
-        names, samples = _load_pressure_csv(
-            pressure_path, pump_flow_ml_per_min_per_rpm
-        )
+        names, samples = _load_pressure_csv(pressure_path)
         session.pressure_names = names
         session.pressure_samples = downsample(samples, max_plot_points)
     elif extras:
@@ -325,7 +322,7 @@ def _load_sensors_csv(
 
 
 def _load_pressure_csv(
-    path: Path, pump_flow_ml_per_min_per_rpm: float
+    path: Path,
 ) -> tuple[list[str], list[tuple[float, dict[str, float]]]]:
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
@@ -343,7 +340,7 @@ def _load_pressure_csv(
             }
             rpm = _as_float(row.get("peristaltic_pump_set_speed_rpm"))
             flow = (
-                max(0.0, rpm) * float(pump_flow_ml_per_min_per_rpm)
+                rpm_to_flow_ml_per_min(rpm)
                 if not math.isnan(rpm)
                 else float("nan")
             )

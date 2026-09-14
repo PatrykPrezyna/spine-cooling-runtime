@@ -14,6 +14,7 @@ from pump_flow_control import (  # noqa: E402
     PumpFlowControlConfig,
     PumpFlowController,
     flow_ml_per_min_to_rpm,
+    rpm_to_flow_ml_per_min,
 )
 
 
@@ -45,8 +46,9 @@ class PumpFlowControlTests(unittest.TestCase):
         self.assertEqual(flow, 100.0)
 
     def test_flow_to_rpm_conversion(self) -> None:
-        self.assertEqual(flow_ml_per_min_to_rpm(100.0, 0.8034), 124)
-        self.assertEqual(flow_ml_per_min_to_rpm(10.0, 0.8034), 12)
+        self.assertEqual(flow_ml_per_min_to_rpm(100.0), 124)
+        self.assertEqual(flow_ml_per_min_to_rpm(10.0), 12)
+        self.assertAlmostEqual(rpm_to_flow_ml_per_min(124), 99.6216, places=4)
 
     def test_from_config_dict(self) -> None:
         ctrl = PumpFlowController.from_config_dict(

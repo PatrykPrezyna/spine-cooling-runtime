@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from pump_flow_control import rpm_to_flow_ml_per_min
 from session_log_paths import log_directory, sensors_filename_format
 
 
@@ -20,10 +21,6 @@ class CSVLogger:
         self.session_start = session_start or datetime.now()
         self.temperature_columns = self._temperature_columns_from_config(config)
         self.pressure_columns = self._pressure_columns_from_config(config)
-        # Linear pump model: flow_ml_per_s = rpm * slope / 60.
-        self.pump_flow_ml_per_min_per_rpm = float(
-            config.get('pump_flow_ml_per_min_per_rpm', 0.8034)
-        )
         self.header = self._build_header(
             self.temperature_columns, self.pressure_columns
         )
@@ -140,8 +137,7 @@ class CSVLogger:
             )
             if peristaltic_pump_set_speed_rpm is not None:
                 flow_ml_per_s = (
-                    float(peristaltic_pump_set_speed_rpm)
-                    * self.pump_flow_ml_per_min_per_rpm
+                    rpm_to_flow_ml_per_min(float(peristaltic_pump_set_speed_rpm))
                     / 60.0
                 )
                 row.append(f"{flow_ml_per_s:.4f}")

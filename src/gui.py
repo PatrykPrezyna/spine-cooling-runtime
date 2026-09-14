@@ -29,6 +29,7 @@ from cooling_power import (
     catheter_cooling_power_w,
 )
 from fault_catalog import FaultCode, operator_help
+from pump_flow_control import PUMP_FLOW_ML_PER_MIN_PER_RPM, rpm_to_flow_ml_per_min
 
 from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF, QSize, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -413,8 +414,6 @@ class FaultHelpDialog(QDialog):
         )
 
 
-# Default linear pump model (overridden from config): flow_ml_min = rpm * slope.
-DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.8034
 # Discrete setpoints on the service-tab flow slider (10, 20, 30, ... ml/min).
 PUMP_FLOW_SLIDER_STEP_ML_PER_MIN = 10
 # Service-tab flow ramp test: 10 → 90 ml/min, then back down, ±10 every 2 minutes.
@@ -426,10 +425,6 @@ FLOW_RAMP_TEST_INTERVAL_MS = 2 * 60 * 1000
 # so volume can be measured and converted to ml/min.
 RPM_FLOW_CALIBRATION_DURATION_S = 5 * 60
 RPM_FLOW_CALIBRATION_TICK_MS = 1000
-
-
-def _pump_flow_ml_per_min(rpm: float, slope: float) -> float:
-    return max(0.0, float(rpm)) * float(slope)
 
 
 def _aggregate_series(samples: list[dict], names: list[str], reduce) -> dict:
@@ -1667,7 +1662,6 @@ class ServiceTab(QWidget):
         compressor_cfg = compressor_config or {}
 
         # Output state
-        self.pump_flow_ml_per_min_per_rpm = DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
         self.compressor_on = False
         self.compressor_control_enabled = False
         self.compressor_off_temp_c = float(compressor_cfg.get("off_below_temp_c", 5))
@@ -2058,16 +2052,15 @@ class ServiceTab(QWidget):
     def _format_speed_text(self, rpm: int) -> str:
         if self._commanded_flow_ml_per_min is not None:
             return f"{rpm} RPM  {self._commanded_flow_ml_per_min:d} ml/min"
-        ml_per_min = _pump_flow_ml_per_min(rpm, self.pump_flow_ml_per_min_per_rpm)
+        ml_per_min = rpm_to_flow_ml_per_min(rpm)
         return f"{rpm} RPM  {ml_per_min:.0f} ml/min"
 
     def _flow_setpoint_bounds(self) -> tuple[int, int]:
         """Return min/max discrete ml/min setpoints for the current RPM range."""
-        slope = float(self.pump_flow_ml_per_min_per_rpm) or DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
         step = PUMP_FLOW_SLIDER_STEP_ML_PER_MIN
         min_rpm = min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm)
-        max_flow = _pump_flow_ml_per_min(self.stepper_max_speed_rpm, slope)
-        min_flow = _pump_flow_ml_per_min(min_rpm, slope)
+        max_flow = rpm_to_flow_ml_per_min(self.stepper_max_speed_rpm)
+        min_flow = rpm_to_flow_ml_per_min(min_rpm)
         lo = max(step, int(math.ceil(min_flow / step) * step))
         hi = int(math.floor(max_flow / step) * step)
         if hi < lo:
@@ -2076,16 +2069,15 @@ class ServiceTab(QWidget):
 
     def _rpm_to_flow_setpoint(self, rpm: int) -> int:
         lo, hi = self._flow_setpoint_bounds()
-        ml_per_min = _pump_flow_ml_per_min(rpm, self.pump_flow_ml_per_min_per_rpm)
+        ml_per_min = rpm_to_flow_ml_per_min(rpm)
         return max(lo, min(hi, _snap_ml_per_min_setpoint(ml_per_min)))
 
     def _flow_setpoint_to_rpm(self, ml_per_min: int) -> int:
         """Pick the integer RPM closest to the requested ml/min setpoint."""
-        slope = float(self.pump_flow_ml_per_min_per_rpm) or DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
         min_rpm = min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm)
         max_rpm = self.stepper_max_speed_rpm
         target = float(ml_per_min)
-        exact = target / slope
+        exact = target / PUMP_FLOW_ML_PER_MIN_PER_RPM
         candidates = {
             max(min_rpm, min(max_rpm, int(math.floor(exact)))),
             max(min_rpm, min(max_rpm, int(math.ceil(exact)))),
@@ -2094,7 +2086,7 @@ class ServiceTab(QWidget):
         return min(
             candidates,
             key=lambda rpm: (
-                abs(_pump_flow_ml_per_min(rpm, slope) - target),
+                abs(rpm_to_flow_ml_per_min(rpm) - target),
                 abs(rpm - exact),
             ),
         )
@@ -2106,7 +2098,7 @@ class ServiceTab(QWidget):
         return max(PUMP_FLOW_SLIDER_STEP_ML_PER_MIN, int(step) * PUMP_FLOW_SLIDER_STEP_ML_PER_MIN)
 
     def _configure_flow_slider_range(self):
-        """Configure the ml/min slider range/value from the current RPM/slope."""
+        """Configure the ml/min slider range/value from the current RPM range."""
         lo, hi = self._flow_setpoint_bounds()
         if self._commanded_flow_ml_per_min is not None:
             setpoint = max(lo, min(hi, int(self._commanded_flow_ml_per_min)))
@@ -3333,7 +3325,6 @@ class PressureServiceTab(TemperatureGraphTab):
             name: float("nan") for name in self.pressure_sensor_names
         }
         self.pump_speed_rpm = 0
-        self.pump_flow_ml_per_min_per_rpm = DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
         self._flow_ml_per_min = 0.0
         self._measured_flow_ml_per_min = float("nan")
 
@@ -3400,9 +3391,7 @@ class PressureServiceTab(TemperatureGraphTab):
         if flow_ml_per_min is not None:
             self._flow_ml_per_min = max(0.0, float(flow_ml_per_min))
         elif pump_speed_rpm is not None:
-            self._flow_ml_per_min = _pump_flow_ml_per_min(
-                self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
-            )
+            self._flow_ml_per_min = rpm_to_flow_ml_per_min(self.pump_speed_rpm)
         if measured_flow_ml_per_min is not None:
             self._measured_flow_ml_per_min = float(measured_flow_ml_per_min)
 
@@ -3513,7 +3502,6 @@ class PowerGraphTab(TemperatureGraphTab):
         )
         self._temperatures: dict = {}
         self.pump_speed_rpm = 0
-        self.pump_flow_ml_per_min_per_rpm = DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
         self._flow_ml_per_min = 0.0
 
     def update_temperatures(self, temperatures: Optional[dict] = None):
@@ -3532,9 +3520,7 @@ class PowerGraphTab(TemperatureGraphTab):
         if flow_ml_per_min is not None:
             self._flow_ml_per_min = max(0.0, float(flow_ml_per_min))
         elif pump_speed_rpm is not None:
-            self._flow_ml_per_min = _pump_flow_ml_per_min(
-                self.pump_speed_rpm, self.pump_flow_ml_per_min_per_rpm
-            )
+            self._flow_ml_per_min = rpm_to_flow_ml_per_min(self.pump_speed_rpm)
 
     def _power_kwargs(self) -> dict:
         cfg = self.power_config
@@ -3783,19 +3769,11 @@ class MainScreen(QMainWindow):
         # Temperature graph tab (logical temps from temperature_sources)
         self.temperature_graph_tab = TemperatureGraphTab(self.temperature_sensor_names)
 
-        # Pump flow model slope (shared with service tabs for RPM -> ml/min display).
-        pump_flow_slope = float(
-            self.config.get(
-                "pump_flow_ml_per_min_per_rpm", DEFAULT_PUMP_FLOW_ML_PER_MIN_PER_RPM
-            )
-        )
-
         # Service tab
         self.service_tab = ServiceTab(
             self.config.get('stepper_motor', {}),
             self.config.get('compressor', {}),
         )
-        self.service_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
         self.service_tab._configure_flow_slider_range()
         self.service_tab.stepper_speed_label.setText(
             self.service_tab._format_speed_text(self.service_tab.stepper_speed_rpm)
@@ -3819,9 +3797,7 @@ class MainScreen(QMainWindow):
         self.pressure_service_tab = PressureServiceTab(
             pressure_sensor_names=pressure_sensor_names,
         )
-        self.pressure_service_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
         self.power_graph_tab = PowerGraphTab(self.config)
-        self.power_graph_tab.pump_flow_ml_per_min_per_rpm = pump_flow_slope
 
         self.to_main_menu_button = QPushButton()
         self.to_main_menu_button.setFixedSize(34, 34)

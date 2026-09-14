@@ -195,9 +195,6 @@ class SensorMonitorApp(QObject):
         self.flow_reader: Any = None
         stepper_cfg = self.config.get('stepper_motor', {})
         compressor_cfg = self.config.get('compressor', {})
-        self.pump_flow_ml_per_min_per_rpm: float = float(
-            self.config.get("pump_flow_ml_per_min_per_rpm", 0.8034)
-        )
         self.pump_flow_controller = PumpFlowController.from_config_dict(
             self.config.get("pump_control")
         )
@@ -208,7 +205,6 @@ class SensorMonitorApp(QObject):
                 "pumping_speed_rpm",
                 flow_ml_per_min_to_rpm(
                     self.pump_flow_controller.config.max_flow_ml_per_min,
-                    self.pump_flow_ml_per_min_per_rpm,
                 ),
             )
         )
@@ -217,7 +213,6 @@ class SensorMonitorApp(QObject):
                 "pumping_slow_speed_rpm",
                 flow_ml_per_min_to_rpm(
                     self.pump_flow_controller.config.min_flow_ml_per_min,
-                    self.pump_flow_ml_per_min_per_rpm,
                 ),
             )
         )
@@ -814,7 +809,7 @@ class SensorMonitorApp(QObject):
         """Map a closed-loop flow command to a clamped stepper RPM."""
         cfg = self.pump_flow_controller.config
         flow = max(cfg.min_flow_ml_per_min, min(cfg.max_flow_ml_per_min, float(flow_ml_per_min)))
-        rpm = flow_ml_per_min_to_rpm(flow, self.pump_flow_ml_per_min_per_rpm)
+        rpm = flow_ml_per_min_to_rpm(flow)
         return self._clamp_pump_speed_rpm(rpm, enforce_min=enforce_min)
 
     def _apply_closed_loop_pump_control(
