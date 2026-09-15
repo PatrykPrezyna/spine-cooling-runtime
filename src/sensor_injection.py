@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from hardware_factory import HardwareBundle
+from ads1115_thermistor_reader import labels_from_config
 
 
 def digital_sensor_names(config: dict) -> list[str]:
@@ -12,35 +13,10 @@ def digital_sensor_names(config: dict) -> list[str]:
 
 
 def thermistor_labels_from_config(config: dict) -> list[str]:
-    """Return ordered thermistor channel labels from config (when enabled)."""
+    """Return thermistor names from ``thermistor_sensors.labels``, channel order."""
     names: list[str] = []
     seen: set[str] = set()
-    ts_cfg = config.get("thermistor_sensors", {})
-    if not bool(ts_cfg.get("enabled", False)):
-        return names
-
-    ts_channels = ts_cfg.get("channels", [])
-    ts_labels_raw = ts_cfg.get("labels", {}) or {}
-    ts_labels: dict[int, str] = {}
-    for key, value in ts_labels_raw.items():
-        try:
-            ts_labels[int(key)] = str(value)
-        except (TypeError, ValueError):
-            continue
-    channel_configs = ts_cfg.get("channel_configs", {}) or {}
-    for key, cfg in channel_configs.items():
-        if not isinstance(cfg, dict) or not cfg.get("label"):
-            continue
-        try:
-            ts_labels[int(key)] = str(cfg["label"])
-        except (TypeError, ValueError):
-            continue
-    for channel in ts_channels:
-        try:
-            ch = int(channel)
-        except (TypeError, ValueError):
-            continue
-        name = ts_labels.get(ch, f"Therm {ch + 1}")
+    for _channel, name in sorted(labels_from_config(config).items()):
         if name not in seen:
             names.append(name)
             seen.add(name)

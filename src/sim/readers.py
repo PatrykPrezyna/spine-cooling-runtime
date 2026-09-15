@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from typing import Dict, Optional
 
+from ads1115_thermistor_reader import labels_from_config
+
 
 def _sim_cfg(config: dict) -> dict:
     return config.get("simulation", {}) or {}
@@ -191,10 +193,7 @@ class SimThermistorReader:
     """
 
     def __init__(self, config: dict):
-        ts_cfg = config.get("thermistor_sensors", {})
-        self.enabled = bool(ts_cfg.get("enabled", False))
-        self.channels = [int(ch) for ch in ts_cfg.get("channels", [])]
-        self.channel_labels = self._parse_labels(ts_cfg)
+        self.channel_labels = labels_from_config(config)
         self.last_error: Optional[str] = None
         self.is_initialized = False
         self._temperatures: Dict[str, float] = {}
@@ -203,13 +202,12 @@ class SimThermistorReader:
         self.physics_enabled = True
         self._frozen_labels: set[str] = set()
 
-        if not self.enabled:
-            self.last_error = "ADS1115 thermistor reader disabled by config"
+        if not self.channel_labels:
+            self.last_error = "No thermistor labels in config"
             return
 
         overrides = _sim_cfg(config).get("thermistors", {}) or {}
-        for channel in self.channels:
-            label = self.channel_labels.get(channel, f"Therm {channel + 1}")
+        for _channel, label in sorted(self.channel_labels.items()):
             self._temperatures[label] = float(overrides.get(label, 25.0))
 
         self.is_initialized = bool(self._temperatures)
@@ -244,25 +242,6 @@ class SimThermistorReader:
             elapsed=elapsed,
             frozen=self._frozen_labels,
         )
-
-    @staticmethod
-    def _parse_labels(ts_cfg: dict) -> Dict[int, str]:
-        raw = ts_cfg.get("labels", {}) or {}
-        labels: Dict[int, str] = {}
-        for key, value in raw.items():
-            try:
-                labels[int(key)] = str(value)
-            except (TypeError, ValueError):
-                continue
-        channel_configs = ts_cfg.get("channel_configs", {}) or {}
-        for key, cfg in channel_configs.items():
-            if not isinstance(cfg, dict) or not cfg.get("label"):
-                continue
-            try:
-                labels[int(key)] = str(cfg["label"])
-            except (TypeError, ValueError):
-                continue
-        return labels
 
     def read_temperatures(self) -> Dict[str, float]:
         if not self.is_initialized:

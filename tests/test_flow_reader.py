@@ -65,7 +65,6 @@ class FlowConfigTests(unittest.TestCase):
         self.assertEqual(int(fs["i2c_address"]), 0x49)
         self.assertEqual(int(fs["analog_input"]), 0)
         self.assertAlmostEqual(float(fs["shunt_ohm"]), 220.0)
-        self.assertIn(4, config["thermistor_sensors"]["channels"])
         self.assertEqual(config["thermistor_sensors"]["labels"][4], "Cartrige In")
         self.assertEqual(config["pressure_sensors"]["i2c_addresses"], [74, 75])
 

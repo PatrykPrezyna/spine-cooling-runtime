@@ -28,8 +28,6 @@ _TEST_CONFIG = {
         {"name": "Cartridge In Place"},
     ],
     "thermistor_sensors": {
-        "enabled": True,
-        "channels": [0, 1],
         "labels": {0: "CSF 2", 1: "Heat Ex"},
     },
     "pressure_sensors": {

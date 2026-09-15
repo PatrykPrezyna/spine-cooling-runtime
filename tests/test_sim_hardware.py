@@ -21,8 +21,6 @@ _MINIMAL_CONFIG = {
         {"name": "Cartridge In Place"},
     ],
     "thermistor_sensors": {
-        "enabled": True,
-        "channels": [0, 1, 2, 3],
         "labels": {0: "CSF", 1: "Cart In", 2: "Cart Out", 3: "Heat Ex"},
     },
     "pressure_sensors": {
@@ -194,8 +192,6 @@ class SimHardwareTests(unittest.TestCase):
     def test_thermistor_tip_cools_when_pumping(self) -> None:
         config = dict(_MINIMAL_CONFIG)
         config["thermistor_sensors"] = {
-            "enabled": True,
-            "channels": [0, 1, 2, 3],
             "labels": {
                 0: "Tip",
                 1: "Plate 1",

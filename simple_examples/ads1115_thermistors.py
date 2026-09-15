@@ -40,7 +40,7 @@ from ads1115_flow_reader import (  # noqa: E402  # pyright: ignore[reportMissing
     voltage_to_ma,
 )
 
-# (bus, address) — same layout as config.yaml thermistor_sensors.
+# (bus, address) — same layout as ads1115_thermistor_reader._CHIPS.
 CHIPS = (
     (1, 0x48),  # T1-T4
     (1, 0x49),  # T5-T8

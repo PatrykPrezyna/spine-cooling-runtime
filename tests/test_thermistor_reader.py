@@ -10,7 +10,10 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from ads1115_thermistor_reader import ADS1115ThermistorReader  # noqa: E402
+from ads1115_thermistor_reader import (  # noqa: E402
+    ADS1115ThermistorReader,
+    chip_key_for_channel,
+)
 from hardware_factory import build_hardware  # noqa: E402
 from sensor_injection import (  # noqa: E402
     temperature_labels_from_config,
@@ -27,16 +30,7 @@ from thermistor_conversion import (  # noqa: E402
 _CONFIG = {
     "sensors": [{"name": "Level Low"}],
     "thermistor_sensors": {
-        "enabled": True,
-        "i2c_addresses": [72, 73],
-        "channels": [0, 1],
         "labels": {0: "CSF", 1: "Heat Ex"},
-        "conversion": {
-            "vref_v": 2.5,
-            "rs_ohm": 100000,
-            "resistance_column": "10k_Ohm",
-            "table_csv": "data/calibration/Thermistor_MA300TA103C.csv",
-        },
     },
     "pressure_sensors": {
         "enabled": True,
@@ -92,47 +86,26 @@ class ThermistorConversionTests(unittest.TestCase):
         v = 2.5 * r / (100000.0 + r)
         self.assertAlmostEqual(voltage_to_r(v), r, places=6)
 
-    def test_reader_loads_table_from_config(self) -> None:
-        reader = ADS1115ThermistorReader(
-            {
-                "thermistor_sensors": {
-                    "enabled": False,
-                    "conversion": _CONFIG["thermistor_sensors"]["conversion"],
-                }
-            }
-        )
+    def test_reader_loads_ma300_table(self) -> None:
+        reader = ADS1115ThermistorReader({"thermistor_sensors": {"labels": {0: "CSF"}}})
         self.assertGreaterEqual(len(reader.rt_table), 2)
         self.assertAlmostEqual(reader.rt_table[0][1], 0.0)  # coldest first (highest R)
         self.assertAlmostEqual(reader.rt_table[-1][1], 50.0)
 
-    def test_reader_loads_per_channel_table_override(self) -> None:
-        ab6_csv = "data/calibration/Thermistor_AB6N2-GC14KA143E_37C.csv"
-        reader = ADS1115ThermistorReader(
-            {
-                "thermistor_sensors": {
-                    "enabled": False,
-                    "conversion": _CONFIG["thermistor_sensors"]["conversion"],
-                    "channel_configs": {
-                        0: {
-                            "table_csv": ab6_csv,
-                            "resistance_column": "Resistance_Ohm",
-                        }
-                    },
-                }
-            }
-        )
+    def test_tip_channel_uses_ab6n2_table(self) -> None:
+        reader = ADS1115ThermistorReader({"thermistor_sensors": {"labels": {0: "Tip"}}})
         default_table = reader.rt_table
-        csf_table = reader._rt_table_for_channel(0)
-        other_table = reader._rt_table_for_channel(1)
+        tip_table = reader._table_for(0)
+        other_table = reader._table_for(1)
         self.assertIs(other_table, default_table)
-        self.assertIsNot(csf_table, default_table)
+        self.assertIsNot(tip_table, default_table)
         # AB6N2: 14004 Ω at 37 °C (body-temp rating)
-        r_37 = next(r for r, t in csf_table if t == 37.0)
+        r_37 = next(r for r, t in tip_table if t == 37.0)
         self.assertAlmostEqual(r_37, 14004.0, places=1)
         self.assertAlmostEqual(
             millivolts_to_celsius(
                 1000.0 * 2.5 * 14004.0 / (100000.0 + 14004.0),
-                csf_table,
+                tip_table,
             ),
             37.0,
             places=5,
@@ -197,30 +170,18 @@ class ThermistorHardwareTests(unittest.TestCase):
 
 class ExtraBusThermistorTests(unittest.TestCase):
     def test_channels_8_to_11_use_same_address_on_bus_6(self) -> None:
-        reader = ADS1115ThermistorReader(
-            {
-                "thermistor_sensors": {
-                    "enabled": False,
-                    "i2c_addresses": [72, 73, 72],
-                    "i2c_buses": [1, 1, 6],
-                }
-            }
-        )
-        self.assertEqual(reader._chip_key_for_channel(0), (1, 72))
-        self.assertEqual(reader._chip_key_for_channel(4), (1, 73))
-        self.assertEqual(reader._chip_key_for_channel(8), (6, 72))
-        self.assertEqual(reader._chip_key_for_channel(11), (6, 72))
-        self.assertEqual(reader._address_for_channel(8), 72)
+        self.assertEqual(chip_key_for_channel(0), (1, 72))
+        self.assertEqual(chip_key_for_channel(4), (1, 73))
+        self.assertEqual(chip_key_for_channel(8), (6, 72))
+        self.assertEqual(chip_key_for_channel(11), (6, 72))
 
-    def test_config_yaml_adds_four_thermistors_on_i2c6(self) -> None:
+    def test_config_yaml_labels_match_temperature_sources(self) -> None:
         import yaml
 
         with (PROJECT_ROOT / "config.yaml").open(encoding="utf-8") as fh:
             config = yaml.safe_load(fh)
         ts = config["thermistor_sensors"]
-        self.assertEqual(ts["i2c_addresses"], [72, 73, 72])
-        self.assertEqual(ts["i2c_buses"], [1, 1, 6])
-        self.assertEqual(ts["channels"], list(range(12)))
+        self.assertNotIn("i2c_addresses", ts)
         self.assertEqual(
             [ts["labels"][i] for i in range(8, 12)],
             ["Hot bath1", "Hot bath2", "Ice Water", "Probe 4"],
