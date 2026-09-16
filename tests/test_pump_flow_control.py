@@ -46,9 +46,11 @@ class PumpFlowControlTests(unittest.TestCase):
         self.assertEqual(flow, 100.0)
 
     def test_flow_to_rpm_conversion(self) -> None:
-        self.assertEqual(flow_ml_per_min_to_rpm(100.0), 124)
-        self.assertEqual(flow_ml_per_min_to_rpm(10.0), 12)
-        self.assertAlmostEqual(rpm_to_flow_ml_per_min(124), 99.6216, places=4)
+        # Q = 0.8462 * rpm + 1.86; 0 rpm is treated as no flow.
+        self.assertEqual(flow_ml_per_min_to_rpm(100.0), 116)
+        self.assertEqual(flow_ml_per_min_to_rpm(10.0), 10)
+        self.assertAlmostEqual(rpm_to_flow_ml_per_min(116), 100.0192, places=4)
+        self.assertEqual(rpm_to_flow_ml_per_min(0.0), 0.0)
 
     def test_from_config_dict(self) -> None:
         ctrl = PumpFlowController.from_config_dict(

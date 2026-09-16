@@ -219,11 +219,11 @@ stepper_motor:
   steps_per_revolution: 200
   microstepping: 16
   default_speed_rpm: 20
-  # ~60 ml/min and ~10 ml/min
-  pumping_speed_rpm: 75
-  pumping_slow_speed_rpm: 12
+  # ~60 ml/min and ~10 ml/min (Q = 0.8462*rpm + 1.86)
+  pumping_speed_rpm: 69
+  pumping_slow_speed_rpm: 10
   max_speed_rpm: 390
-  min_pump_speed_rpm: 12
+  min_pump_speed_rpm: 10
   min_speed_rpm: 1
   ramp_start_fraction: 0.5
   continuous_direction: -1

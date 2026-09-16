@@ -29,7 +29,7 @@ from cooling_power import (
     catheter_cooling_power_w,
 )
 from fault_catalog import FaultCode, operator_help
-from pump_flow_control import PUMP_FLOW_ML_PER_MIN_PER_RPM, rpm_to_flow_ml_per_min
+from pump_flow_control import flow_ml_per_min_to_rpm_exact, rpm_to_flow_ml_per_min
 
 from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF, QSize, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -1678,7 +1678,7 @@ class ServiceTab(QWidget):
         self.stepper_continuous_on: bool = False
         # Exact ml/min setpoint when speed is set via the flow slider / ramp test.
         # Integer RPM cannot hit every setpoint exactly with the linear pump model,
-        # so the UI shows this commanded value instead of rpm * slope.
+        # so the UI shows this commanded value instead of slope * rpm + offset.
         self._commanded_flow_ml_per_min: Optional[int] = None
         self.flow_ramp_test_active: bool = False
         self._flow_ramp_test_ml_per_min: int = FLOW_RAMP_TEST_START_ML_PER_MIN
@@ -2077,7 +2077,7 @@ class ServiceTab(QWidget):
         min_rpm = min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm)
         max_rpm = self.stepper_max_speed_rpm
         target = float(ml_per_min)
-        exact = target / PUMP_FLOW_ML_PER_MIN_PER_RPM
+        exact = flow_ml_per_min_to_rpm_exact(target)
         candidates = {
             max(min_rpm, min(max_rpm, int(math.floor(exact)))),
             max(min_rpm, min(max_rpm, int(math.ceil(exact)))),

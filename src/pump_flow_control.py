@@ -8,7 +8,8 @@ During active pumping:
 - ``error ≤ 0`` → hold at minimum flow (still circulating during cooling)
 
 Flow is commanded in ml/min; callers convert to stepper RPM with
-``PUMP_FLOW_ML_PER_MIN_PER_RPM``.
+``rpm_to_flow_ml_per_min`` / ``flow_ml_per_min_to_rpm``
+(``Q = slope * rpm + offset``).
 """
 
 from __future__ import annotations
@@ -18,7 +19,9 @@ from dataclasses import dataclass
 from typing import Optional
 
 # Linear RPM → ml/min for Tygon PVC 1/8" ID × 1/4" OD tubing.
-PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.8034
+# Q = 0.8462 * rpm + 1.86
+PUMP_FLOW_ML_PER_MIN_PER_RPM = 0.8462
+PUMP_FLOW_ML_PER_MIN_OFFSET = 1.86
 
 
 @dataclass
@@ -121,10 +124,22 @@ class PumpFlowController:
 
 def rpm_to_flow_ml_per_min(rpm: float) -> float:
     """Convert stepper RPM to volumetric flow using the linear calibration."""
-    return max(0.0, float(rpm)) * PUMP_FLOW_ML_PER_MIN_PER_RPM
+    speed = float(rpm)
+    if speed <= 0.0:
+        return 0.0
+    return max(
+        0.0,
+        speed * PUMP_FLOW_ML_PER_MIN_PER_RPM + PUMP_FLOW_ML_PER_MIN_OFFSET,
+    )
+
+
+def flow_ml_per_min_to_rpm_exact(flow_ml_per_min: float) -> float:
+    """Invert ``Q = slope * rpm + offset`` without rounding to integer RPM."""
+    return (
+        float(flow_ml_per_min) - PUMP_FLOW_ML_PER_MIN_OFFSET
+    ) / PUMP_FLOW_ML_PER_MIN_PER_RPM
 
 
 def flow_ml_per_min_to_rpm(flow_ml_per_min: float) -> int:
     """Convert commanded flow to nearest stepper RPM using the linear calibration."""
-    rpm = float(flow_ml_per_min) / PUMP_FLOW_ML_PER_MIN_PER_RPM
-    return max(1, int(round(rpm)))
+    return max(1, int(round(flow_ml_per_min_to_rpm_exact(flow_ml_per_min))))
