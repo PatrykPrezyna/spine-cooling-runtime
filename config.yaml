@@ -163,7 +163,7 @@ pressure_sensors:
     mv_hi: 96.9
     bar_hi: 5.171068  # 75.0 psi
 compressor:
-  relay_pin: 6
+  relay_pin: 16  # BCM GPIO 6 = header pin 31 (not header pin 6, which is GND)
   # Probes averaged for on/off hysteresis. Must match thermistor_sensors.labels.
   heat_ex_labels:
     - Plate 1
