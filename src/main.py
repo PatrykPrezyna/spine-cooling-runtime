@@ -218,8 +218,8 @@ class SensorMonitorApp(QObject):
             )
         )
         self.compressor_on: bool = False
-        self.compressor_relay_pin: int = int(compressor_cfg.get('relay_pin', 6))
-        self.compressor_relay_io6_high: bool = True
+        self.compressor_relay_pin: int = int(compressor_cfg.get('relay_pin', 16))
+        self.compressor_relay_high: bool = True
         self.compressor_control_enabled: bool = False
         self.compressor_latched_on: bool = False
         self.compressor_heat_ex_labels: list[str] = heat_ex_labels_from_config(
@@ -355,7 +355,7 @@ class SensorMonitorApp(QObject):
             print(f"{label} inactive: {component.last_error}")
 
     def _initialize_compressor_relay(self) -> None:
-        """Configure IO6 as compressor relay (active-low: LOW = on)."""
+        """Configure compressor relay GPIO (active-low: LOW = on)."""
         if GPIO is None:
             print("Compressor relay unavailable: RPi.GPIO not installed")
             return
@@ -363,28 +363,28 @@ class SensorMonitorApp(QObject):
             GPIO.setwarnings(False)
             GPIO.setmode(GPIO.BCM)
             GPIO.setup(self.compressor_relay_pin, GPIO.OUT, initial=GPIO.HIGH)
-            self.compressor_relay_io6_high = True
-            print(f"Compressor relay initialized on IO{self.compressor_relay_pin}")
+            self.compressor_relay_high = True
+            print(f"Compressor relay initialized on GPIO{self.compressor_relay_pin}")
         except Exception as exc:
-            print(f"Failed to initialize compressor relay IO{self.compressor_relay_pin}: {exc}")
+            print(f"Failed to initialize compressor relay GPIO{self.compressor_relay_pin}: {exc}")
 
-    def _set_compressor_relay_io6_high(self, io6_high: bool) -> None:
-        """Set IO6 level. HIGH = compressor off, LOW = compressor on."""
-        self.compressor_relay_io6_high = bool(io6_high)
+    def _set_compressor_relay_high(self, high: bool) -> None:
+        """Set compressor relay level. HIGH = compressor off, LOW = compressor on."""
+        self.compressor_relay_high = bool(high)
         if GPIO is None:
             return
         try:
             GPIO.output(
                 self.compressor_relay_pin,
-                GPIO.HIGH if self.compressor_relay_io6_high else GPIO.LOW,
+                GPIO.HIGH if self.compressor_relay_high else GPIO.LOW,
             )
         except Exception as exc:
-            print(f"Failed to set compressor relay IO{self.compressor_relay_pin}: {exc}")
+            print(f"Failed to set compressor relay GPIO{self.compressor_relay_pin}: {exc}")
 
     def _set_compressor_running(self, on: bool) -> None:
-        """Drive compressor relay (IO6 active-low)."""
+        """Drive compressor relay (active-low)."""
         self.compressor_on = bool(on)
-        self._set_compressor_relay_io6_high(not on)
+        self._set_compressor_relay_high(not on)
 
     def _heat_ex_temperature_c(self, temperatures: dict) -> Optional[float]:
         """Average of the configured plate probes (Plate 1 and Plate 2)."""
