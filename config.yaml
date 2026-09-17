@@ -164,8 +164,10 @@ pressure_sensors:
     bar_hi: 5.171068  # 75.0 psi
 compressor:
   relay_pin: 6
-  # Must match thermistor_sensors.labels (channel used for cooling control).
-  heat_ex_label: Plate 1
+  # Probes averaged for on/off hysteresis. Must match thermistor_sensors.labels.
+  heat_ex_labels:
+    - Plate 1
+    - Plate 2
   off_below_temp_c: -9
   on_above_temp_c: -9.0
 logging:

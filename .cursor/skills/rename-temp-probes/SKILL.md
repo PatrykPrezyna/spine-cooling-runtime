@@ -43,7 +43,7 @@ If that probe is renamed or removed, update the key to the new name (ask only if
 
 - `control_temp_label`
 - `alarms.csf_label`, `alarms.heat_ex_label`
-- `compressor.heat_ex_label`
+- `compressor.heat_ex_label` / `compressor.heat_ex_labels`
 - `cooling_power.catheter_in_label` / `catheter_out_label` / `cartridge_in_label` / `cartridge_out_label`
 - `simulation.csf_label`, `simulation.heat_ex_label`, `simulation.cart_in_label`, `simulation.cart_out_label`
 

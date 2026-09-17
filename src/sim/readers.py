@@ -6,6 +6,7 @@ import time
 from typing import Dict, Optional
 
 from ads1115_thermistor_reader import labels_from_config
+from compressor_control import heat_ex_labels_from_config
 
 
 def _sim_cfg(config: dict) -> dict:
@@ -38,9 +39,14 @@ class _SimThermalLoop:
                 stepper_cfg.get("pumping_speed_rpm", 120),
             )
         )
-        self.heat_ex_label = str(
-            sim_cfg.get("heat_ex_label", compressor_cfg.get("heat_ex_label", "Heat Ex"))
-        )
+        self.heat_ex_labels = heat_ex_labels_from_config(compressor_cfg)
+        sim_heat_ex = sim_cfg.get("heat_ex_label")
+        if sim_heat_ex is not None and str(sim_heat_ex).strip():
+            self.heat_ex_label = str(sim_heat_ex).strip()
+            if self.heat_ex_label not in self.heat_ex_labels:
+                self.heat_ex_labels = [self.heat_ex_label, *self.heat_ex_labels]
+        else:
+            self.heat_ex_label = self.heat_ex_labels[0]
         self.heat_ex_max_c = float(sim_cfg.get("heat_ex_max_c", 23.0))
         self.heat_ex_cool_rate_c_per_s = float(
             sim_cfg.get("heat_ex_cool_rate_c_per_s", 0.5)
@@ -68,8 +74,7 @@ class _SimThermalLoop:
         """Mutate ``temps`` and return labels that were written."""
         frozen = frozen or set()
         changed: list[str] = []
-        if self._advance_heat_ex(temps, compressor_on, elapsed, frozen):
-            changed.append(self.heat_ex_label)
+        changed.extend(self._advance_heat_ex(temps, compressor_on, elapsed, frozen))
         if pump_running and self._advance_cart_in(temps, elapsed, frozen):
             changed.append(self.cart_in_label)
         if self._update_cart_out(temps, pump_running, frozen):
@@ -109,16 +114,19 @@ class _SimThermalLoop:
         compressor_on: bool,
         elapsed: float,
         frozen: set[str],
-    ) -> bool:
-        if self.heat_ex_label in frozen or self.heat_ex_label not in temps:
-            return False
-        current = temps[self.heat_ex_label]
-        if compressor_on:
-            new_raw = current - self.heat_ex_cool_rate_c_per_s * elapsed
-        else:
-            new_raw = current + self.heat_ex_warm_rate_c_per_s * elapsed
-        temps[self.heat_ex_label] = min(new_raw, self.heat_ex_max_c)
-        return True
+    ) -> list[str]:
+        changed: list[str] = []
+        for label in self.heat_ex_labels:
+            if label in frozen or label not in temps:
+                continue
+            current = temps[label]
+            if compressor_on:
+                new_raw = current - self.heat_ex_cool_rate_c_per_s * elapsed
+            else:
+                new_raw = current + self.heat_ex_warm_rate_c_per_s * elapsed
+            temps[label] = min(new_raw, self.heat_ex_max_c)
+            changed.append(label)
+        return changed
 
     def _advance_cart_in(
         self,

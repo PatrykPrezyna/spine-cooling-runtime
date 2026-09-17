@@ -23,6 +23,7 @@ from collections import deque
 from html import escape as _html_escape
 from typing import Optional, Callable
 
+from compressor_control import heat_ex_labels_from_config
 from cooling_power import (
     CoolingPowerConfig,
     cartridge_cooling_power_w,
@@ -31,7 +32,7 @@ from cooling_power import (
 from fault_catalog import FaultCode, operator_help
 from pump_flow_control import flow_ml_per_min_to_rpm_exact, rpm_to_flow_ml_per_min
 
-from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF, QSize, pyqtSignal
+from PyQt6.QtCore import QTimer, Qt, QEvent, QRectF, QPointF, QSize, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget,
@@ -1593,8 +1594,23 @@ class ServiceTab(QWidget):
     _LABEL_NEUTRAL_STYLE = "font-size: 13px; padding: 4px 2px; color: #5c6b79;"
     _LABEL_STRONG_TEMPLATE = "font-size: 13px; padding: 4px 2px; color: {color}; font-weight: 600;"
     _CONTROL_LABEL_STYLE = (
-        "font-size: 12px; font-weight: 700; padding: 4px 8px; color: #0e6a76;"
+        "font-size: 12px; font-weight: 700; padding: 2px 6px; color: #0e6a76;"
         "background: #eef7f8; border: 1px solid #b7d6db; border-radius: 10px;"
+    )
+    _FLOW_SPIN_STYLE = """
+            QSpinBox {
+                font-size: 12px;
+                font-weight: 700;
+                color: #0e6a76;
+                background: #ffffff;
+                border: 1px solid #b7d6db;
+                border-radius: 6px;
+                padding: 0 2px;
+            }
+        """
+    _RPM_READOUT_STYLE = (
+        "font-size: 12px; font-weight: 700; color: #0e6a76;"
+        "background: transparent; padding: 0 2px 0 0;"
     )
     _SLIDER_UNIT_LABEL_STYLE = (
         "font-size: 12px; font-weight: 700; color: #475569; padding: 0 4px;"
@@ -1666,6 +1682,7 @@ class ServiceTab(QWidget):
         self.compressor_control_enabled = False
         self.compressor_off_temp_c = float(compressor_cfg.get("off_below_temp_c", 5))
         self.compressor_on_temp_c = float(compressor_cfg.get("on_above_temp_c", 10))
+        self.compressor_heat_ex_labels = heat_ex_labels_from_config(compressor_cfg)
         self.heat_ex_temp_c: Optional[float] = None
         self.stepper_speed_rpm = int(stepper_cfg.get("default_speed_rpm", 30))
         self.stepper_max_speed_rpm = max(5, int(stepper_cfg.get("max_speed_rpm", 60)))
@@ -1719,13 +1736,14 @@ class ServiceTab(QWidget):
         self.outputs_group.setStyleSheet(self._group_box_style("#0e6a76", "13px", margin_top=8))
         
         # Output labels
-        self.compressor_label = QLabel("OFF  HX --")
+        self.compressor_label = QLabel(f"OFF  {self._compressor_temp_prefix()} --")
         self.compressor_label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
         self.compressor_label.setMinimumWidth(88)
+        self.compressor_label.setToolTip(self._compressor_temp_tooltip())
         self.compressor_control_button = QPushButton("Run")
         self.compressor_control_button.setFixedHeight(self._COMPACT_PUMP_BUTTON_HEIGHT)
         self.compressor_control_button.setFixedWidth(56)
-        self.compressor_control_button.setToolTip("Enable compressor temperature control")
+        self.compressor_control_button.setToolTip(self._compressor_run_tooltip(False))
         self.compressor_control_button.clicked.connect(self._on_compressor_control_toggle_clicked)
         self._apply_compressor_control_button_style(False)
 
@@ -1780,11 +1798,36 @@ class ServiceTab(QWidget):
         self.compressor_on_temp_up.setStyleSheet(self._TEMP_STEP_BUTTON_STYLE)
         self.compressor_on_temp_up.clicked.connect(lambda: self.compressor_on_temp_spin.stepBy(1))
 
-        self.stepper_speed_label = QLabel(self._format_speed_text(self.stepper_speed_rpm))
-        self.stepper_speed_label.setStyleSheet(self._CONTROL_LABEL_STYLE)
-        self.stepper_speed_label.setMinimumWidth(108)
-        self.stepper_speed_label.setFixedHeight(self._COMPACT_PUMP_BUTTON_HEIGHT)
-        self.stepper_speed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.stepper_speed_readout = QFrame()
+        self.stepper_speed_readout.setStyleSheet(self._CONTROL_LABEL_STYLE)
+        self.stepper_speed_readout.setFixedHeight(self._COMPACT_PUMP_BUTTON_HEIGHT)
+        readout_layout = QHBoxLayout(self.stepper_speed_readout)
+        readout_layout.setContentsMargins(6, 0, 6, 0)
+        readout_layout.setSpacing(2)
+
+        self.stepper_speed_label = QLabel()
+        self.stepper_speed_label.setStyleSheet(self._RPM_READOUT_STYLE)
+        self.stepper_speed_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+
+        self.stepper_flow_spin = QSpinBox()
+        self.stepper_flow_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        self.stepper_flow_spin.setKeyboardTracking(False)
+        self.stepper_flow_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.stepper_flow_spin.setSuffix(" ml/min")
+        self.stepper_flow_spin.setFixedWidth(112)
+        self.stepper_flow_spin.setFixedHeight(self._COMPACT_PUMP_BUTTON_HEIGHT - 4)
+        self.stepper_flow_spin.setStyleSheet(self._FLOW_SPIN_STYLE)
+        self.stepper_flow_spin.setToolTip("Type an exact flow setpoint in ml/min")
+        self.stepper_flow_spin.valueChanged.connect(self._on_flow_spin_changed)
+        flow_line = self.stepper_flow_spin.lineEdit()
+        if flow_line is not None:
+            flow_line.installEventFilter(self)
+
+        readout_layout.addWidget(self.stepper_speed_label)
+        readout_layout.addWidget(self.stepper_flow_spin)
+        self._refresh_speed_readout()
 
         self.stepper_rpm_unit_label = QLabel("RPM")
         self.stepper_rpm_unit_label.setStyleSheet(self._SLIDER_UNIT_LABEL_STYLE)
@@ -1973,7 +2016,7 @@ class ServiceTab(QWidget):
         pump_buttons.addWidget(self.jog_forward_button, 1)
         pump_buttons.addWidget(self.stepper_continuous_button, 1)
         pump_buttons.addWidget(self.pid_run_button, 1)
-        pump_buttons.addWidget(self.stepper_speed_label, 0)
+        pump_buttons.addWidget(self.stepper_speed_readout, 0)
         outputs_layout.addLayout(pump_buttons)
         outputs_layout.addWidget(self.flow_ramp_test_button)
         self.outputs_group.setLayout(outputs_layout)
@@ -2012,13 +2055,15 @@ class ServiceTab(QWidget):
 
         comp_status = "ON" if self.compressor_on else "OFF"
         comp_color = "#16a34a" if self.compressor_on else "#6b7280"
+        prefix = self._compressor_temp_prefix()
         if self.heat_ex_temp_c is not None:
-            heat_text = f"HX {self.heat_ex_temp_c:.1f}°"
+            heat_text = f"{prefix} {self.heat_ex_temp_c:.1f}°"
         else:
-            heat_text = "HX --"
+            heat_text = f"{prefix} --"
         self.compressor_label.setText(f"{comp_status}  {heat_text}")
+        self.compressor_label.setToolTip(self._compressor_temp_tooltip())
         self.compressor_label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=comp_color))
-        self.stepper_speed_label.setText(self._format_speed_text(self.stepper_speed_rpm))
+        self._refresh_speed_readout()
         self._update_stepper_control_enabled_state()
 
     def update_usb_status(
@@ -2049,11 +2094,24 @@ class ServiceTab(QWidget):
             ejecting=ejecting,
         )
 
+    def _displayed_flow_ml_per_min(self) -> int:
+        """Return the ml/min value shown in the setpoint readout."""
+        if self._commanded_flow_ml_per_min is not None:
+            return int(self._commanded_flow_ml_per_min)
+        return int(round(rpm_to_flow_ml_per_min(self.stepper_speed_rpm)))
+
     def _format_speed_text(self, rpm: int) -> str:
         if self._commanded_flow_ml_per_min is not None:
             return f"{rpm} RPM  {self._commanded_flow_ml_per_min:d} ml/min"
         ml_per_min = rpm_to_flow_ml_per_min(rpm)
         return f"{rpm} RPM  {ml_per_min:.0f} ml/min"
+
+    def _flow_entry_bounds(self) -> tuple[int, int]:
+        """Return min/max integer ml/min that the pump RPM range can reach."""
+        min_rpm = min(self.stepper_min_speed_rpm, self.stepper_max_speed_rpm)
+        lo = max(1, int(round(rpm_to_flow_ml_per_min(min_rpm))))
+        hi = max(lo, int(round(rpm_to_flow_ml_per_min(self.stepper_max_speed_rpm))))
+        return lo, hi
 
     def _flow_setpoint_bounds(self) -> tuple[int, int]:
         """Return min/max discrete ml/min setpoints for the current RPM range."""
@@ -2121,7 +2179,9 @@ class ServiceTab(QWidget):
             flow_setpoint = int(self._commanded_flow_ml_per_min)
         else:
             flow_setpoint = self._rpm_to_flow_setpoint(rpm)
-        flow_step = self._flow_ml_to_slider_step(flow_setpoint)
+        lo, hi = self._flow_setpoint_bounds()
+        slider_ml = max(lo, min(hi, _snap_ml_per_min_setpoint(flow_setpoint)))
+        flow_step = self._flow_ml_to_slider_step(slider_ml)
 
         blocked_rpm = self.stepper_speed_slider.blockSignals(True)
         try:
@@ -2160,9 +2220,52 @@ class ServiceTab(QWidget):
             self._commanded_flow_ml_per_min = None
         self.stepper_speed_rpm = rpm
         self._sync_linked_speed_sliders(rpm)
-        self.stepper_speed_label.setText(self._format_speed_text(self.stepper_speed_rpm))
+        self._refresh_speed_readout()
         if emit_callback and self.on_stepper_speed_change_callback:
             self.on_stepper_speed_change_callback(self.stepper_speed_rpm)
+
+    def _refresh_speed_readout(self):
+        """Update the RPM label and flow spin unless the spin is being edited."""
+        self.stepper_speed_label.setText(f"{self.stepper_speed_rpm} RPM")
+        lo, hi = self._flow_entry_bounds()
+        displayed = max(lo, min(hi, self._displayed_flow_ml_per_min()))
+        if self.stepper_flow_spin.hasFocus():
+            return
+        blocked = self.stepper_flow_spin.blockSignals(True)
+        try:
+            self.stepper_flow_spin.setRange(lo, hi)
+            if self.stepper_flow_spin.value() != displayed:
+                self.stepper_flow_spin.setValue(displayed)
+        finally:
+            self.stepper_flow_spin.blockSignals(blocked)
+
+    def _apply_typed_flow_ml_per_min(self, ml_per_min: int) -> None:
+        """Set an exact ml/min setpoint and the nearest integer RPM."""
+        lo, hi = self._flow_entry_bounds()
+        ml_per_min = max(lo, min(hi, int(ml_per_min)))
+        self._set_stepper_speed_rpm(
+            self._flow_setpoint_to_rpm(ml_per_min),
+            emit_callback=True,
+            flow_setpoint_ml_per_min=ml_per_min,
+        )
+        if self.stepper_flow_spin.value() != ml_per_min:
+            blocked = self.stepper_flow_spin.blockSignals(True)
+            try:
+                self.stepper_flow_spin.setRange(lo, hi)
+                self.stepper_flow_spin.setValue(ml_per_min)
+            finally:
+                self.stepper_flow_spin.blockSignals(blocked)
+
+    def _on_flow_spin_changed(self, value: int):
+        """Handle typed/committed ml/min in the setpoint readout."""
+        self._apply_typed_flow_ml_per_min(int(value))
+
+    def eventFilter(self, watched, event):
+        spin = getattr(self, "stepper_flow_spin", None)
+        line = spin.lineEdit() if spin is not None else None
+        if watched is line and event.type() == QEvent.Type.FocusIn:
+            QTimer.singleShot(0, spin.selectAll)
+        return super().eventFilter(watched, event)
 
     def _on_stepper_speed_changed(self, value: int):
         """Handle RPM slider changes; keep the ml/min slider in sync."""
@@ -2182,6 +2285,24 @@ class ServiceTab(QWidget):
             emit_callback=True,
             flow_setpoint_ml_per_min=ml_per_min,
         )
+
+    def _compressor_temp_prefix(self) -> str:
+        return "Avg" if len(self.compressor_heat_ex_labels) > 1 else "HX"
+
+    def _compressor_temp_tooltip(self) -> str:
+        labels = self.compressor_heat_ex_labels
+        if len(labels) > 1:
+            names = " and ".join(labels)
+            return f"Control temperature: average of {names}"
+        if labels:
+            return f"Control temperature: {labels[0]}"
+        return "Control temperature"
+
+    def _compressor_run_tooltip(self, control_enabled: bool) -> str:
+        extra = self._compressor_temp_tooltip()
+        if control_enabled:
+            return f"Disable compressor temperature control. {extra}"
+        return f"Enable compressor temperature control. {extra}"
 
     def _on_compressor_control_toggle_clicked(self):
         self.compressor_control_enabled = not self.compressor_control_enabled
@@ -2215,9 +2336,7 @@ class ServiceTab(QWidget):
             border = "#4b5563"
         self.compressor_control_button.setText(text)
         self.compressor_control_button.setToolTip(
-            "Disable compressor temperature control"
-            if control_enabled
-            else "Enable compressor temperature control"
+            self._compressor_run_tooltip(control_enabled)
         )
         self.compressor_control_button.setStyleSheet(f"""
             QPushButton {{
@@ -2331,6 +2450,7 @@ class ServiceTab(QWidget):
         sliders_enabled = not self.pid_run_active
         self.stepper_speed_slider.setEnabled(sliders_enabled)
         self.stepper_flow_slider.setEnabled(sliders_enabled)
+        self.stepper_flow_spin.setEnabled(sliders_enabled)
 
     def _on_flow_ramp_test_clicked(self):
         """Toggle the timed flow-ramp test."""
@@ -3775,9 +3895,7 @@ class MainScreen(QMainWindow):
             self.config.get('compressor', {}),
         )
         self.service_tab._configure_flow_slider_range()
-        self.service_tab.stepper_speed_label.setText(
-            self.service_tab._format_speed_text(self.service_tab.stepper_speed_rpm)
-        )
+        self.service_tab._refresh_speed_readout()
         self.service_tab.on_stepper_speed_change_callback = self._on_service_stepper_speed_change
         self.service_tab.on_stepper_jog_start_callback = self._on_service_stepper_jog_start
         self.service_tab.on_stepper_jog_stop_callback = self._on_service_stepper_jog_stop

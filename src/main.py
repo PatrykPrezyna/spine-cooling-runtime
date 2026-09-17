@@ -27,6 +27,7 @@ try:
 except Exception:  # pragma: no cover - non-RPi environments
     GPIO = None  # type: ignore
 
+from compressor_control import average_temperature_c, heat_ex_labels_from_config
 from cooling_tracker import CoolingEffectivenessTracker
 from csv_logger import CSVLogger
 from pressure_csv_logger import PressureCSVLogger, PressureCaptureLoop
@@ -221,7 +222,9 @@ class SensorMonitorApp(QObject):
         self.compressor_relay_io6_high: bool = True
         self.compressor_control_enabled: bool = False
         self.compressor_latched_on: bool = False
-        self.compressor_heat_ex_label: str = str(compressor_cfg.get('heat_ex_label', 'Heat Ex'))
+        self.compressor_heat_ex_labels: list[str] = heat_ex_labels_from_config(
+            compressor_cfg
+        )
         self.compressor_off_temp_c: float = float(compressor_cfg.get('off_below_temp_c', 5))
         self.compressor_on_temp_c: float = float(compressor_cfg.get('on_above_temp_c', 10))
         self._last_temperatures: dict = {}
@@ -384,16 +387,11 @@ class SensorMonitorApp(QObject):
         self._set_compressor_relay_io6_high(not on)
 
     def _heat_ex_temperature_c(self, temperatures: dict) -> Optional[float]:
-        value = temperatures.get(self.compressor_heat_ex_label)
-        if value is None:
-            return None
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
+        """Average of the configured plate probes (Plate 1 and Plate 2)."""
+        return average_temperature_c(temperatures, self.compressor_heat_ex_labels)
 
     def _apply_compressor_heat_ex_control(self, temperatures: dict) -> None:
-        """Heat Ex hysteresis: off below off_temp_c, on above on_temp_c."""
+        """Plate-average hysteresis: off below off_temp_c, on above on_temp_c."""
         if not self.compressor_control_enabled:
             self.compressor_latched_on = False
             self._set_compressor_running(False)
@@ -1014,7 +1012,7 @@ class SensorMonitorApp(QObject):
             self._update_stepper_ui_status()
 
     def on_compressor_control_toggle(self, enabled: bool) -> None:
-        """Enable/disable Heat Ex temperature control from the service page."""
+        """Enable/disable plate-average temperature control from the service page."""
         self.compressor_control_enabled = bool(enabled)
         if self.compressor_control_enabled:
             temp_c = self._heat_ex_temperature_c(self._last_temperatures)

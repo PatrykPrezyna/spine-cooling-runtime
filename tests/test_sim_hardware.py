@@ -154,6 +154,30 @@ class SimHardwareTests(unittest.TestCase):
         self.assertAlmostEqual(reader.read_temperatures()["Heat Ex"], 21.52, places=1)
         reader.cleanup()
 
+    def test_compressor_cools_both_plate_probes(self) -> None:
+        config = dict(_MINIMAL_CONFIG)
+        config["thermistor_sensors"] = {
+            "labels": {0: "Plate 1", 1: "Plate 2", 2: "Heat Ex"},
+        }
+        config["compressor"] = {"heat_ex_labels": ["Plate 1", "Plate 2"]}
+        config["simulation"] = dict(_MINIMAL_CONFIG["simulation"])
+        config["simulation"].update(
+            {
+                "heat_ex_label": "Plate 1",
+                "thermistors": {"Plate 1": 22.0, "Plate 2": 22.0, "Heat Ex": 22.0},
+            }
+        )
+        bundle = build_hardware(config, simulation=True)
+        reader = bundle.thermistor_reader
+
+        reader.notify_setpoint(32.0, compressor_cooling=1)
+        time.sleep(1.05)
+        reader.notify_setpoint(32.0, compressor_cooling=1)
+        temps = reader.read_temperatures()
+        self.assertAlmostEqual(temps["Plate 1"], 21.5, places=1)
+        self.assertAlmostEqual(temps["Plate 2"], 21.5, places=1)
+        reader.cleanup()
+
     def test_heat_ex_never_exceeds_max(self) -> None:
         bundle = build_hardware(_MINIMAL_CONFIG, simulation=True)
         reader = bundle.thermistor_reader
