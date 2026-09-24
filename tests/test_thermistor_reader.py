@@ -12,6 +12,7 @@ if str(SRC_DIR) not in sys.path:
 
 from ads1115_thermistor_reader import (  # noqa: E402
     ADS1115ThermistorReader,
+    _PLATE_TABLE_CSV,
     chip_key_for_channel,
 )
 from hardware_factory import build_hardware  # noqa: E402
@@ -21,6 +22,7 @@ from sensor_injection import (  # noqa: E402
 )
 from thermistor_conversion import (  # noqa: E402
     DEFAULT_TABLE_CSV,
+    load_rt_table,
     millivolts_to_celsius,
     voltage_to_celsius,
     voltage_to_r,
@@ -91,6 +93,32 @@ class ThermistorConversionTests(unittest.TestCase):
         self.assertGreaterEqual(len(reader.rt_table), 2)
         self.assertAlmostEqual(reader.rt_table[0][1], 0.0)  # coldest first (highest R)
         self.assertAlmostEqual(reader.rt_table[-1][1], 50.0)
+
+    def test_vishay_ntcascwe3103f_uses_rnom_column(self) -> None:
+        table = load_rt_table(_PLATE_TABLE_CSV, r_col="Rnom [ohms]")
+        r_25 = next(r for r, t in table if t == 25.0)
+        self.assertAlmostEqual(r_25, 10000.0, places=2)
+        self.assertAlmostEqual(
+            millivolts_to_celsius(
+                1000.0 * 2.5 * 10000.0 / (100000.0 + 10000.0),
+                table,
+            ),
+            25.0,
+            places=5,
+        )
+
+    def test_plate_channels_use_ntcascwe3103f_rnom(self) -> None:
+        reader = ADS1115ThermistorReader(
+            {"thermistor_sensors": {"labels": {5: "Plate 1", 6: "Plate 2"}}}
+        )
+        default_table = reader.rt_table
+        plate_table = reader._table_for(5)
+        self.assertIs(reader._table_for(6), plate_table)
+        self.assertIsNot(plate_table, default_table)
+        self.assertIsNot(plate_table, reader._table_for(0))
+        self.assertIs(reader._table_for(1), default_table)
+        r_25 = next(r for r, t in plate_table if t == 25.0)
+        self.assertAlmostEqual(r_25, 10000.0, places=2)
 
     def test_tip_channel_uses_ab6n2_table(self) -> None:
         reader = ADS1115ThermistorReader({"thermistor_sensors": {"labels": {0: "Tip"}}})

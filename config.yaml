@@ -96,7 +96,8 @@ sensors:
 sample_rate_hz: 1.0
 # Thermistor names for the 12 ADS1115 channels. Hardware and conversion are
 # fixed in ads1115_thermistor_reader.py (0-3 i2c-1 0x48, 4-7 i2c-1 0x49,
-# 8-11 i2c-6 0x48; Tip/channel 0 uses AB6N2, the rest MA300TA103C).
+# 8-11 i2c-6 0x48; Tip/0 = AB6N2, Plate 1–2/5–6 = NTCASCWE3103F Rnom,
+# the rest MA300TA103C).
 thermistor_sensors:
   labels:
     0: Tip

@@ -8,8 +8,9 @@ Hardware is fixed (not config):
 - 8–11: i2c-6 0x48
 - gain 1 (±4.096 V), 128 SPS, single-shot
 
-Conversion is fixed: 2.5 V / 100 kΩ divider. MA300TA103C for every
-channel except 0 (Tip), which uses the AB6N2 table.
+Conversion is fixed: 2.5 V / 100 kΩ divider. MA300TA103C by default;
+channel 0 (Tip) uses AB6N2; channels 5–6 (Plate 1 / Plate 2) use
+NTCASCWE3103F ``Rnom``.
 
 Only ``thermistor_sensors.labels`` is read from config (channel → name).
 """
@@ -45,6 +46,14 @@ _TIP_TABLE_CSV = (
     / "Thermistor_AB6N2-GC14KA143E_37C.csv"
 )
 _TIP_R_COL = "Resistance_Ohm"
+_PLATE_CHANNELS = frozenset((5, 6))
+_PLATE_TABLE_CSV = (
+    Path(__file__).resolve().parents[1]
+    / "data"
+    / "calibration"
+    / "Thermistor_NTCASCWE3103F.csv"
+)
+_PLATE_R_COL = "Rnom [ohms]"
 
 
 def chip_key_for_channel(channel: int) -> ChipKey:
@@ -83,6 +92,9 @@ class ADS1115ThermistorReader:
         self.rt_table: Sequence[RtPoint] = load_rt_table()
         self._tip_table: Sequence[RtPoint] = load_rt_table(
             _TIP_TABLE_CSV, r_col=_TIP_R_COL
+        )
+        self._plate_table: Sequence[RtPoint] = load_rt_table(
+            _PLATE_TABLE_CSV, r_col=_PLATE_R_COL
         )
         self.last_error: Optional[str] = None
         self.is_initialized = False
@@ -142,8 +154,11 @@ class ADS1115ThermistorReader:
         return self.channel_labels.get(channel, f"Therm {channel + 1}")
 
     def _table_for(self, channel: int) -> Sequence[RtPoint]:
-        if int(channel) == _TIP_CHANNEL:
+        channel = int(channel)
+        if channel == _TIP_CHANNEL:
             return self._tip_table
+        if channel in _PLATE_CHANNELS:
+            return self._plate_table
         return self.rt_table
 
     def read_temperatures(self) -> Dict[str, float]:

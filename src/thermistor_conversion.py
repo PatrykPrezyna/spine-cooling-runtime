@@ -1,8 +1,8 @@
-"""NTC thermistor voltage → temperature conversion (MA300TA103C).
+"""NTC thermistor voltage → temperature conversion.
 
 Divider: ``V = Vref * R / (Rs + R)`` with the thermistor to ground and ``Rs``
 as the pull-up. Resistance→°C comes from the manufacturer R–T table
-(``10k_Ohm`` column by default).
+(``10k_Ohm`` on MA300TA103C by default).
 """
 
 from __future__ import annotations
@@ -18,7 +18,23 @@ DEFAULT_R_COL = "10k_Ohm"
 DEFAULT_VREF_V = 2.5
 DEFAULT_RS_OHM = 100_000.0
 
+_T_COL_ALIASES = ("Temperature_C", "T [celsius]", "T [C]", "T")
+_R_COL_ALIASES = ("10k_Ohm", "Resistance_Ohm", "Rnom [ohms]", "Rnom", "R nom")
+
 RtPoint = Tuple[float, float]  # (R_ohm, T_C)
+
+
+def _norm_col(name: str) -> str:
+    return "".join(ch for ch in name.strip().lower() if ch.isalnum())
+
+
+def _match_col(cells: Sequence[str], *candidates: str) -> Optional[str]:
+    by_norm = {_norm_col(cell): cell for cell in cells if str(cell).strip()}
+    for candidate in candidates:
+        key = _norm_col(candidate)
+        if key in by_norm:
+            return by_norm[key]
+    return None
 
 
 def resolve_table_path(path: Optional[str | Path] = None) -> Path:
@@ -37,13 +53,43 @@ def resolve_table_path(path: Optional[str | Path] = None) -> Path:
 def load_rt_table(
     path: Optional[str | Path] = None,
     r_col: str = DEFAULT_R_COL,
+    t_col: Optional[str] = None,
 ) -> list[RtPoint]:
-    """Return ``(R_ohm, T_C)`` pairs sorted by descending R (NTC)."""
+    """Return ``(R_ohm, T_C)`` pairs sorted by descending R (NTC).
+
+    Accepts ``Rnom [ohms]`` / ``T [celsius]`` as well as the MA300 columns.
+    """
     table_path = resolve_table_path(path)
+    t_candidates = (t_col,) if t_col else _T_COL_ALIASES
+    r_candidates = (r_col, *_R_COL_ALIASES)
+    with table_path.open(newline="", encoding="utf-8-sig") as f:
+        raw_rows = list(csv.reader(f, skipinitialspace=True))
+
+    header_idx: Optional[int] = None
+    t_key: Optional[str] = None
+    r_key: Optional[str] = None
+    for index, cells in enumerate(raw_rows):
+        t_key = _match_col(cells, *t_candidates)
+        r_key = _match_col(cells, *r_candidates)
+        if t_key is not None and r_key is not None:
+            header_idx = index
+            break
+    if header_idx is None or t_key is None or r_key is None:
+        raise ValueError(
+            f"Thermistor R–T table has no temperature/R columns: {table_path}"
+        )
+
+    header = raw_rows[header_idx]
+    t_idx = header.index(t_key)
+    r_idx = header.index(r_key)
     rows: list[RtPoint] = []
-    with table_path.open(newline="") as f:
-        for row in csv.DictReader(f):
-            rows.append((float(row[r_col]), float(row["Temperature_C"])))
+    for cells in raw_rows[header_idx + 1 :]:
+        if max(t_idx, r_idx) >= len(cells):
+            continue
+        try:
+            rows.append((float(cells[r_idx]), float(cells[t_idx])))
+        except (TypeError, ValueError):
+            continue
     if len(rows) < 2:
         raise ValueError(f"Thermistor R–T table needs ≥2 rows: {table_path}")
     rows.sort(key=lambda p: -p[0])
