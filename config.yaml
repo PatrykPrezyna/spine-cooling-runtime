@@ -13,8 +13,6 @@ temperature_sources:
   Plate 2: thermistor
   Body Temp: thermistor
   Hot bath1: thermistor
-  #Hot bath2: thermistor
-  #Ice Water: thermistor
   Plate 1b: thermistor
   Plate 2b: thermistor
   Probe 4: thermistor
@@ -72,8 +70,8 @@ simulation:
     Plate 2: 22.0
     Body Temp: 36.5
     Hot bath1: 37.0
-    Hot bath2: 37.0
-    Ice Water: 4.0
+    Plate 1b: 37.0
+    Plate 2b: 4.0
     Probe 4: 25.0
   flow_ml_per_min: 30.0
 acustic_signal_gpio_pin: 16
@@ -111,8 +109,8 @@ thermistor_sensors:
     6: Plate 2
     7: Body Temp
     8: Hot bath1
-    9: Hot bath2
-    10: Ice Water
+    9: Plate 1b
+    10: Plate 2b
     11: Probe 4
 # 4-20 mA flow meter on I2C bus 6, ADS1115 0x49 (73) AIN0.
 # Bus 1: 0x48/0x49 thermistors, 0x4A/0x4B (74/75) pressure.

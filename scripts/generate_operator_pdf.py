@@ -39,8 +39,8 @@ TEMPS = {
     "Plate 2": 4.4,
     "Body Temp": 36.3,
     "Hot bath1": 37.0,
-    "Hot bath2": 37.0,
-    "Ice Water": 4.0,
+    "Plate 1b": 37.0,
+    "Plate 2b": 4.0,
     "Probe 4": 25.0,
 }
 PRESSURES = {

@@ -59,8 +59,8 @@ _DEFAULT_TEMP_NAMES = [
     "Plate 2",
     "Body Temp",
     "Hot bath1",
-    "Hot bath2",
-    "Ice Water",
+    "Plate 1b",
+    "Plate 2b",
     "Probe 4",
 ]
 _DEFAULT_PRESSURE_NAMES = ["Pump In", "Pump Out", "Catheter In", "Catheter Out"]

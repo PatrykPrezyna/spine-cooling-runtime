@@ -212,7 +212,7 @@ class ExtraBusThermistorTests(unittest.TestCase):
         self.assertNotIn("i2c_addresses", ts)
         self.assertEqual(
             [ts["labels"][i] for i in range(8, 12)],
-            ["Hot bath1", "Hot bath2", "Ice Water", "Probe 4"],
+            ["Hot bath1", "Plate 1b", "Plate 2b", "Probe 4"],
         )
         expected_ui = [
             ts["labels"][i] for i in sorted(ts["labels"])

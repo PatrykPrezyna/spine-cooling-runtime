@@ -54,6 +54,8 @@ KNOWN_LABELS = {
     "hot_bath1": "Hot bath1",
     "hot_bath2": "Hot bath2",
     "ice_water": "Ice Water",
+    "plate_1b": "Plate 1b",
+    "plate_2b": "Plate 2b",
     "probe_1": "Probe 1",
     "probe_2": "Probe 2",
     "probe_3": "Probe 3",
