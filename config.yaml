@@ -13,8 +13,10 @@ temperature_sources:
   Plate 2: thermistor
   Body Temp: thermistor
   Hot bath1: thermistor
-  Hot bath2: thermistor
-  Ice Water: thermistor
+  #Hot bath2: thermistor
+  #Ice Water: thermistor
+  Plate 1b: thermistor
+  Plate 2b: thermistor
   Probe 4: thermistor
 alarms:
   csf_label: Body Temp
