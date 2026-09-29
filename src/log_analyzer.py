@@ -34,6 +34,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from compressor_control import MIN_OFF_BEFORE_ON_S
 from gui import (
     PowerGraphTab,
     PressureServiceTab,
@@ -100,6 +101,25 @@ def _status_chip_style(bg_color: str, border_color: str, text_color: str) -> str
             border: 1px solid {border_color};
         }}
     """
+
+
+def _compressor_min_off_s() -> float:
+    """Restart wait used when marking compressor on/off on the temperature trace."""
+    path = application_dir() / "config.yaml"
+    try:
+        import yaml
+    except ImportError:
+        return MIN_OFF_BEFORE_ON_S
+    try:
+        with path.open(encoding="utf-8") as handle:
+            loaded = yaml.safe_load(handle) or {}
+        raw = (loaded.get("compressor") or {}).get(
+            "min_off_before_on_s",
+            MIN_OFF_BEFORE_ON_S,
+        )
+        return float(raw)
+    except (OSError, TypeError, ValueError, AttributeError, yaml.YAMLError):
+        return MIN_OFF_BEFORE_ON_S
 
 
 def application_dir() -> Path:
@@ -373,7 +393,11 @@ class LogAnalyzerWindow(QMainWindow):
         self.window_mode_toggle_button.clicked.connect(self._toggle_window_mode)
         self._update_window_mode_toggle_button()
 
-        self.temperature_tab = TemperatureGraphTab(list(_DEFAULT_TEMP_NAMES))
+        self.temperature_tab = TemperatureGraphTab(
+            list(_DEFAULT_TEMP_NAMES),
+            show_compressor_toggle=True,
+            compressor_min_off_s=_compressor_min_off_s(),
+        )
         self.pressure_tab = PressureServiceTab(
             pressure_sensor_names=list(_DEFAULT_PRESSURE_NAMES)
         )
@@ -463,7 +487,11 @@ class LogAnalyzerWindow(QMainWindow):
         temp_names = session.temperature_names or list(_DEFAULT_TEMP_NAMES)
         pressure_names = session.pressure_names or list(_DEFAULT_PRESSURE_NAMES)
 
-        self.temperature_tab = TemperatureGraphTab(temp_names)
+        self.temperature_tab = TemperatureGraphTab(
+            temp_names,
+            show_compressor_toggle=True,
+            compressor_min_off_s=_compressor_min_off_s(),
+        )
         self.pressure_tab = PressureServiceTab(pressure_sensor_names=pressure_names)
         self.power_tab = PowerGraphTab({"cooling_power": {}})
         self._prepare_graph(self.temperature_tab)

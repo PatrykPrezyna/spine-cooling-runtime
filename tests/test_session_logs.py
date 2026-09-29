@@ -160,6 +160,11 @@ class SessionLogsTests(unittest.TestCase):
             tip = series_stats(session.temperature_samples, "Tip")
             self.assertAlmostEqual(tip["min"], 35.0)
             self.assertAlmostEqual(tip["max"], 36.1)
+            self.assertAlmostEqual(
+                session.temperature_samples[0][1]["Compressor"],
+                1.0,
+            )
+            self.assertNotIn("Compressor", session.temperature_names)
 
     def test_load_evaluation_sample_when_present(self) -> None:
         sample = PROJECT_ROOT / "evaluation tool" / "20260819_150802_sensors.csv"

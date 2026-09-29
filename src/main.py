@@ -928,6 +928,7 @@ class SensorMonitorApp(QObject):
                     temperatures,
                     pressures,
                     measured_flow_ml_per_min=flow_ml_per_min,
+                    compressor_on=self.compressor_on,
                 )
                 self._refresh_acknowledge_button(sensor_states, temperatures, pressures)
                 if self.stepper_driver:

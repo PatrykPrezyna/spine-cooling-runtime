@@ -171,6 +171,9 @@ compressor:
     - Plate 2
   off_below_temp_c: -9
   on_above_temp_c: -9.0
+  # After the compressor switches off, it stays off this long before it can
+  # switch on again. Temperature traces mark the real on, not the relay command.
+  min_off_before_on_s: 60
 logging:
   # All three session CSVs share this folder and one startup stamp:
   #   <stamp>_sensors.csv

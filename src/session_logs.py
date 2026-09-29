@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
 
+from compressor_control import COMPRESSOR_TRACE_KEY
 from cooling_power import (
     CoolingPowerConfig,
     cartridge_cooling_power_w,
@@ -305,6 +306,7 @@ def _load_sensors_csv(
                 names[index]: _as_float(row.get(column))
                 for index, column in enumerate(temp_columns)
             }
+            temps[COMPRESSOR_TRACE_KEY] = _as_float(row.get("compressor_cooling"))
             samples.append((ts, temps))
             extra = dict(temps)
             extra["set_temperature_c"] = _as_float(row.get("set_temperature_c"))

@@ -23,7 +23,14 @@ from collections import deque
 from html import escape as _html_escape
 from typing import Optional, Callable
 
-from compressor_control import heat_ex_labels_from_config
+from compressor_control import (
+    COMPRESSOR_TRACE_KEY,
+    MIN_OFF_BEFORE_ON_S,
+    CompressorRestartDelay,
+    commanded_compressor_on,
+    compressor_overlay_spans,
+    heat_ex_labels_from_config,
+)
 from cooling_power import (
     CoolingPowerConfig,
     cartridge_cooling_power_w,
@@ -2869,6 +2876,7 @@ class MultiTemperatureGraphWidget(QWidget):
         right_axis_unit: str = "",
         right_tick_format: str = "{:.0f}",
         default_right_y_range: tuple[float, float] = (0.0, 70.0),
+        compressor_min_off_s: float = MIN_OFF_BEFORE_ON_S,
     ):
         super().__init__()
         self.series_names = list(series_names)
@@ -2880,6 +2888,10 @@ class MultiTemperatureGraphWidget(QWidget):
         self._right_tick_format = right_tick_format
         self._default_right_y_range = default_right_y_range
         self._history = deque()
+        self._compressor_trace: deque = deque()
+        self._compressor_delay = CompressorRestartDelay(compressor_min_off_s)
+        self._compressor_visible = False
+        self._compressor_switch_cache: list[tuple[float, bool]] = []
         self._visible = {name: True for name in self.series_names}
         self._x_window_minutes_options = [1, 2, 5, 10, 15, 30, 60]
         self._x_window_minutes = 10
@@ -2910,6 +2922,17 @@ class MultiTemperatureGraphWidget(QWidget):
         if name in self._visible:
             self._visible[name] = bool(visible)
             self.update()
+
+    def set_compressor_visible(self, visible: bool):
+        """Show or hide the compressor on/off bands on this graph."""
+        self._compressor_visible = bool(visible)
+        self.update()
+
+    def compressor_is_on(self) -> Optional[bool]:
+        """Physical compressor state of the latest sample, after the restart wait."""
+        if not self._compressor_trace:
+            return None
+        return float(self._compressor_trace[-1][1]) >= 0.5
 
     def set_window_minutes(self, minutes: int):
         """Set the visible time window (X-axis span) and reset panning."""
@@ -2951,22 +2974,44 @@ class MultiTemperatureGraphWidget(QWidget):
     def add_sample(self, series_values: dict, timestamp: Optional[float] = None):
         now = time.monotonic() if timestamp is None else float(timestamp)
         self._history.append((now, self._normalize_series(series_values)))
+        self._record_compressor(now, series_values)
 
         cutoff = now - self._MAX_HISTORY_SEC
         while self._history and self._history[0][0] < cutoff:
             self._history.popleft()
+        while self._compressor_trace and self._compressor_trace[0][0] < cutoff:
+            self._compressor_trace.popleft()
         self.update()
 
     def replace_history(self, entries) -> None:
         """Replace plotted samples (used when toggling raw vs averaged view)."""
         self._history.clear()
+        self._compressor_trace.clear()
+        self._compressor_delay.reset()
         materialized = list(entries)
+        cutoff = None
         if materialized:
             cutoff = materialized[-1][0] - self._MAX_HISTORY_SEC
-            materialized = [entry for entry in materialized if entry[0] >= cutoff]
         for ts, values in materialized:
-            self._history.append((float(ts), self._normalize_series(values)))
+            timestamp = float(ts)
+            self._record_compressor(timestamp, values)
+            if cutoff is not None and timestamp < cutoff:
+                continue
+            self._history.append((timestamp, self._normalize_series(values)))
+        if cutoff is not None:
+            while self._compressor_trace and self._compressor_trace[0][0] < cutoff:
+                self._compressor_trace.popleft()
         self.update()
+
+    def _record_compressor(self, timestamp: float, series_values: dict) -> None:
+        """Store the physical on/off trace. The relay command may lead the real start."""
+        if COMPRESSOR_TRACE_KEY not in series_values:
+            return
+        points = self._compressor_delay.push(
+            timestamp,
+            commanded_compressor_on(series_values.get(COMPRESSOR_TRACE_KEY)),
+        )
+        self._compressor_trace.extend(points)
 
     def _normalize_series(self, series_values: dict) -> dict:
         normalized = {}
@@ -3122,6 +3167,14 @@ class MultiTemperatureGraphWidget(QWidget):
 
             painter.save()
             painter.setClipRect(QRectF(plot_left, plot_top, plot_width, plot_height))
+            self._draw_compressor_overlay(
+                painter,
+                time_to_x,
+                plot_top,
+                plot_bottom,
+                start_ts,
+                end_ts,
+            )
             for name in self.series_names:
                 if not self._visible.get(name, False):
                     continue
@@ -3148,7 +3201,79 @@ class MultiTemperatureGraphWidget(QWidget):
                     # strokePath ignores the active brush, so crossing
                     # lines don't fill-clobber each other.
                     painter.strokePath(path, pen)
+            self._draw_compressor_switch_labels(
+                painter,
+                time_to_x,
+                plot_top,
+                plot_left,
+                plot_right,
+            )
             painter.restore()
+
+    def _draw_compressor_overlay(
+        self,
+        painter: QPainter,
+        time_to_x,
+        plot_top: float,
+        plot_bottom: float,
+        start_ts: float,
+        end_ts: float,
+    ) -> None:
+        """Shade intervals where the compressor is actually running."""
+        if not self._compressor_visible or not self._compressor_trace:
+            self._compressor_switch_cache = []
+            return
+        spans, switches = compressor_overlay_spans(
+            self._compressor_trace, start_ts, end_ts
+        )
+        self._compressor_switch_cache = switches
+        if not spans and not switches:
+            return
+        band = QColor("#16a34a")
+        band.setAlpha(42)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(band)
+        for span_start, span_end in spans:
+            x0 = time_to_x(span_start)
+            x1 = time_to_x(span_end)
+            if x1 <= x0:
+                continue
+            painter.drawRect(QRectF(x0, plot_top, x1 - x0, plot_bottom - plot_top))
+        for ts, turned_on in switches:
+            px = time_to_x(ts)
+            color = QColor("#16a34a") if turned_on else QColor("#64748b")
+            painter.setPen(QPen(color, 2))
+            painter.drawLine(int(px), int(plot_top), int(px), int(plot_bottom))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+    def _draw_compressor_switch_labels(
+        self,
+        painter: QPainter,
+        time_to_x,
+        plot_top: float,
+        plot_left: float,
+        plot_right: float,
+    ) -> None:
+        """Label each on/off transition along the top of the plot."""
+        switches = self._compressor_switch_cache
+        if not self._compressor_visible or not switches:
+            return
+        painter.setFont(QFont("Arial", 8, QFont.Weight.Bold))
+        last_label_x = plot_left - 40
+        for ts, turned_on in switches:
+            px = time_to_x(ts)
+            if px - last_label_x < 28:
+                continue
+            text = "ON" if turned_on else "OFF"
+            painter.setPen(QColor("#166534") if turned_on else QColor("#475569"))
+            if px > plot_right - 28:
+                rect = QRectF(px - 30, plot_top + 1, 28, 12)
+                align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            else:
+                rect = QRectF(px + 2, plot_top + 1, 28, 12)
+                align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            painter.drawText(rect, align, text)
+            last_label_x = px
 
     def _compute_visible_y_range(
         self,
@@ -3224,10 +3349,20 @@ class TemperatureGraphTab(QWidget):
         default_unit: str = "\u00b0C",
         default_format: str = "{:.1f}",
         right_column_width: int = _GRAPH_NAV_COLUMN_W,
+        show_compressor_toggle: bool = False,
+        compressor_min_off_s: float = MIN_OFF_BEFORE_ON_S,
     ):
         super().__init__()
         self.series_names = list(series_names)
-        self.graph_widget = graph_widget or MultiTemperatureGraphWidget(self.series_names)
+        self._show_compressor_toggle = bool(show_compressor_toggle)
+        self.graph_widget = graph_widget or MultiTemperatureGraphWidget(
+            self.series_names,
+            compressor_min_off_s=compressor_min_off_s,
+        )
+        if graph_widget is not None and self._show_compressor_toggle:
+            self.graph_widget._compressor_delay = CompressorRestartDelay(
+                compressor_min_off_s
+            )
         self._series_units = dict(series_units or {})
         self._series_formats = dict(series_formats or {})
         self._default_unit = default_unit
@@ -3284,44 +3419,65 @@ class TemperatureGraphTab(QWidget):
 
     def _create_widgets(self):
         for name in self.series_names:
-            checkbox = QCheckBox(name)
-            checkbox.setChecked(True)
             series_color = self.graph_widget._series_colors.get(name, "#1f2937")
             # The whole row is a large pressable toggle: tinted with the series
             # colour when enabled, neutral grey when disabled. The tick indicator
             # is hidden since the fill colour conveys the state.
-            checkbox.setStyleSheet("""
-                QCheckBox {
-                    font-size: 12px;
-                    font-weight: 700;
-                    color: #475569;
-                    min-height: 26px;
-                    padding: 2px 8px;
-                    border: 2px solid #cbd5e1;
-                    border-radius: 8px;
-                    background-color: #f1f5f9;
-                }
-                QCheckBox:checked {
-                    color: #ffffff;
-                    border: 2px solid %s;
-                    background-color: %s;
-                }
-                QCheckBox::indicator {
-                    width: 0px;
-                    height: 0px;
-                    margin: 0px;
-                }
-            """ % (series_color, series_color))
+            checkbox = self._make_series_checkbox(name, series_color)
             checkbox.stateChanged.connect(
                 lambda state, series_name=name: self.graph_widget.set_series_visible(
                     series_name, state == Qt.CheckState.Checked.value
                 )
             )
-            # Expand vertically so the touch targets share the full column height.
-            checkbox.setSizePolicy(
-                QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
-            )
             self.checkboxes[name] = checkbox
+        self.compressor_checkbox = None
+        if self._show_compressor_toggle:
+            wait_s = int(round(self.graph_widget._compressor_delay.min_off_s))
+            self.compressor_checkbox = self._make_series_checkbox(
+                "Compressor",
+                "#16a34a",
+            )
+            self.compressor_checkbox.setToolTip(
+                "Show when the compressor switched on and off. "
+                f"After an off, it waits {wait_s} s before it really switches on."
+            )
+            self.compressor_checkbox.stateChanged.connect(
+                lambda state: self.graph_widget.set_compressor_visible(
+                    state == Qt.CheckState.Checked.value
+                )
+            )
+            self.compressor_checkbox.setChecked(True)
+            self.graph_widget.set_compressor_visible(True)
+
+    def _make_series_checkbox(self, name: str, series_color: str) -> QCheckBox:
+        checkbox = QCheckBox(name)
+        checkbox.setChecked(True)
+        checkbox.setStyleSheet("""
+            QCheckBox {
+                font-size: 12px;
+                font-weight: 700;
+                color: #475569;
+                min-height: 26px;
+                padding: 2px 8px;
+                border: 2px solid #cbd5e1;
+                border-radius: 8px;
+                background-color: #f1f5f9;
+            }
+            QCheckBox:checked {
+                color: #ffffff;
+                border: 2px solid %s;
+                background-color: %s;
+            }
+            QCheckBox::indicator {
+                width: 0px;
+                height: 0px;
+                margin: 0px;
+            }
+        """ % (series_color, series_color))
+        checkbox.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
+        )
+        return checkbox
 
     def _setup_layout(self):
         main_layout = QHBoxLayout()
@@ -3345,6 +3501,9 @@ class TemperatureGraphTab(QWidget):
         extra = self._right_column_extra_widget()
         if extra is not None:
             right_column.addWidget(extra)
+
+        if self.compressor_checkbox is not None:
+            right_column.addWidget(self.compressor_checkbox, 1)
 
         # Series toggles (no title label) expand to fill the column height so
         # each is a large, easy touch target.
@@ -3372,6 +3531,7 @@ class TemperatureGraphTab(QWidget):
 
     def _update_checkbox_labels(self, series_values: dict) -> None:
         """Show the latest value next to each series name in the toggles."""
+        self._update_compressor_checkbox()
         for name, checkbox in self.checkboxes.items():
             raw = series_values.get(name)
             try:
@@ -3384,6 +3544,16 @@ class TemperatureGraphTab(QWidget):
                 fmt = self._series_formats.get(name, self._default_format)
                 unit = self._series_units.get(name, self._default_unit)
                 checkbox.setText(f"{name}  {fmt.format(value)} {unit}")
+
+    def _update_compressor_checkbox(self) -> None:
+        checkbox = self.compressor_checkbox
+        if checkbox is None:
+            return
+        running = self.graph_widget.compressor_is_on()
+        if running is None:
+            checkbox.setText("Compressor")
+        else:
+            checkbox.setText("Compressor  ON" if running else "Compressor  OFF")
 
 
 class PressureServiceTab(TemperatureGraphTab):
@@ -3887,7 +4057,14 @@ class MainScreen(QMainWindow):
         self.main_graph_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         # Temperature graph tab (logical temps from temperature_sources)
-        self.temperature_graph_tab = TemperatureGraphTab(self.temperature_sensor_names)
+        compressor_cfg = self.config.get("compressor") or {}
+        self.temperature_graph_tab = TemperatureGraphTab(
+            self.temperature_sensor_names,
+            show_compressor_toggle=True,
+            compressor_min_off_s=float(
+                compressor_cfg.get("min_off_before_on_s", MIN_OFF_BEFORE_ON_S)
+            ),
+        )
 
         # Service tab
         self.service_tab = ServiceTab(
@@ -4403,6 +4580,7 @@ class MainScreen(QMainWindow):
         temperatures: Optional[dict] = None,
         pressures: Optional[dict] = None,
         measured_flow_ml_per_min: Optional[float] = None,
+        compressor_on: Optional[bool] = None,
     ):
         """Update sensor display"""
         self._update_session_timer()
@@ -4433,6 +4611,8 @@ class MainScreen(QMainWindow):
         series_values = {"Set Temp": float(self.main_graph_widget.set_temperature)}
         for name in self.temperature_sensor_names:
             series_values[name] = self.service2_tab.temp_values.get(name, float("nan"))
+        if compressor_on is not None:
+            series_values[COMPRESSOR_TRACE_KEY] = 1.0 if compressor_on else 0.0
         self.temperature_graph_tab.add_sample(series_values)
 
         # Keep compressor display stable unless updated by app logic.
