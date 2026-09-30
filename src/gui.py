@@ -446,7 +446,7 @@ def _aggregate_series(samples: list[dict], names: list[str], reduce) -> dict:
                 value = float(raw)
             except (TypeError, ValueError):
                 continue
-            if not math.isnan(value):
+            if math.isfinite(value):
                 values.append(value)
         result[name] = reduce(values) if values else float("nan")
     return result
@@ -2832,6 +2832,9 @@ def _snap_axis_range(
     Integer units of ``10**(-decimals)`` keep every tick equal to its label.
     """
     scale = 10 ** max(0, int(decimals))
+    # ±inf (open thermistor extrapolated past the R–T table) cannot be floored.
+    if not (math.isfinite(y_min) and math.isfinite(y_max)):
+        y_min, y_max = 0.0, float(n_intervals)
     lo, hi = (y_min, y_max) if y_min <= y_max else (y_max, y_min)
     i_min = math.floor(lo * scale + 1e-9)
     i_max = math.ceil(hi * scale - 1e-9)
@@ -2850,6 +2853,8 @@ def _axis_tick_values(
 ) -> list[float]:
     """Major-tick values matching ``_snap_axis_range``."""
     scale = 10 ** max(0, int(decimals))
+    if not (math.isfinite(y_min) and math.isfinite(y_max)):
+        y_min, y_max = 0.0, float(n_intervals)
     i_min = int(round(y_min * scale))
     i_max = int(round(y_max * scale))
     i_step = max(1, (i_max - i_min) // n_intervals)
@@ -3018,9 +3023,12 @@ class MultiTemperatureGraphWidget(QWidget):
         for name in self.series_names:
             value = series_values.get(name)
             try:
-                normalized[name] = float(value)
+                number = float(value)
             except (TypeError, ValueError):
-                normalized[name] = float("nan")
+                number = float("nan")
+            if not math.isfinite(number):
+                number = float("nan")
+            normalized[name] = number
         return normalized
 
     def paintEvent(self, _event):
@@ -3188,7 +3196,7 @@ class MultiTemperatureGraphWidget(QWidget):
                 first = True
                 for ts, values in visible_entries:
                     value = values.get(name, float("nan"))
-                    if math.isnan(value):
+                    if not math.isfinite(value):
                         continue
                     px = time_to_x(ts)
                     py = value_to_y(value, axis_min, axis_max)
@@ -3290,7 +3298,7 @@ class MultiTemperatureGraphWidget(QWidget):
                 if not self._visible.get(name, False):
                     continue
                 value = series_values.get(name, float("nan"))
-                if not math.isnan(value):
+                if math.isfinite(value):
                     values.append(value)
         if not values:
             return _snap_axis_range(fallback[0], fallback[1], decimals)
@@ -3304,6 +3312,8 @@ class MultiTemperatureGraphWidget(QWidget):
             midpoint = (y_min + y_max) / 2.0
             y_min = midpoint - 0.5
             y_max = midpoint + 0.5
+        if not (math.isfinite(y_min) and math.isfinite(y_max)):
+            return _snap_axis_range(fallback[0], fallback[1], decimals)
         return _snap_axis_range(y_min, y_max, decimals)
 
     def _draw_legend(self, painter: QPainter, graph_x: int, y: int, graph_width: int):
@@ -3327,7 +3337,7 @@ class MultiTemperatureGraphWidget(QWidget):
             painter.setPen(QPen(QColor(self._series_colors[name]), 3))
             painter.drawLine(ex, y + 8, ex + 14, y + 8)
             value = latest.get(name, float("nan"))
-            label_text = name if math.isnan(value) else f"{name}: {value:.1f}C"
+            label_text = name if not math.isfinite(value) else f"{name}: {value:.1f}C"
             painter.setPen(QColor("#334155"))
             painter.drawText(
                 QRectF(ex + 18, y, entry_width - 20, 16),
@@ -3538,7 +3548,7 @@ class TemperatureGraphTab(QWidget):
                 value = float(raw)
             except (TypeError, ValueError):
                 value = float("nan")
-            if math.isnan(value):
+            if not math.isfinite(value):
                 checkbox.setText(name)
             else:
                 fmt = self._series_formats.get(name, self._default_format)
