@@ -9,7 +9,7 @@ Hardware is fixed (not config):
 - gain 1 (±4.096 V), 128 SPS, single-shot
 
 Conversion is fixed: 2.5 V / 100 kΩ divider. MA300TA103C by default;
-channel 0 (Tip) uses AB6N2; channels 5–6 (Plate 1 / Plate 2) use
+channel 0 (Tip) uses AB6N2; channels 5–6 (Plate 2 / Plate 1) use
 NTCASCWE3103F ``Rnom``.
 
 Only ``thermistor_sensors.labels`` is read from config (channel → name).

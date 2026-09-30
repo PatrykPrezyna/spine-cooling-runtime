@@ -35,12 +35,12 @@ TEMPS = {
     "Catheter In": 21.4,
     "Catheter Out": 24.8,
     "Cartrige In": 25.1,
-    "Plate 1": 4.2,
-    "Plate 2": 4.4,
+    "Plate 2": 4.2,
+    "Plate 1": 4.4,
     "Body Temp": 36.3,
     "Hot bath1": 37.0,
-    "Plate 1b": 37.0,
-    "Plate 2b": 4.0,
+    "Plate 2b": 37.0,
+    "Plate 1b": 4.0,
     "Probe 4": 25.0,
 }
 PRESSURES = {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -138,6 +139,43 @@ class UsbLogMirrorTests(unittest.TestCase):
         time.sleep(0.3)
         self.assertEqual(self.mirror.status().state, STATE_WAITING)
         self.assertFalse(self.mirror.status().can_eject)
+        self.assertEqual(self._events, [])
+
+    def test_repeated_usb_failure_is_logged_once(self) -> None:
+        (self.usb / "logs").write_text("not a directory", encoding="utf-8")
+        (self.source / "sensors.csv").write_text("h\n", encoding="utf-8")
+        self.mirror._copy_available(final=False)
+        self.mirror._copy_available(final=False)
+        self.mirror._emit(
+            "usb",
+            "USB copy failed: [Errno 5] Input/output error",
+            error=True,
+        )
+        failures = [
+            message
+            for _event, message in self._events
+            if "not writable" in message or "copy failed" in message
+        ]
+        self.assertEqual(failures, [self._events[0][1]])
+        self.assertIn("not writable", failures[0])
+
+    def test_usb_error_stays_once_after_recovery(self) -> None:
+        (self.usb / "logs").write_text("not a directory", encoding="utf-8")
+        (self.source / "sensors.csv").write_text("h\n", encoding="utf-8")
+        self.mirror._copy_available(final=False)
+        (self.usb / "logs").unlink()
+        self.mirror._copy_available(final=False)
+        self.assertEqual(self.mirror.status().state, STATE_MIRRORING)
+        shutil.rmtree(self.usb / "logs")
+        (self.usb / "logs").write_text("not a directory", encoding="utf-8")
+        self.mirror._copy_available(final=False)
+        failures = [
+            message
+            for _event, message in self._events
+            if "not writable" in message or "copy failed" in message
+        ]
+        self.assertEqual(len(failures), 1)
+        self.assertTrue(any("Copying to" in message for _event, message in self._events))
 
     def test_eject_stops_copy_until_unplug_and_replug(self) -> None:
         (self.source / "a.csv").write_text("one\n", encoding="utf-8")

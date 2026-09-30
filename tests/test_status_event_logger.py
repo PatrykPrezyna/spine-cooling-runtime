@@ -79,6 +79,60 @@ class StatusEventLoggerTests(unittest.TestCase):
         self.assertEqual(by_event["warning_cleared"]["fault_code"], "BATTERY_LOW")
         self.assertEqual(by_event["session_stop"]["state"], "Ready")
 
+    def test_usb_faults_are_written_once_per_session(self) -> None:
+        self.assertTrue(self.logger.start_logging())
+        for _ in range(4):
+            self.logger.log_warning(
+                FaultCode.USB_NOT_PRESENT,
+                "USB stick not present",
+                state=State.COOLING,
+            )
+            self.logger.log_warning(
+                FaultCode.USB_NOT_PRESENT,
+                "USB stick not present",
+                state=State.COOLING,
+                cleared=True,
+            )
+            self.logger.log(
+                event="usb",
+                message="USB not writable: [Errno 17] File exists",
+            )
+            self.logger.log(
+                event="usb",
+                message="USB copy failed: [Errno 5] Input/output error",
+            )
+        self.logger.log(event="usb", message="Copying to /media/pi/SPINELOGS")
+        self.logger.stop_logging()
+
+        rows = self._rows()
+        usb_warnings = [
+            row for row in rows if row["fault_code"] == "USB_NOT_PRESENT"
+        ]
+        copy_errors = [
+            row
+            for row in rows
+            if row["event"] == "usb" and "Copying" not in row["message"]
+        ]
+        self.assertEqual(len(usb_warnings), 1)
+        self.assertEqual(usb_warnings[0]["event"], "warning")
+        self.assertEqual(len(copy_errors), 1)
+        self.assertIn("not writable", copy_errors[0]["message"])
+        self.assertTrue(any(row["message"].startswith("Copying to") for row in rows))
+
+    def test_setpoint_row(self) -> None:
+        self.assertTrue(self.logger.start_logging())
+        self.logger.log_setpoint("pump_speed_rpm", "20")
+        self.logger.log_setpoint("compressor_off_c", "-9.0")
+        self.logger.stop_logging()
+
+        setpoints = [
+            row["message"] for row in self._rows() if row["event"] == "setpoint"
+        ]
+        self.assertEqual(setpoints, ["pump_speed_rpm=20", "compressor_off_c=-9.0"])
+        for row in self._rows():
+            if row["event"] == "setpoint":
+                self.assertEqual(row["severity"], "info")
+
     def test_state_machine_callback_writes_reason(self) -> None:
         self.assertTrue(self.logger.start_logging())
         sm = StateMachine(ready_hold_after_startup_s=0)

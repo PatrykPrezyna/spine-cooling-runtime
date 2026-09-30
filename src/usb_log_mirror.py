@@ -305,6 +305,11 @@ class UsbLogMirror:
         self._bytes_copied = 0
         self._eject_gate_needs_absence = False
         self._eject_seen_absence = False
+        # Copy/write failures are recorded once per session. The mirror retries
+        # every interval, and the OSError text changes as files grow, which
+        # was appending a new status-CSV row on almost every pass.
+        self._error_logged = False
+        self._last_emitted: Optional[tuple[str, str]] = None
         self._status = UsbMirrorStatus(
             state=STATE_DISABLED if not self.enabled else STATE_WAITING,
             message=(
@@ -434,7 +439,7 @@ class UsbLogMirror:
                 mount_path=str(mount),
                 can_eject=True,
             )
-            self._emit("usb", f"USB not writable: {exc}")
+            self._emit("usb", f"USB not writable: {exc}", error=True)
             return
 
         copied_this_pass = 0
@@ -456,7 +461,7 @@ class UsbLogMirror:
                 mount_path=str(mount),
                 can_eject=True,
             )
-            self._emit("usb", f"USB copy failed: {exc}")
+            self._emit("usb", f"USB copy failed: {exc}", error=True)
             return
 
         if copied_this_pass:
@@ -528,11 +533,19 @@ class UsbLogMirror:
                 STATE_EJECTING,
                 STATE_DISABLED,
             ) or state in (STATE_ERROR, STATE_SAFE_TO_REMOVE):
-                self._emit("usb", message)
+                self._emit("usb", message, error=(state == STATE_ERROR))
 
-    def _emit(self, event: str, message: str) -> None:
+    def _emit(self, event: str, message: str, *, error: bool = False) -> None:
         if self._on_event is None:
             return
+        if error:
+            if self._error_logged:
+                return
+            self._error_logged = True
+        key = (event, message)
+        if key == self._last_emitted:
+            return
+        self._last_emitted = key
         try:
             self._on_event(event, message)
         except Exception:

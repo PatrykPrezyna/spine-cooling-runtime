@@ -32,7 +32,7 @@ from cooling_tracker import CoolingEffectivenessTracker
 from csv_logger import CSVLogger
 from pressure_csv_logger import PressureCSVLogger, PressureCaptureLoop
 from session_log_paths import log_directory
-from status_event_logger import StatusEventLogger
+from status_event_logger import StatusEventLogger, warning_log_edges
 from usb_log_mirror import (
     STATE_CATCHING_UP,
     STATE_DISABLED,
@@ -48,7 +48,11 @@ from leak_debounce import LeakDebounceTracker
 from fault_catalog import FaultCode, Severity, get_fault, stop_priority
 from gui import MainScreen
 from hardware_factory import build_hardware
-from pump_flow_control import PumpFlowController, flow_ml_per_min_to_rpm
+from pump_flow_control import (
+    PumpFlowController,
+    flow_ml_per_min_to_rpm,
+    rpm_to_flow_ml_per_min,
+)
 from safety_rules import RuleContext, TelemetrySnapshot, evaluate, is_fault_still_active
 from sensor_injection import SensorInjectionController, select_temperatures
 from sensor_override_ui import SensorOverrideWindow
@@ -185,8 +189,13 @@ class SensorMonitorApp(QObject):
         self.csv_logger: Optional[CSVLogger] = None
         self.pressure_csv_logger: Optional[PressureCSVLogger] = None
         self.status_event_logger: Optional[StatusEventLogger] = None
+        self._logged_setpoints: dict[str, str] = {}
         self._usb_mirror: Optional[UsbLogMirror] = None
         self._logged_warning_codes: set[FaultCode] = set()
+        # USB absence is logged once per session. Presence checks flicker when
+        # the mount comes and goes, and a stop fault clears the warning set,
+        # which was appending a new row on almost every tick.
+        self._once_logged_warnings: set[FaultCode] = set()
         self._pressure_capture_loop: Optional[PressureCaptureLoop] = None
         self.ui: Optional[MainScreen] = None
         self.state_machine: Optional[StateMachine] = None
@@ -387,11 +396,11 @@ class SensorMonitorApp(QObject):
         self._set_compressor_relay_high(not on)
 
     def _heat_ex_temperature_c(self, temperatures: dict) -> Optional[float]:
-        """Average of the configured plate probes (Plate 1 and Plate 2)."""
+        """Control temperature from the configured plate probe (Plate 1)."""
         return average_temperature_c(temperatures, self.compressor_heat_ex_labels)
 
     def _apply_compressor_heat_ex_control(self, temperatures: dict) -> None:
-        """Plate-average hysteresis: off below off_temp_c, on above on_temp_c."""
+        """Plate 1 hysteresis: off below off_temp_c, on above on_temp_c."""
         if not self.compressor_control_enabled:
             self.compressor_latched_on = False
             self._set_compressor_running(False)
@@ -467,31 +476,40 @@ class SensorMonitorApp(QObject):
         logger.stop_logging()
 
     def _sync_warning_log(self, message_codes: list[FaultCode]) -> None:
-        """Log warning appear/clear edges (not every 10 Hz tick)."""
-        new_codes = set(message_codes)
-        if new_codes == self._logged_warning_codes:
+        """Log warning appear/clear edges (not every 10 Hz tick).
+
+        ``USB_NOT_PRESENT`` is written once per session. It stays active for
+        the whole run when no stick is inserted, and mount detection plus
+        stop-fault clears were re-logging it on every flicker.
+        """
+        cleared, raised, logged, once_logged = warning_log_edges(
+            self._logged_warning_codes,
+            set(message_codes),
+            once_codes={FaultCode.USB_NOT_PRESENT},
+            once_logged=self._once_logged_warnings,
+        )
+        if not cleared and not raised:
+            self._logged_warning_codes = logged
+            self._once_logged_warnings = once_logged
+            return
+        for code in cleared:
+            self._log_warning(code, cleared=True)
+        for code in raised:
+            self._log_warning(code, cleared=False)
+        self._logged_warning_codes = logged
+        self._once_logged_warnings = once_logged
+
+    def _log_warning(self, code: FaultCode, *, cleared: bool) -> None:
+        logger = self.status_event_logger
+        if logger is None:
             return
         state = self.state_machine.get_current_state() if self.state_machine else None
-        logger = self.status_event_logger
-        for code in sorted(
-            self._logged_warning_codes - new_codes,
-            key=lambda c: c.value,
-        ):
-            if logger is not None:
-                logger.log_warning(
-                    code,
-                    get_fault(code).message,
-                    state=state,
-                    cleared=True,
-                )
-        for code in sorted(new_codes - self._logged_warning_codes, key=lambda c: c.value):
-            if logger is not None:
-                logger.log_warning(
-                    code,
-                    get_fault(code).message,
-                    state=state,
-                )
-        self._logged_warning_codes = new_codes
+        logger.log_warning(
+            code,
+            get_fault(code).message,
+            state=state,
+            cleared=cleared,
+        )
 
     def _flush_session_logs(self) -> None:
         # Sensor CSV already flushes every row. Only the 100 Hz pressure
@@ -1009,11 +1027,16 @@ class SensorMonitorApp(QObject):
         )
         if self.stepper_continuous_forward and self.stepper_driver:
             self.stepper_driver.set_continuous_speed(self.stepper_speed_rpm)
+        self._log_pump_setpoints()
         if self.ui:
             self._update_stepper_ui_status()
 
+    def on_set_temperature_changed(self, temperature_c: float) -> None:
+        """Record the main-screen CSF setpoint in the status CSV."""
+        self._log_setpoint_if_changed("set_temperature_c", f"{float(temperature_c):.1f}")
+
     def on_compressor_control_toggle(self, enabled: bool) -> None:
-        """Enable/disable plate-average temperature control from the service page."""
+        """Enable/disable Plate 1 temperature control from the service page."""
         self.compressor_control_enabled = bool(enabled)
         if self.compressor_control_enabled:
             temp_c = self._heat_ex_temperature_c(self._last_temperatures)
@@ -1072,6 +1095,8 @@ class SensorMonitorApp(QObject):
             on_c = round(off_c + 0.1, 1)
         self.compressor_off_temp_c = off_c
         self.compressor_on_temp_c = on_c
+        self._log_setpoint_if_changed("compressor_off_c", f"{off_c:.1f}")
+        self._log_setpoint_if_changed("compressor_on_c", f"{on_c:.1f}")
         compressor_cfg = self.config.setdefault('compressor', {})
         compressor_cfg['off_below_temp_c'] = off_c
         compressor_cfg['on_above_temp_c'] = on_c
@@ -1219,7 +1244,48 @@ class SensorMonitorApp(QObject):
         ui.on_pid_run_toggle_callback = self.on_service_pid_run_toggle
         ui.on_compressor_control_toggle_callback = self.on_compressor_control_toggle
         ui.on_compressor_thresholds_change_callback = self.on_compressor_thresholds_changed
+        ui.main_graph_widget.on_temperature_change_callback = self.on_set_temperature_changed
         ui.on_usb_eject_callback = self.on_usb_eject
+        self._log_current_setpoints()
+
+    def _log_setpoint_if_changed(self, name: str, value: str) -> None:
+        """Append a setpoint row when the commanded value differs from the last one."""
+        if self._logged_setpoints.get(name) == value:
+            return
+        self._logged_setpoints[name] = value
+        if self.status_event_logger is not None:
+            self.status_event_logger.log_setpoint(name, value)
+
+    def _commanded_pump_flow_ml_per_min(self) -> str:
+        """Return the operator flow setpoint, or the flow equivalent of the set RPM."""
+        service = getattr(self.ui, "service_tab", None) if self.ui is not None else None
+        commanded = getattr(service, "_commanded_flow_ml_per_min", None)
+        if commanded is not None:
+            return str(int(commanded))
+        return f"{rpm_to_flow_ml_per_min(self.stepper_speed_rpm):.0f}"
+
+    def _log_pump_setpoints(self) -> None:
+        self._log_setpoint_if_changed("pump_speed_rpm", str(int(self.stepper_speed_rpm)))
+        self._log_setpoint_if_changed(
+            "pump_flow_ml_per_min",
+            self._commanded_pump_flow_ml_per_min(),
+        )
+
+    def _log_current_setpoints(self) -> None:
+        """Write the setpoints in force at session start."""
+        set_temperature_c = 32.0
+        if self.ui is not None:
+            set_temperature_c = float(self.ui.main_graph_widget.set_temperature)
+        self._log_setpoint_if_changed("set_temperature_c", f"{set_temperature_c:.1f}")
+        self._log_pump_setpoints()
+        self._log_setpoint_if_changed(
+            "compressor_off_c",
+            f"{float(self.compressor_off_temp_c):.1f}",
+        )
+        self._log_setpoint_if_changed(
+            "compressor_on_c",
+            f"{float(self.compressor_on_temp_c):.1f}",
+        )
 
 
 def main() -> int:

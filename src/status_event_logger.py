@@ -1,7 +1,7 @@
-"""CSV logger for state-machine changes, errors, and warnings.
+"""CSV logger for state-machine changes, errors, warnings, and setpoints.
 
 Unlike the sensor/pressure files this is event-based: one row per
-transition or fault edge, not a periodic sample.
+transition, fault edge, or commanded-setpoint change, not a periodic sample.
 """
 
 from __future__ import annotations
@@ -13,6 +13,47 @@ from pathlib import Path
 from typing import Any, Optional
 
 from session_log_paths import log_directory, status_filename_format
+
+
+def _is_usb_copy_error(message: str) -> bool:
+    """True for mirror failures that retry for the rest of the session."""
+    text = message.casefold()
+    return "not writable" in text or "copy failed" in text
+
+
+def warning_log_edges(
+    logged: set,
+    incoming: set,
+    *,
+    once_codes: set,
+    once_logged: set,
+) -> tuple[list, list, set, set]:
+    """Return clears, raises, the next edge-tracked set, and latched codes.
+
+    Codes in ``once_codes`` are raised at most once per session and are
+    never cleared. Everything else is logged on appear and clear edges.
+    """
+    raised: list = []
+    next_once = set(once_logged)
+    for code in sorted(
+        (incoming & once_codes) - once_logged,
+        key=lambda item: getattr(item, "value", str(item)),
+    ):
+        raised.append(code)
+        next_once.add(code)
+    tracked_in = incoming - once_codes
+    tracked_logged = logged - once_codes
+    cleared = sorted(
+        tracked_logged - tracked_in,
+        key=lambda item: getattr(item, "value", str(item)),
+    )
+    raised.extend(
+        sorted(
+            tracked_in - tracked_logged,
+            key=lambda item: getattr(item, "value", str(item)),
+        )
+    )
+    return cleared, raised, tracked_in, next_once
 
 
 class StatusEventLogger:
@@ -38,6 +79,10 @@ class StatusEventLogger:
         self.file_handle = None
         self.is_logging = False
         self._lock = threading.Lock()
+        # USB absence and copy failures stay in the file once. Retries and
+        # mount flicker were filling the session CSV with the same fault.
+        self._usb_not_present_logged = False
+        self._usb_copy_error_logged = False
 
         Path(self.csv_directory).mkdir(parents=True, exist_ok=True)
 
@@ -80,6 +125,12 @@ class StatusEventLogger:
     ) -> None:
         """Append one event row (no-op when logging is not active)."""
         with self._lock:
+            if self._suppress_repeat_unlocked(
+                event=event,
+                fault_code=fault_code,
+                message=message,
+            ):
+                return
             self._write_unlocked(
                 event=event,
                 severity=severity,
@@ -124,6 +175,14 @@ class StatusEventLogger:
             message=message,
         )
 
+    def log_setpoint(self, name: str, value: str) -> None:
+        """Log one commanded setpoint as ``name=value`` in the message column."""
+        self.log(
+            event="setpoint",
+            severity="info",
+            message=f"{name}={value}",
+        )
+
     def log_session_stop(self, *, state: Any = None, message: str = "Session ended") -> None:
         self.log(
             event="session_stop",
@@ -161,6 +220,27 @@ class StatusEventLogger:
     def get_log_file_path(self) -> Optional[str]:
         with self._lock:
             return str(self.csv_file) if self.csv_file else None
+
+    def _suppress_repeat_unlocked(
+        self,
+        *,
+        event: str,
+        fault_code: Any,
+        message: str,
+    ) -> bool:
+        """Drop USB faults that were already written this session."""
+        code = self._code_value(fault_code)
+        if code == "USB_NOT_PRESENT":
+            if event == "warning_cleared" or self._usb_not_present_logged:
+                return True
+            if event == "warning":
+                self._usb_not_present_logged = True
+            return False
+        if event == "usb" and _is_usb_copy_error(message):
+            if self._usb_copy_error_logged:
+                return True
+            self._usb_copy_error_logged = True
+        return False
 
     def _write_unlocked(
         self,

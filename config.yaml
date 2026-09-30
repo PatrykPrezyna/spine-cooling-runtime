@@ -9,12 +9,12 @@ temperature_sources:
   Catheter In: thermistor
   Catheter Out: thermistor
   Cartrige In: thermistor
-  Plate 1: thermistor
   Plate 2: thermistor
+  Plate 1: thermistor
   Body Temp: thermistor
   Hot bath1: thermistor
-  Plate 1b: thermistor
   Plate 2b: thermistor
+  Plate 1b: thermistor
   Probe 4: thermistor
 alarms:
   csf_label: Body Temp
@@ -66,12 +66,12 @@ simulation:
     Catheter In: 22.0
     Catheter Out: 22.0
     Cartrige In: 22.0
-    Plate 1: 22.0
     Plate 2: 22.0
+    Plate 1: 22.0
     Body Temp: 36.5
     Hot bath1: 37.0
-    Plate 1b: 37.0
-    Plate 2b: 4.0
+    Plate 2b: 37.0
+    Plate 1b: 4.0
     Probe 4: 25.0
   flow_ml_per_min: 30.0
 acustic_signal_gpio_pin: 16
@@ -96,7 +96,7 @@ sensors:
 sample_rate_hz: 1.0
 # Thermistor names for the 12 ADS1115 channels. Hardware and conversion are
 # fixed in ads1115_thermistor_reader.py (0-3 i2c-1 0x48, 4-7 i2c-1 0x49,
-# 8-11 i2c-6 0x48; Tip/0 = AB6N2, Plate 1–2/5–6 = NTCASCWE3103F Rnom,
+# 8-11 i2c-6 0x48; Tip/0 = AB6N2, Plate 2 / Plate 1 (channels 5–6) = NTCASCWE3103F Rnom,
 # the rest MA300TA103C).
 thermistor_sensors:
   labels:
@@ -105,12 +105,12 @@ thermistor_sensors:
     2: Catheter In
     3: Catheter Out
     4: Cartrige In
-    5: Plate 1
-    6: Plate 2
+    5: Plate 2
+    6: Plate 1
     7: Body Temp
     8: Hot bath1
-    9: Plate 1b
-    10: Plate 2b
+    9: Plate 2b
+    10: Plate 1b
     11: Probe 4
 # 4-20 mA flow meter on I2C bus 6, ADS1115 0x49 (73) AIN0.
 # Bus 1: 0x48/0x49 thermistors, 0x4A/0x4B (74/75) pressure.
@@ -165,10 +165,10 @@ pressure_sensors:
     bar_hi: 5.171068  # 75.0 psi
 compressor:
   relay_pin: 16  # BCM GPIO 16 = header pin 36
-  # Probes averaged for on/off hysteresis. Must match thermistor_sensors.labels.
+  # Probe used for on/off hysteresis. Must match thermistor_sensors.labels.
+  # A single label uses that sensor; several labels are averaged.
   heat_ex_labels:
     - Plate 1
-    - Plate 2
   off_below_temp_c: -9
   on_above_temp_c: -9.0
   # After the compressor switches off, it stays off this long before it can
