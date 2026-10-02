@@ -228,7 +228,8 @@ class SensorMonitorApp(QObject):
         )
         self.compressor_on: bool = False
         self.compressor_relay_pin: int = int(compressor_cfg.get('relay_pin', 16))
-        self.compressor_relay_high: bool = True
+        # MOSFET gate: HIGH = compressor on. Idle is LOW (off).
+        self.compressor_relay_high: bool = False
         self.compressor_control_enabled: bool = False
         self.compressor_latched_on: bool = False
         self.compressor_heat_ex_labels: list[str] = heat_ex_labels_from_config(
@@ -364,21 +365,21 @@ class SensorMonitorApp(QObject):
             print(f"{label} inactive: {component.last_error}")
 
     def _initialize_compressor_relay(self) -> None:
-        """Configure compressor relay GPIO (active-low: LOW = on)."""
+        """Configure compressor MOSFET GPIO (active-high: HIGH = on)."""
         if GPIO is None:
             print("Compressor relay unavailable: RPi.GPIO not installed")
             return
         try:
             GPIO.setwarnings(False)
             GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self.compressor_relay_pin, GPIO.OUT, initial=GPIO.HIGH)
-            self.compressor_relay_high = True
+            GPIO.setup(self.compressor_relay_pin, GPIO.OUT, initial=GPIO.LOW)
+            self.compressor_relay_high = False
             print(f"Compressor relay initialized on GPIO{self.compressor_relay_pin}")
         except Exception as exc:
             print(f"Failed to initialize compressor relay GPIO{self.compressor_relay_pin}: {exc}")
 
     def _set_compressor_relay_high(self, high: bool) -> None:
-        """Set compressor relay level. HIGH = compressor off, LOW = compressor on."""
+        """Set compressor MOSFET gate. HIGH = compressor on, LOW = compressor off."""
         self.compressor_relay_high = bool(high)
         if GPIO is None:
             return
@@ -391,9 +392,9 @@ class SensorMonitorApp(QObject):
             print(f"Failed to set compressor relay GPIO{self.compressor_relay_pin}: {exc}")
 
     def _set_compressor_running(self, on: bool) -> None:
-        """Drive compressor relay (active-low)."""
+        """Drive compressor MOSFET (active-high)."""
         self.compressor_on = bool(on)
-        self._set_compressor_relay_high(not on)
+        self._set_compressor_relay_high(on)
 
     def _heat_ex_temperature_c(self, temperatures: dict) -> Optional[float]:
         """Control temperature from the configured plate probe (Plate 1)."""
