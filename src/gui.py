@@ -136,6 +136,12 @@ _GRAPH_NAV_BTN_W = 30
 _GRAPH_NAV_BTN_H = 34
 _GRAPH_NAV_GAP = 4
 _GRAPH_NAV_COLUMN_W = 150
+# Live graphs keep a full session. The last hour stays at the UI sample rate
+# so short windows stay smooth; older samples are kept every few seconds so
+# panning past one hour does not store every 100 ms tick.
+_GRAPH_HISTORY_SEC = 48 * 3600
+_GRAPH_FINE_HISTORY_SEC = 60 * 60
+_GRAPH_COARSE_INTERVAL_SEC = 5.0
 _SPINE_COLUMN_W = _GRAPH_NAV_COLUMN_W
 _SPINE_NAV_GAP = 6
 _SPINE_BUTTON_GAP = 8
@@ -468,6 +474,106 @@ def _snap_ml_per_min_setpoint(ml_per_min: float, step: int = PUMP_FLOW_SLIDER_ST
     return int(round(float(ml_per_min) / step) * step)
 
 
+def _format_window_minutes(minutes: int) -> str:
+    """Label for the graph time-window selector."""
+    minutes = int(minutes)
+    if minutes >= 60 and minutes % 60 == 0:
+        return f"{minutes // 60} h"
+    return f"{minutes} min"
+
+
+def _format_age_label(seconds_ago: float) -> str:
+    """X-axis tick: ``now``, ``-5 min``, or ``-2.5 h``."""
+    if seconds_ago < 3600:
+        minutes = int(round(seconds_ago / 60.0))
+        if minutes <= 0:
+            return "now"
+        return f"-{minutes} min"
+    hours = seconds_ago / 3600.0
+    if abs(hours - round(hours)) < 0.05:
+        return f"-{int(round(hours))} h"
+    return f"-{hours:.1f} h"
+
+
+class GraphSampleHistory:
+    """Time-ordered graph samples with a long, thinned tail.
+
+    The recent ``fine_sec`` is stored at the incoming rate. Older samples are
+    kept at ``coarse_sec`` spacing, and anything past ``max_sec`` is dropped.
+    ``append`` skips that thinning so replay and screenshots can load a
+    prepared series.
+    """
+
+    def __init__(
+        self,
+        max_sec: float = _GRAPH_HISTORY_SEC,
+        fine_sec: float = _GRAPH_FINE_HISTORY_SEC,
+        coarse_sec: float = _GRAPH_COARSE_INTERVAL_SEC,
+    ):
+        self.max_sec = float(max_sec)
+        self.fine_sec = float(fine_sec)
+        self.coarse_sec = float(coarse_sec)
+        self._coarse = deque()
+        self._fine = deque()
+
+    def clear(self) -> None:
+        self._coarse.clear()
+        self._fine.clear()
+
+    def append(self, sample) -> None:
+        self._fine.append(sample)
+
+    def add(self, sample) -> None:
+        self._fine.append(sample)
+        self._retain(float(sample[0]))
+
+    def _retain(self, now: float) -> None:
+        max_sec = max(0.0, self.max_sec)
+        fine_sec = min(max(0.0, self.fine_sec), max_sec)
+        boundary = now - fine_sec
+        cutoff = now - max_sec
+        while self._fine and self._fine[0][0] < boundary:
+            aged = self._fine.popleft()
+            if aged[0] < cutoff:
+                continue
+            if (
+                not self._coarse
+                or self.coarse_sec <= 0
+                or aged[0] - self._coarse[-1][0] >= self.coarse_sec
+            ):
+                self._coarse.append(aged)
+        while self._coarse and self._coarse[0][0] < cutoff:
+            self._coarse.popleft()
+        while self._fine and self._fine[0][0] < cutoff:
+            self._fine.popleft()
+
+    def __iter__(self):
+        yield from self._coarse
+        yield from self._fine
+
+    def __reversed__(self):
+        yield from reversed(self._fine)
+        yield from reversed(self._coarse)
+
+    def __len__(self) -> int:
+        return len(self._coarse) + len(self._fine)
+
+    def __getitem__(self, index: int):
+        if index == 0:
+            return self._coarse[0] if self._coarse else self._fine[0]
+        if index == -1:
+            return self._fine[-1] if self._fine else self._coarse[-1]
+        n_coarse = len(self._coarse)
+        n = n_coarse + len(self._fine)
+        if index < 0:
+            index += n
+        if index < 0 or index >= n:
+            raise IndexError(index)
+        if index < n_coarse:
+            return self._coarse[index]
+        return self._fine[index - n_coarse]
+
+
 class MainScreenWidget(QWidget):
     """Composite main-screen widget.
 
@@ -517,8 +623,8 @@ class MainScreenWidget(QWidget):
         self.on_temperature_change_callback: Optional[Callable[[float], None]] = None
 
         # Graph history: (timestamp, set_temp, csf_temp, catheter_in_temp)
-        self._temp_history: deque = deque()
-        self._x_window_minutes_options = [1, 2, 5, 15, 60]
+        self._temp_history = GraphSampleHistory(max_sec=self._MAX_HISTORY_SEC)
+        self._x_window_minutes_options = [1, 2, 5, 15, 60, 120, 240, 480, 1440, 2880]
         self._x_window_minutes = 5
         self._x_pan_windows = 0
 
@@ -615,7 +721,7 @@ class MainScreenWidget(QWidget):
         painter.fillRect(self.rect(), gradient)
     
     # Temperature history graph configuration
-    _MAX_HISTORY_SEC = 3600  # Keep up to 60 minutes for panning
+    _MAX_HISTORY_SEC = _GRAPH_HISTORY_SEC
     # Fixed temperature (Y) axis range for the main-screen graph.
     _GRAPH_TEMP_MIN = 20.0
     _GRAPH_TEMP_MAX = 40.0
@@ -629,20 +735,21 @@ class MainScreenWidget(QWidget):
     _CSF_COLOR = "#1B7A7B"
     _INPUT_COLOR = "#2E86C1"
     
-    def add_temperature_sample(self, csf_temp: float, catheter_in_temp: float):
+    def add_temperature_sample(
+        self,
+        csf_temp: float,
+        catheter_in_temp: float,
+        timestamp: Optional[float] = None,
+    ):
         """Record setpoint, CSF, and catheter-input temps for the main trace."""
-        now = time.monotonic()
+        now = time.monotonic() if timestamp is None else float(timestamp)
         self.current_csf_temperature = float(csf_temp)
         self.current_catheter_in_temperature = float(catheter_in_temp)
-        self._temp_history.append(
+        self._temp_history.max_sec = self._MAX_HISTORY_SEC
+        self._temp_history.add(
             (now, self.set_temperature, float(csf_temp), float(catheter_in_temp))
         )
-        
-        # Drop samples older than retained history window
-        cutoff = now - self._MAX_HISTORY_SEC
-        while self._temp_history and self._temp_history[0][0] < cutoff:
-            self._temp_history.popleft()
-        
+        self._update_graph_nav_button_states()
         self.update()
     
     def _draw_temperature_graph(
@@ -707,8 +814,7 @@ class MainScreenWidget(QWidget):
             ratio = i / 10.0
             px = int(plot_left + ratio * plot_width)
             ts = start_ts + ratio * window_sec
-            mins_ago = int(round((now - ts) / 60.0))
-            label = "now" if mins_ago == 0 else f"-{mins_ago} min"
+            label = _format_age_label(now - ts)
             painter.setPen(QPen(QColor("#e2e8f0"), 1))
             painter.drawLine(px, plot_top, px, plot_bottom)
             painter.setPen(QColor("#334155"))
@@ -1473,7 +1579,7 @@ class MainScreenWidget(QWidget):
 
         self.graph_window_combo = QComboBox(self)
         for minutes in self._x_window_minutes_options:
-            self.graph_window_combo.addItem(f"{minutes} min", minutes)
+            self.graph_window_combo.addItem(_format_window_minutes(minutes), minutes)
         self.graph_window_combo.setCurrentIndex(
             self._x_window_minutes_options.index(self._x_window_minutes)
         )
@@ -2868,7 +2974,7 @@ class MultiTemperatureGraphWidget(QWidget):
     ``right_axis_names`` are scaled independently (e.g. pump flow).
     """
 
-    _MAX_HISTORY_SEC = 3600  # 60 minutes
+    _MAX_HISTORY_SEC = _GRAPH_HISTORY_SEC
 
     def __init__(
         self,
@@ -2892,13 +2998,15 @@ class MultiTemperatureGraphWidget(QWidget):
         self._right_axis_unit = right_axis_unit
         self._right_tick_format = right_tick_format
         self._default_right_y_range = default_right_y_range
-        self._history = deque()
+        self._history = GraphSampleHistory(max_sec=self._MAX_HISTORY_SEC)
         self._compressor_trace: deque = deque()
         self._compressor_delay = CompressorRestartDelay(compressor_min_off_s)
         self._compressor_visible = False
         self._compressor_switch_cache: list[tuple[float, bool]] = []
         self._visible = {name: True for name in self.series_names}
-        self._x_window_minutes_options = [1, 2, 5, 10, 15, 30, 60]
+        self._x_window_minutes_options = [
+            1, 2, 5, 10, 15, 30, 60, 120, 240, 480, 1440, 2880,
+        ]
         self._x_window_minutes = 10
         self._x_pan_windows = 0
         # Log replay sets this so the right edge is the last sample, not wall clock.
@@ -2978,14 +3086,10 @@ class MultiTemperatureGraphWidget(QWidget):
 
     def add_sample(self, series_values: dict, timestamp: Optional[float] = None):
         now = time.monotonic() if timestamp is None else float(timestamp)
-        self._history.append((now, self._normalize_series(series_values)))
+        self._history.max_sec = self._MAX_HISTORY_SEC
+        self._history.add((now, self._normalize_series(series_values)))
         self._record_compressor(now, series_values)
-
-        cutoff = now - self._MAX_HISTORY_SEC
-        while self._history and self._history[0][0] < cutoff:
-            self._history.popleft()
-        while self._compressor_trace and self._compressor_trace[0][0] < cutoff:
-            self._compressor_trace.popleft()
+        self._trim_compressor_trace(now)
         self.update()
 
     def replace_history(self, entries) -> None:
@@ -3004,8 +3108,7 @@ class MultiTemperatureGraphWidget(QWidget):
                 continue
             self._history.append((timestamp, self._normalize_series(values)))
         if cutoff is not None:
-            while self._compressor_trace and self._compressor_trace[0][0] < cutoff:
-                self._compressor_trace.popleft()
+            self._trim_compressor_trace(materialized[-1][0])
         self.update()
 
     def _record_compressor(self, timestamp: float, series_values: dict) -> None:
@@ -3016,7 +3119,21 @@ class MultiTemperatureGraphWidget(QWidget):
             timestamp,
             commanded_compressor_on(series_values.get(COMPRESSOR_TRACE_KEY)),
         )
-        self._compressor_trace.extend(points)
+        for ts, level in points:
+            # Same level as the previous point does not change the on/off bands.
+            if (
+                self._compressor_trace
+                and abs(float(self._compressor_trace[-1][1]) - float(level)) < 0.5
+            ):
+                continue
+            self._compressor_trace.append((float(ts), float(level)))
+
+    def _trim_compressor_trace(self, now: float) -> None:
+        """Drop switches older than the history window, keeping the state in effect."""
+        cutoff = float(now) - self._MAX_HISTORY_SEC
+        trace = self._compressor_trace
+        while len(trace) >= 2 and trace[1][0] < cutoff:
+            trace.popleft()
 
     def _normalize_series(self, series_values: dict) -> dict:
         normalized = {}
@@ -3143,8 +3260,7 @@ class MultiTemperatureGraphWidget(QWidget):
             ratio = i / 10.0
             px = int(plot_left + ratio * plot_width)
             ts = start_ts + ratio * window_sec
-            mins_ago = int(round((now - ts) / 60.0))
-            label = "now" if mins_ago == 0 else f"-{mins_ago} min"
+            label = _format_age_label(now - ts)
             painter.setPen(QPen(QColor("#e2e8f0"), 1))
             painter.drawLine(px, plot_top, px, plot_bottom)
             painter.setPen(QColor("#334155"))
@@ -3397,7 +3513,7 @@ class TemperatureGraphTab(QWidget):
 
         self.graph_window_combo = QComboBox()
         for minutes in self.graph_widget._x_window_minutes_options:
-            self.graph_window_combo.addItem(f"{minutes} min", minutes)
+            self.graph_window_combo.addItem(_format_window_minutes(minutes), minutes)
         self.graph_window_combo.setCurrentIndex(
             self.graph_widget._x_window_minutes_options.index(
                 self.graph_widget._x_window_minutes
@@ -3612,7 +3728,7 @@ class PressureServiceTab(TemperatureGraphTab):
         graph_widget._series_colors[self.PUMP_FLOW_SERIES] = "#0e6a76"
         graph_widget._series_colors[self.MEASURED_FLOW_SERIES] = "#c2410c"
         self._display_mode = self.MODE_AVG
-        self._samples = deque()
+        self._samples = GraphSampleHistory()
         super().__init__(
             series_names,
             graph_widget=graph_widget,
@@ -3704,10 +3820,8 @@ class PressureServiceTab(TemperatureGraphTab):
         }
         raw[self.PUMP_FLOW_SERIES] = self._flow_ml_per_min
         raw[self.MEASURED_FLOW_SERIES] = self._measured_flow_ml_per_min
-        self._samples.append((now, raw))
-        cutoff = now - self.graph_widget._MAX_HISTORY_SEC
-        while self._samples and self._samples[0][0] < cutoff:
-            self._samples.popleft()
+        self._samples.max_sec = self.graph_widget._MAX_HISTORY_SEC
+        self._samples.add((now, raw))
         self.add_sample(self._displayed_values(now, raw), timestamp=now)
 
     def _displayed_values(self, timestamp: float, raw: dict) -> dict:
