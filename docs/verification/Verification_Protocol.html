@@ -324,42 +324,7 @@
   </tbody>
 </table>
 
-<h2 class="case">8. Sensor read failure</h2>
-<p>
-  If a sensor board or cable fails while the device is running, the session must stop. On this test,
-  the ACKNOWLEDGE ERROR button may be pressed even if the cable is still disconnected. Prefer a
-  real device; skip this chapter if it cannot be done safely.
-</p>
-<table>
-  <thead>
-    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>1</td>
-      <td>From Cooling or Pumping on the device, disconnect a live sensor cable.</td>
-      <td>The status bar shows the state <em>Error</em>. The message is <span class="msg">Sensor read failure</span> or begins with <span class="msg">Error during update:</span>. The pump and compressor stop. Record the exact text: ________________</td>
-      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
-      <td></td>
-    </tr>
-    <tr>
-      <td>2</td>
-      <td>Tap the ⓘ in the status bar. Press the ACKNOWLEDGE ERROR button without reconnecting the cable.</td>
-      <td>Help opens. The ACKNOWLEDGE ERROR button can be pressed immediately. The status bar leaves the Error state.</td>
-      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
-      <td></td>
-    </tr>
-    <tr>
-      <td>3</td>
-      <td>Reconnect the cable. If Error returns, press ACKNOWLEDGE ERROR until the status bar shows Cooling.</td>
-      <td>The device can be returned to the state <em>Cooling</em>.</td>
-      <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
-      <td></td>
-    </tr>
-  </tbody>
-</table>
-
-<h2 class="case">9. Fridge defect</h2>
+<h2 class="case">8. Fridge defect</h2>
 <p>
   A fridge defect must stop the device and show <span class="msg">Fridge defect</span> in the
   status bar. The current device does not yet report this signal. Mark N/A unless a later version
@@ -387,7 +352,7 @@
   </tbody>
 </table>
 
-<h2 class="case">10. Battery low (warning)</h2>
+<h2 class="case">9. Battery low (warning)</h2>
 <p>
   A low battery must show a warning only. The state must not change to Error, and pumping must
   continue. The current device does not yet report battery charge. Mark N/A unless a later version
@@ -415,7 +380,7 @@
   </tbody>
 </table>
 
-<h2 class="case">11. USB stick not present (warning)</h2>
+<h2 class="case">10. USB stick not present (warning)</h2>
 <p>
   If USB logging is on and the stick is pulled out without ejecting, a warning must appear. The
   session must not stop. Using the Eject button first must not show this warning.
@@ -456,7 +421,7 @@
   </tbody>
 </table>
 
-<h2 class="case">12. USB stick storage low (warning)</h2>
+<h2 class="case">11. USB stick storage low (warning)</h2>
 <p>
   A SPINELOGS stick with less than 1 GB free must show a warning. The session must not stop.
 </p>
@@ -489,7 +454,7 @@
   </tbody>
 </table>
 
-<h2 class="case">13. SD card storage low (warning)</h2>
+<h2 class="case">12. SD card storage low (warning)</h2>
 <p>
   If the device has less than 1 GB free for local logs, a warning must appear. The session must not
   stop. Do not fill the system disk until it is empty. If this cannot be done safely, mark N/A.
@@ -518,6 +483,40 @@
       <td>Delete the temporary file so that more than 1 GB is free again.</td>
       <td>The warning disappears.</td>
       <td class="pf"><span class="box"></span> P <span class="box"></span> F <span class="box"></span> N/A</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 class="case">13. Pump not closed</h2>
+<p>
+  An open pump head must stop the pump and refuse a new start. Cooling may continue until a pump
+  start is requested.
+</p>
+<table>
+  <thead>
+    <tr><th style="width:2.2em">#</th><th>Action</th><th>Expected</th><th style="width:7.4em">Result</th><th style="width:3.2em">Init.</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>Reach Pumping with the pump head closed. Open the pump head (or make Pump Closed read not OK).</td>
+      <td>The status bar shows the state <em>Error</em> and the message <span class="msg">Pump not closed</span>. The pump and compressor stop. The ACKNOWLEDGE ERROR button cannot be pressed.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Close the pump head. Press ACKNOWLEDGE ERROR. Reach Cooling, open the pump head, and press START COOLING.</td>
+      <td>Acknowledge returns to Ready. With the head open, START COOLING shows <span class="msg">Pump not closed</span> again and the pump does not run.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Close the pump head. Press ACKNOWLEDGE ERROR, return to Cooling, and press START COOLING.</td>
+      <td>The pump starts. The status bar shows <em>Pumping</em> and no error.</td>
+      <td class="pf"><span class="box"></span> P <span class="box"></span> F</td>
       <td></td>
     </tr>
   </tbody>

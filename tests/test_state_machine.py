@@ -57,15 +57,6 @@ class StateMachineTests(unittest.TestCase):
         self.assertIsNone(sm.get_error_message())
         self.assertIsNone(sm.get_latched_fault_code())
 
-        sm.update(_ALL_SENSORS_OK)
-        sm.handle_sensor_error("Test error")
-        self.assertEqual(sm.get_current_state(), State.ERROR)
-        self.assertEqual(sm.get_error_message(), "Test error")
-
-        sm.acknowledge_error()
-        self.assertEqual(sm.get_current_state(), State.READY)
-        self.assertIsNone(sm.get_error_message())
-
     def test_ready_hold_after_startup(self) -> None:
         sm = StateMachine(ready_hold_after_startup_s=10.0)
         start = datetime(2026, 6, 9, 12, 0, 0)

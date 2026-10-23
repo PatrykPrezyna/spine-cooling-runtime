@@ -113,77 +113,103 @@
   A <strong>stop</strong> error changes the status bar to the state <em>Error</em>, stops the pump,
   and requires the ACKNOWLEDGE ERROR button after the cause is gone. Tap the error message for
   causes and steps. A <strong>warning</strong> only shows a yellow banner and does not change the
-  state. If several stop errors are active, the highest-priority one is shown (sensor read failure,
-  level, cartridge, fridge, leak, CSF low, heat exchanger, cooling ineffective).
+  state. If several stop errors are active, the highest-priority one is shown (level, cartridge,
+  pump not closed, fridge, leak, CSF low, heat exchanger, cooling ineffective).
 </p>
 
 <table>
   <thead>
     <tr>
-      <th style="width:28%">Message</th>
+      <th>ID</th>
+      <th>Message Text (US)</th>
+      <th>Severity</th>
       <th>When it appears</th>
-      <th>What to do</th>
+      <th>Possible mitigation</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td><span class="msg">Level sensor failure detected</span><br /><span class="badge stop">STOP</span></td>
-      <td>Cooling or Pumping, and a level switch is not OK.</td>
+      <td>LEVEL_SENSOR</td>
+      <td>Level sensor failure detected</td>
+      <td><span class="badge stop">STOP</span></td>
+      <td><strong>Cooling</strong> or <strong>Pumping</strong>, and a level switch is not OK.</td>
       <td>Inspect the cartridge fill level and top up if it is low. Check for leaks around the cartridge and tubing.</td>
     </tr>
     <tr>
-      <td><span class="msg">Cartridge removed during operation</span><br /><span class="badge stop">STOP</span></td>
-      <td>Cooling or Pumping, and the cartridge is not detected.</td>
+      <td>CARTRIDGE_REMOVED</td>
+      <td>Cartridge removed during operation</td>
+      <td><span class="badge stop">STOP</span></td>
+      <td><strong>Cooling</strong> or <strong>Pumping</strong>, and the cartridge is not detected.</td>
       <td>Fully seat the cartridge until it is locked in place. On expert Status, confirm Cartridge In Place is on.</td>
     </tr>
     <tr>
-      <td><span class="msg">CSF low temp</span><br /><span class="badge stop">STOP</span></td>
-      <td>CSF (Tip) below the low-temperature limit (default 28 °C).</td>
+      <td>PUMP_NOT_CLOSED</td>
+      <td>Pump not closed</td>
+      <td><span class="badge stop">STOP</span></td>
+      <td><strong>Pumping</strong>, or the pump is already running, and the pump head is open.</td>
+      <td>Close the pump head until it is latched. On expert Status, confirm Pump Closed is on. The pump cannot be started while the switch stays off.</td>
+    </tr>
+    <tr>
+      <td>CSF_LOW_TEMP</td>
+      <td>CSF low temp</td>
+      <td><span class="badge stop">STOP</span></td>
+      <td><strong>Cooling</strong> or <strong>Pumping</strong>, and CSF (Tip) is below the low-temperature limit (default 28 °C).</td>
       <td>Check the CSF temperature on the main display. Raise the setpoint if it is below the intended target.</td>
     </tr>
     <tr>
-      <td><span class="msg">Sensor read failure</span><br /><span class="badge stop">STOP</span></td>
-      <td>A sensor board or cable could not be read.</td>
-      <td>Check sensor board power and cables. Open expert Status and confirm readings update.</td>
-    </tr>
-    <tr>
-      <td><span class="msg">Battery low</span><br /><span class="badge warn">WARNING</span></td>
+      <td>BATTERY_LOW</td>
+      <td>Battery low</td>
+      <td><span class="badge warn">WARNING</span></td>
       <td>Reported battery below 20 %.</td>
       <td>Connect mains power or replace/charge the battery. Confirm the power lead is fully seated.</td>
     </tr>
     <tr>
-      <td><span class="msg">USB stick not present</span><br /><span class="badge warn">WARNING</span></td>
+      <td>USB_NOT_PRESENT</td>
+      <td>USB stick not present</td>
+      <td><span class="badge warn">WARNING</span></td>
       <td>USB logging is on and no SPINELOGS stick is inserted.</td>
       <td>Insert a USB stick labeled SPINELOGS. Wait until Service → Manual Operation shows copying.</td>
     </tr>
     <tr>
-      <td><span class="msg">SD card storage below 1 GB</span><br /><span class="badge warn">WARNING</span></td>
+      <td>SD_STORAGE_LOW</td>
+      <td>SD card storage below 1 GB</td>
+      <td><span class="badge warn">WARNING</span></td>
       <td>Local logs have less than 1 GB free.</td>
       <td>Copy logs off the device and delete old files. Do not start a long session until more than 1 GB is free.</td>
     </tr>
     <tr>
-      <td><span class="msg">USB stick storage below 1 GB</span><br /><span class="badge warn">WARNING</span></td>
+      <td>USB_STORAGE_LOW</td>
+      <td>USB stick storage below 1 GB</td>
+      <td><span class="badge warn">WARNING</span></td>
       <td>The USB stick has less than 1 GB free.</td>
       <td>Eject the stick, copy files off, and delete old logs. Reinsert a stick with more than 1 GB free.</td>
     </tr>
     <tr>
-      <td><span class="msg">Fridge defect</span><br /><span class="badge stop">STOP</span></td>
+      <td>FRIDGE_DEFECT</td>
+      <td>Fridge defect</td>
+      <td><span class="badge stop">STOP</span></td>
       <td>The compressor or fridge reports a defect.</td>
       <td>On Manual Operation, check whether the compressor is running. Check the plate temperature.</td>
     </tr>
     <tr>
-      <td><span class="msg">Leak detected</span><br /><span class="badge stop">STOP</span></td>
+      <td>LEAK_DETECTED</td>
+      <td>Leak detected</td>
+      <td><span class="badge stop">STOP</span></td>
       <td>The leak sensor stays wet. Detection can be switched off in configuration.</td>
       <td>Do not restart cooling until the area is dry. Inspect the cartridge, catheter, and tubing for leaks.</td>
     </tr>
     <tr>
-      <td><span class="msg">Heat exchanger too cold</span><br /><span class="badge stop">STOP</span></td>
-      <td>Plate below the heat-exchanger minimum (default −10 °C).</td>
+      <td>HEAT_EX_TOO_COLD</td>
+      <td>Heat exchanger too cold</td>
+      <td><span class="badge stop">STOP</span></td>
+      <td><strong>Cooling</strong> or <strong>Pumping</strong>, and the plate is below the heat-exchanger minimum (default −10 °C).</td>
       <td>Check the plate temperature. Confirm the pump is circulating coolant.</td>
     </tr>
     <tr>
-      <td><span class="msg">Cooling ineffective</span><br /><span class="badge stop">STOP</span></td>
-      <td>Pump and compressor on, but CSF does not drop enough within the timeout.</td>
+      <td>COOLING_INEFFECTIVE</td>
+      <td>Cooling ineffective</td>
+      <td><span class="badge stop">STOP</span></td>
+      <td><strong>Cooling</strong> or <strong>Pumping</strong>, with the pump and compressor on, but CSF does not drop enough within the timeout.</td>
       <td>Confirm the catheter is placed and connected. Check pump speed, flow, and pressures on the expert page.</td>
     </tr>
   </tbody>

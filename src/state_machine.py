@@ -103,10 +103,6 @@ class StateMachine:
         self.error_message = message_override or fault.message
         return self._change_state(State.ERROR, self.error_message)
 
-    def handle_sensor_error(self, error_msg: str) -> bool:
-        """IO worker or sensor read failed."""
-        return self.apply_fault(FaultCode.IO_READ_FAILURE, error_msg)
-
     def acknowledge_error(self) -> bool:
         """Operator cleared the error screen."""
         if self.current_state != State.ERROR:

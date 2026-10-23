@@ -37,6 +37,13 @@ from cooling_power import (
     catheter_cooling_power_w,
 )
 from fault_catalog import FaultCode, operator_help
+from graph_history import (
+    GRAPH_HISTORY_SEC as _GRAPH_HISTORY_SEC,
+    GraphSampleHistory,
+    axis_tick_values as _axis_tick_values,
+    snap_axis_range as _snap_axis_range,
+    tick_decimals as _tick_decimals,
+)
 from pump_flow_control import flow_ml_per_min_to_rpm_exact, rpm_to_flow_ml_per_min
 
 from PyQt6.QtCore import QTimer, Qt, QEvent, QRectF, QPointF, QSize, pyqtSignal
@@ -136,12 +143,6 @@ _GRAPH_NAV_BTN_W = 30
 _GRAPH_NAV_BTN_H = 34
 _GRAPH_NAV_GAP = 4
 _GRAPH_NAV_COLUMN_W = 150
-# Live graphs keep a full session. The last hour stays at the UI sample rate
-# so short windows stay smooth; older samples are kept every few seconds so
-# panning past one hour does not store every 100 ms tick.
-_GRAPH_HISTORY_SEC = 48 * 3600
-_GRAPH_FINE_HISTORY_SEC = 60 * 60
-_GRAPH_COARSE_INTERVAL_SEC = 5.0
 _SPINE_COLUMN_W = _GRAPH_NAV_COLUMN_W
 _SPINE_NAV_GAP = 6
 _SPINE_BUTTON_GAP = 8
@@ -493,85 +494,6 @@ def _format_age_label(seconds_ago: float) -> str:
     if abs(hours - round(hours)) < 0.05:
         return f"-{int(round(hours))} h"
     return f"-{hours:.1f} h"
-
-
-class GraphSampleHistory:
-    """Time-ordered graph samples with a long, thinned tail.
-
-    The recent ``fine_sec`` is stored at the incoming rate. Older samples are
-    kept at ``coarse_sec`` spacing, and anything past ``max_sec`` is dropped.
-    ``append`` skips that thinning so replay and screenshots can load a
-    prepared series.
-    """
-
-    def __init__(
-        self,
-        max_sec: float = _GRAPH_HISTORY_SEC,
-        fine_sec: float = _GRAPH_FINE_HISTORY_SEC,
-        coarse_sec: float = _GRAPH_COARSE_INTERVAL_SEC,
-    ):
-        self.max_sec = float(max_sec)
-        self.fine_sec = float(fine_sec)
-        self.coarse_sec = float(coarse_sec)
-        self._coarse = deque()
-        self._fine = deque()
-
-    def clear(self) -> None:
-        self._coarse.clear()
-        self._fine.clear()
-
-    def append(self, sample) -> None:
-        self._fine.append(sample)
-
-    def add(self, sample) -> None:
-        self._fine.append(sample)
-        self._retain(float(sample[0]))
-
-    def _retain(self, now: float) -> None:
-        max_sec = max(0.0, self.max_sec)
-        fine_sec = min(max(0.0, self.fine_sec), max_sec)
-        boundary = now - fine_sec
-        cutoff = now - max_sec
-        while self._fine and self._fine[0][0] < boundary:
-            aged = self._fine.popleft()
-            if aged[0] < cutoff:
-                continue
-            if (
-                not self._coarse
-                or self.coarse_sec <= 0
-                or aged[0] - self._coarse[-1][0] >= self.coarse_sec
-            ):
-                self._coarse.append(aged)
-        while self._coarse and self._coarse[0][0] < cutoff:
-            self._coarse.popleft()
-        while self._fine and self._fine[0][0] < cutoff:
-            self._fine.popleft()
-
-    def __iter__(self):
-        yield from self._coarse
-        yield from self._fine
-
-    def __reversed__(self):
-        yield from reversed(self._fine)
-        yield from reversed(self._coarse)
-
-    def __len__(self) -> int:
-        return len(self._coarse) + len(self._fine)
-
-    def __getitem__(self, index: int):
-        if index == 0:
-            return self._coarse[0] if self._coarse else self._fine[0]
-        if index == -1:
-            return self._fine[-1] if self._fine else self._coarse[-1]
-        n_coarse = len(self._coarse)
-        n = n_coarse + len(self._fine)
-        if index < 0:
-            index += n
-        if index < 0 or index >= n:
-            raise IndexError(index)
-        if index < n_coarse:
-            return self._coarse[index]
-        return self._fine[index - n_coarse]
 
 
 class MainScreenWidget(QWidget):
@@ -1834,6 +1756,8 @@ class ServiceTab(QWidget):
         self.on_stepper_continuous_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_pid_run_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_usb_eject_callback: Optional[Callable[[], None]] = None
+        # Host returns False to refuse a new pump run (open pump head).
+        self.pump_start_allowed_callback: Optional[Callable[[], bool]] = None
 
         self._create_widgets()
         self._setup_layout()
@@ -2497,8 +2421,17 @@ class ServiceTab(QWidget):
         if self.on_usb_eject_callback:
             self.on_usb_eject_callback()
 
+    def _pump_start_allowed(self) -> bool:
+        """Ask the host whether a new pump run may start."""
+        callback = self.pump_start_allowed_callback
+        if callback is None:
+            return True
+        return bool(callback())
+
     def _on_jog_pressed(self, direction: int):
         """Start jog in the given direction (-1 reverse, +1 forward)."""
+        if not self._pump_start_allowed():
+            return
         if self.on_stepper_jog_start_callback:
             self.on_stepper_jog_start_callback(direction)
 
@@ -2514,6 +2447,8 @@ class ServiceTab(QWidget):
     def _set_continuous_run(self, enabled: bool):
         """Set continuous run state and notify the host if it changed."""
         enabled = bool(enabled)
+        if enabled and not self._pump_start_allowed():
+            return
         if enabled:
             self.stop_pid_run()
         if self.stepper_continuous_on == enabled:
@@ -2575,6 +2510,8 @@ class ServiceTab(QWidget):
     def start_flow_ramp_test(self):
         """Start at 10 ml/min, ramp +10 every 2 min to 90, then back down."""
         if self.flow_ramp_test_active:
+            return
+        if not self._pump_start_allowed():
             return
         self.stop_pid_run()
         self.stop_rpm_flow_calibration()
@@ -2683,6 +2620,8 @@ class ServiceTab(QWidget):
         """Run the pump at the current slider RPM for 5 minutes, then stop."""
         if self.rpm_flow_calibration_active:
             return
+        if not self._pump_start_allowed():
+            return
         self.stop_pid_run()
         self.stop_flow_ramp_test()
         self._rpm_flow_calibration_rpm = int(self.stepper_speed_rpm)
@@ -2759,6 +2698,8 @@ class ServiceTab(QWidget):
     def start_pid_run(self):
         """Start the pump under PID control vs the main-screen setpoint."""
         if self.pid_run_active:
+            return
+        if not self._pump_start_allowed():
             return
         self.stop_flow_ramp_test()
         self.stop_rpm_flow_calibration()
@@ -2908,63 +2849,6 @@ class Service2Tab(QWidget):
 
     def update_pressures(self, pressures: Optional[dict] = None):
         """Kept for API compatibility; pressures are not shown on this tab."""
-
-
-_Y_TICK_COUNT = 7
-_Y_TICK_INTERVALS = _Y_TICK_COUNT - 1
-
-
-def _tick_decimals(fmt: str) -> int:
-    """Decimal places implied by a format string such as ``{:.1f}``."""
-    try:
-        sample = fmt.format(0.0)
-    except (IndexError, ValueError):
-        return 1
-    if "." not in sample:
-        return 0
-    return len(sample.split(".", 1)[1])
-
-
-def _snap_axis_range(
-    y_min: float,
-    y_max: float,
-    decimals: int,
-    n_intervals: int = _Y_TICK_INTERVALS,
-) -> tuple[float, float]:
-    """Expand a Y range so major ticks land on values with ``decimals`` places.
-
-    Graphs draw a fixed number of equally spaced labels. Using the raw data
-    range puts those lines at values like 1.173 that then display as 1.2.
-    Integer units of ``10**(-decimals)`` keep every tick equal to its label.
-    """
-    scale = 10 ** max(0, int(decimals))
-    # ±inf (open thermistor extrapolated past the R–T table) cannot be floored.
-    if not (math.isfinite(y_min) and math.isfinite(y_max)):
-        y_min, y_max = 0.0, float(n_intervals)
-    lo, hi = (y_min, y_max) if y_min <= y_max else (y_max, y_min)
-    i_min = math.floor(lo * scale + 1e-9)
-    i_max = math.ceil(hi * scale - 1e-9)
-    if i_max <= i_min:
-        i_max = i_min + n_intervals
-    i_step = max(1, math.ceil((i_max - i_min) / n_intervals))
-    i_max = i_min + n_intervals * i_step
-    return i_min / scale, i_max / scale
-
-
-def _axis_tick_values(
-    y_min: float,
-    y_max: float,
-    decimals: int,
-    n_intervals: int = _Y_TICK_INTERVALS,
-) -> list[float]:
-    """Major-tick values matching ``_snap_axis_range``."""
-    scale = 10 ** max(0, int(decimals))
-    if not (math.isfinite(y_min) and math.isfinite(y_max)):
-        y_min, y_max = 0.0, float(n_intervals)
-    i_min = int(round(y_min * scale))
-    i_max = int(round(y_max * scale))
-    i_step = max(1, (i_max - i_min) // n_intervals)
-    return [(i_min + i * i_step) / scale for i in range(n_intervals + 1)]
 
 
 class MultiTemperatureGraphWidget(QWidget):

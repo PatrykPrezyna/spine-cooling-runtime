@@ -23,7 +23,7 @@ From the repo root, in the same venv as the rest of the project:
 
 ```bash
 source venv/bin/activate          # Windows: venv\Scripts\activate
-pip install -r simple_examples/thermocouple/requirements.txt
+pip install -r examples/thermocouple/requirements.txt
 ```
 
 `SMtc` is Linux / Pi only.
@@ -31,14 +31,14 @@ pip install -r simple_examples/thermocouple/requirements.txt
 ## Run
 
 ```bash
-python simple_examples/thermocouple/read_one.py
+python examples/thermocouple/read_one.py
 ```
 
 Prints channel 1 once per second. Press ENTER to stop.
 
 ```bash
-python simple_examples/thermocouple/read_one.py 2          # channel 2
-python simple_examples/thermocouple/read_one.py 1 --type K # Type K on ch 1
+python examples/thermocouple/read_one.py 2          # channel 2
+python examples/thermocouple/read_one.py 1 --type K # Type K on ch 1
 ```
 
 A valid Type T reading is a plausible °C value (room temperature is typically 15–30). `0`, huge numbers, or an init error usually mean the wrong channel, open wires, or the HAT not on I2C.

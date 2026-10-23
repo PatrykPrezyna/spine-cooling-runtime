@@ -101,7 +101,7 @@ class MvToBarConversionTests(unittest.TestCase):
         self.assertAlmostEqual(mv_to_bar(0.0), expected, places=6)
 
     def test_example_script_formula_matches(self) -> None:
-        # Replicate simple_examples/ads1115_pressure.py inline.
+        # Replicate examples/ads1115_pressure.py inline.
         for mv in (MV_LO, 0.0, 41.021, MV_HI, 50.0):
             example = BAR_LO + (mv - MV_LO) * (BAR_HI - BAR_LO) / (MV_HI - MV_LO)
             self.assertAlmostEqual(mv_to_bar(mv), example, places=9)

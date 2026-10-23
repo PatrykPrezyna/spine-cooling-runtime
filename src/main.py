@@ -728,8 +728,8 @@ class SensorMonitorApp(QObject):
         latched = self.state_machine.get_latched_fault_code()
         if latched is None:
             return True
-        if latched == FaultCode.IO_READ_FAILURE:
-            return True
+        if latched == FaultCode.PUMP_NOT_CLOSED:
+            return self._pump_head_is_closed(sensor_states)
         ctx = self._build_rule_context(sensor_states, temperatures, pressures)
         fault_state = self.state_machine.get_fault_context_state()
         if fault_state is not None:
@@ -911,11 +911,8 @@ class SensorMonitorApp(QObject):
         """Apply the worker's results back on the GUI thread."""
         try:
             if error_message:
+                # A failed read is logged and this tick is dropped. It does not stop the session.
                 print(error_message)
-                if self.state_machine:
-                    self.state_machine.handle_sensor_error(error_message)
-                if self.ui:
-                    self.ui.set_status_message(error_message, is_error=True)
                 self._refresh_usb_ui()
                 return
 
@@ -999,7 +996,32 @@ class SensorMonitorApp(QObject):
     # ------------------------------------------------------------------
     # UI callbacks
     # ------------------------------------------------------------------
+    def _pump_closed_label(self) -> str:
+        return str(self.config.get("alarms", {}).get("pump_closed_label", "Pump Closed"))
+
+    def _pump_head_is_closed(self, sensor_states: Optional[dict] = None) -> bool:
+        """True when the pump head is closed, or the switch is not in this reading.
+
+        A missing key means the switch was not read. An unwired input reads
+        closed because of the pull-up, so an absent sensor does not block pumping.
+        """
+        states = self._last_sensor_states if sensor_states is None else sensor_states
+        label = self._pump_closed_label()
+        if label not in states:
+            return True
+        return bool(states[label])
+
+    def pump_start_allowed(self) -> bool:
+        """Refuse a new pump run and latch the stop fault while the head is open."""
+        if self._pump_head_is_closed():
+            return True
+        if self.state_machine is not None:
+            self.state_machine.apply_fault(FaultCode.PUMP_NOT_CLOSED)
+        return False
+
     def on_start_pumping(self):
+        if not self.pump_start_allowed():
+            return
         if self.state_machine:
             self.state_machine.start_pumping()
 
@@ -1109,6 +1131,8 @@ class SensorMonitorApp(QObject):
 
     def on_stepper_jog_start(self, direction: int):
         """Start jog while a jog button is held."""
+        if not self.pump_start_allowed():
+            return
         self.stepper_continuous_forward = False
         if not self.stepper_driver:
             return
@@ -1131,6 +1155,8 @@ class SensorMonitorApp(QObject):
 
     def on_service_pid_run_toggle(self, enabled: bool) -> None:
         """Start or stop a service-page PID run (same controller as Start Pumping)."""
+        if enabled and not self.pump_start_allowed():
+            return
         self.service_pid_run = bool(enabled)
         if enabled:
             self.pump_flow_controller.reset()
@@ -1162,6 +1188,8 @@ class SensorMonitorApp(QObject):
 
     def on_stepper_continuous_toggle(self, enabled: bool):
         """Toggle continuous movement ON/OFF (direction: ``stepper_continuous_direction`` / config)."""
+        if enabled and not self.pump_start_allowed():
+            return
         if not enabled:
             self.service_pid_run = False
             if self.ui is not None:
@@ -1247,6 +1275,7 @@ class SensorMonitorApp(QObject):
         ui.on_compressor_thresholds_change_callback = self.on_compressor_thresholds_changed
         ui.main_graph_widget.on_temperature_change_callback = self.on_set_temperature_changed
         ui.on_usb_eject_callback = self.on_usb_eject
+        ui.service_tab.pump_start_allowed_callback = self.pump_start_allowed
         self._log_current_setpoints()
 
     def _log_setpoint_if_changed(self, name: str, value: str) -> None:

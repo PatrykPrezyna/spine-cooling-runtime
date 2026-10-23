@@ -33,7 +33,7 @@ Preserve the `Cartrige` spelling unless the user asks to fix it.
 | `config.yaml` `temperature_sources` | Same 12 keys, each `thermistor` |
 | `config.yaml` `simulation.thermistors` | Same 12 keys; keep prior °C if the name is unchanged |
 | `src/log_analyzer.py` `_DEFAULT_TEMP_NAMES` | Same 12 names in order |
-| `scripts/generate_operator_pdf.py` `TEMPS` | Same 12 keys (dummy °C ok) |
+| `tools/generate_operator_pdf.py` `TEMPS` | Same 12 keys (dummy °C ok) |
 
 `tests/test_thermistor_reader.py` (`test_config_yaml_adds_four_thermistors_on_i2c6`) asserts labels 8–11 and that `temperature_sources` keys equal labels in channel order. Update the 8–11 expected list when those names change.
 
@@ -52,7 +52,7 @@ If that probe is renamed or removed, update the key to the new name (ask only if
 ## Other hardcoded copies
 
 - `src/session_logs.py` `KNOWN_LABELS`: add slugs for new names (`Hot bath1` → `hot_bath1`). Do not delete old slugs.
-- `scripts/generate_operator_pdf.py`: any leftover string uses of the old name (`TEMPS["…"]`, CSF/heat-ex captions).
+- `tools/generate_operator_pdf.py`: any leftover string uses of the old name (`TEMPS["…"]`, CSF/heat-ex captions).
 - `tests/test_flow_reader.py` asserts `labels[4] == "Cartrige In"` — update if channel 4 is renamed.
 - `tests/test_session_logs.py` evaluation-sample check may still expect old CSV names; do not rewrite historical fixtures.
 

@@ -3,7 +3,7 @@
 ADS1115 at address 50, differential input P0-P1.
 Hit ENTER to stop.
 
-    python simple_examples/ads1115_pressure.py
+    python examples/ads1115_pressure.py
 """
 
 from __future__ import annotations

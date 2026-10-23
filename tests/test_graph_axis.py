@@ -17,19 +17,19 @@ if str(SRC_DIR) not in sys.path:
 
 class SnapAxisRangeTests(unittest.TestCase):
     def test_infinite_limits_stay_finite(self) -> None:
-        from gui import _axis_tick_values, _snap_axis_range
+        from graph_history import axis_tick_values, snap_axis_range
 
-        y_min, y_max = _snap_axis_range(float("-inf"), float("inf"), 1)
+        y_min, y_max = snap_axis_range(float("-inf"), float("inf"), 1)
         self.assertTrue(math.isfinite(y_min))
         self.assertTrue(math.isfinite(y_max))
         self.assertLess(y_min, y_max)
-        ticks = _axis_tick_values(y_min, y_max, 1)
+        ticks = axis_tick_values(y_min, y_max, 1)
         self.assertTrue(all(math.isfinite(tick) for tick in ticks))
 
     def test_finite_limits_still_cover_the_data(self) -> None:
-        from gui import _snap_axis_range
+        from graph_history import snap_axis_range
 
-        y_min, y_max = _snap_axis_range(20.0, 40.0, 1)
+        y_min, y_max = snap_axis_range(20.0, 40.0, 1)
         self.assertLessEqual(y_min, 20.0)
         self.assertGreaterEqual(y_max, 40.0)
 
@@ -68,7 +68,8 @@ class MultiTemperatureGraphRangeTests(unittest.TestCase):
         widget.grab()
 
     def test_only_infinite_sample_uses_the_default_range(self) -> None:
-        from gui import MultiTemperatureGraphWidget, _snap_axis_range
+        from graph_history import snap_axis_range
+        from gui import MultiTemperatureGraphWidget
 
         widget = MultiTemperatureGraphWidget(["CSF 2"])
         y_min, y_max = widget._compute_visible_y_range(
@@ -77,7 +78,7 @@ class MultiTemperatureGraphRangeTests(unittest.TestCase):
             widget._default_y_range,
             decimals=1,
         )
-        expected = _snap_axis_range(*widget._default_y_range, 1)
+        expected = snap_axis_range(*widget._default_y_range, 1)
         self.assertEqual((y_min, y_max), expected)
 
     def test_add_sample_stores_infinity_as_missing(self) -> None:

@@ -1,8 +1,4 @@
 control_temp_label: Tip
-# Logical temperatures shown in the UI / control / CSV.
-# Keys are display names; every listed name is a thermistor.
-# Only listed names appear; order is display order.
-# All 12 entries below match thermistor_sensors.labels (channels 0–11).
 temperature_sources:
   Tip: thermistor
   Cartrige Out: thermistor
@@ -21,16 +17,14 @@ alarms:
   csf_low_temp_c: 28.0
   heat_ex_label: Plate 1
   heat_ex_min_c: -10.0
-  leak_pressure_delta_min: 0.34  # 5.0 psi
-  # Digital leak sensor: a 0/low reading means fluid detected -> immediate stop.
+  leak_pressure_delta_min: 0.34
   leak_detection_enabled: false
   leak_sensor_label: Leak Sensor
-  # Ignore brief flicker: the leak line must stay low this long before tripping.
   leak_debounce_s: 0.5
+  pump_closed_label: Pump Closed
   cooling_ineffective_timeout_s: 600
   cooling_ineffective_csf_delta_c: 0.2
   battery_low_pct: 20
-  # MESSAGE warnings when local (SD) or USB free space drops below this.
   storage_min_free_gb: 1
 simulation:
   csf_label: Tip
@@ -52,6 +46,7 @@ simulation:
   cart_in_rise_rate_c_per_s: 0.1
   sensors:
     Cartridge In Place: true
+    Pump Closed: true
     Level Low: true
     Level Critical: true
     Leak Sensor: true
@@ -88,16 +83,15 @@ sensors:
   gpio_pin: 19
   active_high: true
   pull_up: true
-# Leak detector: line is held high when dry; a leak pulls it low (0).
+- name: Pump Closed
+  gpio_pin: 21
+  active_high: true
+  pull_up: true
 - name: Leak Sensor
   gpio_pin: 26
   active_high: true
   pull_up: true
 sample_rate_hz: 1.0
-# Thermistor names for the 12 ADS1115 channels. Hardware and conversion are
-# fixed in ads1115_thermistor_reader.py (0-3 i2c-1 0x48, 4-7 i2c-1 0x49,
-# 8-11 i2c-6 0x48; Tip/0 = AB6N2, Plate 2 / Plate 1 (channels 5–6) = NTCASCWE3103F Rnom,
-# the rest MA300TA103C).
 thermistor_sensors:
   labels:
     0: Tip
@@ -112,42 +106,27 @@ thermistor_sensors:
     9: Plate 2b
     10: Plate 1b
     11: Probe 4
-# 4-20 mA flow meter on I2C bus 6, ADS1115 0x49 (73) AIN0.
-# Bus 1: 0x48/0x49 thermistors, 0x4A/0x4B (74/75) pressure.
-# Loop is dropped across a 220 Ω shunt: 4 mA → 0.88 V, 20 mA → 4.40 V.
-# Gain 2/3 (±6.144 V) is required so 4.40 V is not clipped.
-# Set flow_hi_ml_per_min from the sensor datasheet (20 mA full scale).
 flow_sensor:
   enabled: true
   i2c_bus: 6
-  i2c_address: 73  # 0x49
+  i2c_address: 73
   analog_input: 0
   shunt_ohm: 220
-  gain: '2/3'
+  gain: 2/3
   data_rate: 128
   ma_lo: 4.0
   ma_hi: 20.0
   flow_lo_ml_per_min: 0.0
   flow_hi_ml_per_min: 100.0
-# Differential pressure sensors on a third + fourth ADS1115 (up to 4 sensors).
-# Each sensor uses one differential pair (2 analog inputs), so one chip serves
-# two sensors: channels 0-1 on the first address, 2-3 on the second.
-# Labels match thermistor_sensors.labels (channel → display name).
-# Optional channel_configs[].label overrides the flat labels map.
-# Linear calibration: mV → bar (same for all sensors).
-# Anchors are the original sensor points (-11.5 psi and 75.0 psi).
-# UI / session CSV follow ui.update_interval_ms (100 ms → 10 Hz).
-# A dedicated capture thread writes a 100 Hz pressure CSV for the whole session
-# into the same logs/ folder as the sensor and status files.
 pressure_sensors:
   enabled: true
   sample_rate_hz: 10
-  capture_rate_hz: 100  # dedicated pressure CSV rate for the session
-  data_rate: 860        # ADS1115 SPS; needed for ~100 Hz × 4 channels
+  capture_rate_hz: 100
+  data_rate: 860
   i2c_addresses:
-  - 74   # 0x4A — channels 0 (P0-P1), 1 (P2-P3)
-  - 75   # 0x4B — channels 2 (P0-P1), 3 (P2-P3)
-  gain: 16  # ±0.256 V
+  - 74
+  - 75
+  gain: 16
   channels:
   - 0
   - 1
@@ -160,42 +139,27 @@ pressure_sensors:
     3: Catheter Out
   calibration:
     mv_lo: -14.858
-    bar_lo: -0.792897  # -11.5 psi
+    bar_lo: -0.792897
     mv_hi: 96.9
-    bar_hi: 5.171068  # 75.0 psi
+    bar_hi: 5.171068
 compressor:
-  relay_pin: 16  # BCM GPIO 16 = header pin 36. MOSFET: HIGH = compressor on.
-  # Probe used for on/off hysteresis. Must match thermistor_sensors.labels.
-  # A single label uses that sensor; several labels are averaged.
+  relay_pin: 16
   heat_ex_labels:
-    - Plate 1
-  off_below_temp_c: -9
-  on_above_temp_c: -9.0
-  # After the compressor switches off, it stays off this long before it can
-  # switch on again. Temperature traces mark the real on, not the relay command.
+  - Plate 1
+  off_below_temp_c: -0.5
+  on_above_temp_c: 1.0
   min_off_before_on_s: 60
 logging:
-  # All three session CSVs share this folder and one startup stamp:
-  #   <stamp>_sensors.csv
-  #   <stamp>_pressure_100Hz.csv
-  #   <stamp>_status_and_errors.csv
   directory: logs
-  sensors_filename_format: "%Y%m%d_%H%M%S_sensors.csv"
-  pressure_filename_format: "%Y%m%d_%H%M%S_pressure_100Hz.csv"
-  status_filename_format: "%Y%m%d_%H%M%S_status_and_errors.csv"
-  # Background copy of the three session CSVs onto a USB stick. Local logs/
-  # stay the source of truth. Format the stick as exFAT/FAT32 with volume
-  # label SPINELOGS. Service → Manual Operation shows status and Eject.
+  sensors_filename_format: '%Y%m%d_%H%M%S_sensors.csv'
+  pressure_filename_format: '%Y%m%d_%H%M%S_pressure_100Hz.csv'
+  status_filename_format: '%Y%m%d_%H%M%S_status_and_errors.csv'
   usb:
     enabled: true
     volume_label: SPINELOGS
     destination_subdir: logs
     interval_s: 2.0
-    # Optional fixed folder (tests / a known mount). Empty = discover by label.
-    mount_path: ""
-# Cooling power (Expert Power tab): P = m_dot * cp * dT, with m_dot from pump flow.
-# Catheter: heat picked up by water (T_out - T_in). Cartridge: heat extracted
-# from water at the cartridge outlet (T_in - T_out). Labels match temperature_sources.
+    mount_path: ''
 cooling_power:
   water_density_kg_per_l: 1.0
   water_cp_j_per_kg_k: 4184.0
@@ -203,29 +167,25 @@ cooling_power:
   catheter_out_label: Catheter Out
   cartridge_in_label: Cartrige In
   cartridge_out_label: Cartrige Out
-# Closed-loop pump flow during PUMPING (control_temp_label vs UI set temperature).
-# error = Tip - set_temp (°C). Above full_speed_error_c → max flow;
-# between 0 and that band → PID; at/below setpoint → min flow.
 pump_control:
   max_flow_ml_per_min: 60.0
   min_flow_ml_per_min: 10.0
   full_speed_error_c: 0.5
-  kp: 180.0   # ml/min per °C (P-only ≈ min + 180*error → 60 by ~0.28°C; clamped at max)
+  kp: 180.0
   ki: 40.0
   kd: 5.0
   integral_limit: 2.0
 ui:
-  main_view: spine  # spine (diagram + +/- setpoint) or graph (legacy gauge layout)
+  main_view: spine
   window_width: 500
   window_height: 450
-  update_interval_ms: 100  # 10 Hz IO / pressure / CSV tick
+  update_interval_ms: 100
   fullscreen: true
 stepper_motor:
   driver: TB6600
   steps_per_revolution: 200
   microstepping: 16
   default_speed_rpm: 20
-  # ~60 ml/min and ~10 ml/min (Q = 0.8462*rpm + 1.86)
   pumping_speed_rpm: 69
   pumping_slow_speed_rpm: 10
   max_speed_rpm: 390

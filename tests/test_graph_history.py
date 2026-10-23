@@ -17,7 +17,7 @@ if str(SRC_DIR) not in sys.path:
 
 class GraphSampleHistoryTests(unittest.TestCase):
     def test_keeps_samples_older_than_one_hour(self) -> None:
-        from gui import GraphSampleHistory
+        from graph_history import GraphSampleHistory
 
         history = GraphSampleHistory()
         history.add((0.0, 36.0))
@@ -27,16 +27,16 @@ class GraphSampleHistoryTests(unittest.TestCase):
         self.assertEqual(history[-1], (2 * 3600.0, 32.0))
 
     def test_drops_samples_older_than_the_session_window(self) -> None:
-        from gui import GraphSampleHistory, _GRAPH_HISTORY_SEC
+        from graph_history import GRAPH_HISTORY_SEC, GraphSampleHistory
 
         history = GraphSampleHistory()
         history.add((0.0, "old"))
-        history.add((_GRAPH_HISTORY_SEC + 3600.0, "new"))
+        history.add((GRAPH_HISTORY_SEC + 3600.0, "new"))
 
-        self.assertEqual(list(history), [(_GRAPH_HISTORY_SEC + 3600.0, "new")])
+        self.assertEqual(list(history), [(GRAPH_HISTORY_SEC + 3600.0, "new")])
 
     def test_thins_the_tail_and_keeps_the_recent_hour_dense(self) -> None:
-        from gui import GraphSampleHistory
+        from graph_history import GraphSampleHistory
 
         history = GraphSampleHistory()
         for second in range(2 * 3600 + 1):

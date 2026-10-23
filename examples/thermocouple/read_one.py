@@ -3,9 +3,9 @@
 Default: stack 0, channel 1, Type T (copper / constantan).
 Hit ENTER to stop.
 
-    python simple_examples/thermocouple/read_one.py
-    python simple_examples/thermocouple/read_one.py 2          # channel 2
-    python simple_examples/thermocouple/read_one.py 1 --type K
+    python examples/thermocouple/read_one.py
+    python examples/thermocouple/read_one.py 2          # channel 2
+    python examples/thermocouple/read_one.py 1 --type K
 """
 
 from __future__ import annotations

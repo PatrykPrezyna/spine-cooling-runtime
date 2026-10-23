@@ -51,6 +51,8 @@ def evaluate(ctx: RuleContext) -> set[FaultCode]:
         active.add(FaultCode.LEVEL_SENSOR)
     if _check_cartridge_removed(ctx):
         active.add(FaultCode.CARTRIDGE_REMOVED)
+    if _check_pump_not_closed(ctx):
+        active.add(FaultCode.PUMP_NOT_CLOSED)
     if _check_csf_low_temp(ctx):
         active.add(FaultCode.CSF_LOW_TEMP)
     if _check_heat_ex_min(ctx):
@@ -88,6 +90,22 @@ def _check_cartridge_removed(ctx: RuleContext) -> bool:
     if ctx.current_state not in ACTIVE_STATES:
         return False
     return not ctx.sensor_states.get("Cartridge In Place", False)
+
+
+def _check_pump_not_closed(ctx: RuleContext) -> bool:
+    """Open pump head while the pump is running or the workflow is pumping.
+
+    Cooling with the head open is allowed. Starting the pump is refused
+    separately; this rule stops a pump that is already turning.
+    """
+    label = str(_alarms(ctx).get("pump_closed_label", "Pump Closed"))
+    if label not in ctx.sensor_states:
+        return False
+    if bool(ctx.sensor_states.get(label)):
+        return False
+    if ctx.pump_running:
+        return True
+    return ctx.current_state in (State.PUMPING, State.PUMPING_SLOWLY)
 
 
 def _check_csf_low_temp(ctx: RuleContext) -> bool:

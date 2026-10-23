@@ -4,6 +4,25 @@
 
 The application now includes a comprehensive **State Machine** that controls the application flow through five distinct states. The state machine ensures safe operation by enforcing valid state transitions and handling errors appropriately.
 
+## State diagram
+
+These are the transitions the runtime takes. **Pumping Slowly** is still a legal state, but nothing enters it.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Init
+    Init --> Ready: init ok
+    Init --> Error: init failed
+    Ready --> Cooling: sensors OK
+    Cooling --> Pumping: start pumping
+    Pumping --> Cooling: stop pumping
+    Ready --> Error: stop fault
+    Cooling --> Error: stop fault
+    Pumping --> Error: stop fault
+    Error --> Ready: acknowledge
+```
+
 ## States
 
 ### 1. INIT (Initialization)
@@ -144,7 +163,6 @@ The application now includes a comprehensive **State Machine** that controls the
 - `start_pumping()` - User starts pumping
 - `stop_pumping()` - User stops pumping
 - `handle_cartridge_removed()` - Handle cartridge removal
-- `handle_sensor_error(error_msg)` - Handle sensor errors
 - `acknowledge_error()` - User acknowledges error
 - `update(sensor_states)` - Update based on sensor states
 

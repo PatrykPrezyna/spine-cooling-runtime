@@ -2,7 +2,7 @@
 
 Run from the repo root:
 
-    python scripts/generate_operator_pdf.py
+    python tools/generate_operator_pdf.py
 """
 
 from __future__ import annotations
@@ -453,44 +453,48 @@ def _build_pdf(shots: list[tuple[str, str, Path]], dest_path: Path | None = None
             "<b>STOP</b> faults enter Error, stop the pump, and require ACKNOWLEDGE ERROR after the cause is gone. "
             "Tap the orange error chip for causes and steps. "
             "<b>MESSAGE</b> faults only show a yellow banner and do not change state. "
-            "If several STOP faults are active, the highest-priority one is shown (I/O, level, cartridge, fridge, leak, CSF low, heat exchanger, cooling ineffective).",
+            "If several STOP faults are active, the highest-priority one is shown (level, cartridge, pump not closed, fridge, leak, CSF low, heat exchanger, cooling ineffective).",
             styles["Body"],
         )
     )
 
     header = [
-        Paragraph("Fault", styles["CellHead"]),
-        Paragraph("When it trips", styles["CellHead"]),
-        Paragraph("What to do", styles["CellHead"]),
+        Paragraph("ID", styles["CellHead"]),
+        Paragraph("Message Text (US)", styles["CellHead"]),
+        Paragraph("Severity", styles["CellHead"]),
+        Paragraph("When it appears", styles["CellHead"]),
+        Paragraph("Possible mitigation", styles["CellHead"]),
     ]
     rows = [header]
     trip_when = {
-        FaultCode.LEVEL_SENSOR: "Cooling/Pumping and a level switch is LOW.",
-        FaultCode.CARTRIDGE_REMOVED: "Cooling/Pumping and cartridge switch is OFF.",
-        FaultCode.CSF_LOW_TEMP: "CSF (Body Temp) below the low-temp limit (default 28 °C).",
-        FaultCode.IO_READ_FAILURE: "A sensor board or bus read failed.",
+        FaultCode.LEVEL_SENSOR: "<b>Cooling</b> or <b>Pumping</b>, and a level switch is not OK.",
+        FaultCode.CARTRIDGE_REMOVED: "<b>Cooling</b> or <b>Pumping</b>, and the cartridge is not detected.",
+        FaultCode.PUMP_NOT_CLOSED: "<b>Pumping</b>, or the pump is already running, and the pump head is open.",
+        FaultCode.CSF_LOW_TEMP: "<b>Cooling</b> or <b>Pumping</b>, and CSF (Tip) is below the low-temperature limit (default 28 °C).",
         FaultCode.BATTERY_LOW: "Reported battery below 20% (warning only).",
         FaultCode.USB_NOT_PRESENT: "USB logging is on and no SPINELOGS stick is mounted (warning only).",
         FaultCode.SD_STORAGE_LOW: "Local logs disk (SD card) has less than 1 GB free (warning only).",
         FaultCode.USB_STORAGE_LOW: "USB stick has less than 1 GB free (warning only).",
         FaultCode.FRIDGE_DEFECT: "Compressor/fridge defect flag is set.",
         FaultCode.LEAK_DETECTED: "Leak sensor stays LOW (wet). Detection can be disabled in config.",
-        FaultCode.HEAT_EX_TOO_COLD: "Plate 1 below the heat-exchanger minimum (default −10 °C).",
-        FaultCode.COOLING_INEFFECTIVE: "Pump + compressor on, but CSF does not drop enough within the timeout.",
+        FaultCode.HEAT_EX_TOO_COLD: "<b>Cooling</b> or <b>Pumping</b>, and the plate is below the heat-exchanger minimum (default −10 °C).",
+        FaultCode.COOLING_INEFFECTIVE: "<b>Cooling</b> or <b>Pumping</b>, with the pump and compressor on, but CSF does not drop enough within the timeout.",
     }
     for code, fault in FAULTS.items():
         _causes, steps_t = operator_help(code)
         do = " ".join(steps_t[:2])
-        sev = "STOP" if fault.severity == Severity.STOP else "WARN"
+        sev = "STOP" if fault.severity == Severity.STOP else "WARNING"
         rows.append(
             [
-                Paragraph(f"<b>{fault.message}</b><br/>{code.value} · {sev}", styles["Cell"]),
+                Paragraph(code.value, styles["Cell"]),
+                Paragraph(fault.message, styles["Cell"]),
+                Paragraph(sev, styles["Cell"]),
                 Paragraph(trip_when.get(code, "See catalog."), styles["Cell"]),
                 Paragraph(do, styles["Cell"]),
             ]
         )
 
-    table = Table(rows, colWidths=[42 * mm, 62 * mm, usable_w - 104 * mm])
+    table = Table(rows, colWidths=[36 * mm, 34 * mm, 22 * mm, 42 * mm, usable_w - 134 * mm])
     table.setStyle(
         TableStyle(
             [

@@ -5,9 +5,9 @@ Bus 6: ADS1115 0x48 (T9-T12); 0x49 AIN0 = 4-20 mA flow (220 Ω)
 
 Hit ENTER to stop. Pass a bus number to read only that bus:
 
-    python simple_examples/ads1115_thermistors.py
-    python simple_examples/ads1115_thermistors.py 1
-    python simple_examples/ads1115_thermistors.py 6
+    python examples/ads1115_thermistors.py
+    python examples/ads1115_thermistors.py 1
+    python examples/ads1115_thermistors.py 6
 
 Uses the shared MA300TA103C table from ``data/calibration/``.
 """

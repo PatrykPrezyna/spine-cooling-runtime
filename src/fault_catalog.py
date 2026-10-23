@@ -13,8 +13,8 @@ class Severity(Enum):
 class FaultCode(Enum):
     LEVEL_SENSOR = "LEVEL_SENSOR"
     CARTRIDGE_REMOVED = "CARTRIDGE_REMOVED"
+    PUMP_NOT_CLOSED = "PUMP_NOT_CLOSED"
     CSF_LOW_TEMP = "CSF_LOW_TEMP"
-    IO_READ_FAILURE = "IO_READ_FAILURE"
     BATTERY_LOW = "BATTERY_LOW"
     USB_NOT_PRESENT = "USB_NOT_PRESENT"
     SD_STORAGE_LOW = "SD_STORAGE_LOW"
@@ -85,13 +85,29 @@ FAULTS: dict[FaultCode, FaultDef] = {
         (
             "The cartridge was pulled out or is not fully seated.",
             "The cartridge-in-place switch is not detecting the cartridge.",
-            "The switch connector or wiring is loose.",
         ),
         (
             "Fully seat the cartridge until it is locked in place.",
             "On expert Status, confirm Cartridge In Place is ON.",
             "Check the cartridge sensor connector if it stays OFF.",
             "Acknowledge once the cartridge is detected.",
+        ),
+    ),
+    FaultCode.PUMP_NOT_CLOSED: _fault(
+        FaultCode.PUMP_NOT_CLOSED,
+        "Pump not closed",
+        Severity.STOP,
+        True,
+        (
+            "The pump head or cover is open.",
+            "The pump-closed switch is not made.",
+            "The switch connector or wiring is loose.",
+        ),
+        (
+            "Close the pump head until it is latched.",
+            "On expert Status, confirm Pump Closed is ON.",
+            "Do not start the pump while the switch stays OFF.",
+            "Acknowledge once Pump Closed reads ON.",
         ),
     ),
     FaultCode.CSF_LOW_TEMP: _fault(
@@ -110,23 +126,6 @@ FAULTS: dict[FaultCode, FaultDef] = {
             "Confirm the CSF sensor is connected and reading a plausible value.",
             "Wait until CSF is back above the low-temperature limit.",
             "Acknowledge once the temperature is in range.",
-        ),
-    ),
-    FaultCode.IO_READ_FAILURE: _fault(
-        FaultCode.IO_READ_FAILURE,
-        "Sensor read failure",
-        Severity.STOP,
-        True,
-        (
-            "A sensor board, I2C/SPI bus, or cable failed during a read.",
-            "A transient communication error interrupted sampling.",
-            "On a Pi, the I/O service (pigpio) may not be running.",
-        ),
-        (
-            "Check sensor board power and cables.",
-            "Open expert Status and confirm readings update.",
-            "If this is a Pi, confirm the I/O service is running.",
-            "Acknowledge to return to Ready. The next read will trip again if hardware is still down.",
         ),
     ),
     FaultCode.BATTERY_LOW: _fault(
@@ -263,9 +262,9 @@ FAULTS: dict[FaultCode, FaultDef] = {
 }
 
 _STOP_PRIORITY: dict[FaultCode, int] = {
-    FaultCode.IO_READ_FAILURE: 0,
-    FaultCode.LEVEL_SENSOR: 1,
-    FaultCode.CARTRIDGE_REMOVED: 2,
+    FaultCode.LEVEL_SENSOR: 0,
+    FaultCode.CARTRIDGE_REMOVED: 1,
+    FaultCode.PUMP_NOT_CLOSED: 2,
     FaultCode.FRIDGE_DEFECT: 3,
     FaultCode.LEAK_DETECTED: 4,
     FaultCode.CSF_LOW_TEMP: 5,

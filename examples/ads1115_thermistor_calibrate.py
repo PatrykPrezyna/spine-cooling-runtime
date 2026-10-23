@@ -6,7 +6,7 @@ For each sensor T1..T8:
 
 Saves measured voltage and calculated temperature to a timestamped CSV.
 
-    python simple_examples/ads1115_thermistor_calibrate.py
+    python examples/ads1115_thermistor_calibrate.py
 """
 
 from __future__ import annotations

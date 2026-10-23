@@ -85,6 +85,63 @@ class SafetyRulesTests(unittest.TestCase):
         )
         self.assertIn(FaultCode.CARTRIDGE_REMOVED, active)
 
+    def test_pump_not_closed_while_pumping(self) -> None:
+        active = evaluate(
+            _ctx(
+                sensor_states={
+                    "Cartridge In Place": True,
+                    "Level Low": True,
+                    "Level Critical": True,
+                    "Pump Closed": False,
+                }
+            )
+        )
+        self.assertIn(FaultCode.PUMP_NOT_CLOSED, active)
+
+    def test_pump_not_closed_blocks_running_motor_outside_pumping(self) -> None:
+        active = evaluate(
+            _ctx(
+                state=State.READY,
+                sensor_states={
+                    "Cartridge In Place": True,
+                    "Level Low": True,
+                    "Level Critical": True,
+                    "Pump Closed": False,
+                },
+            )
+        )
+        self.assertIn(FaultCode.PUMP_NOT_CLOSED, active)
+
+    def test_pump_open_during_cooling_does_not_trip_until_pump_runs(self) -> None:
+        ctx = _ctx(
+            state=State.COOLING,
+            sensor_states={
+                "Cartridge In Place": True,
+                "Level Low": True,
+                "Level Critical": True,
+                "Pump Closed": False,
+            },
+        )
+        ctx.pump_running = False
+        self.assertNotIn(FaultCode.PUMP_NOT_CLOSED, evaluate(ctx))
+
+    def test_pump_closed_does_not_trip(self) -> None:
+        active = evaluate(
+            _ctx(
+                sensor_states={
+                    "Cartridge In Place": True,
+                    "Level Low": True,
+                    "Level Critical": True,
+                    "Pump Closed": True,
+                }
+            )
+        )
+        self.assertNotIn(FaultCode.PUMP_NOT_CLOSED, active)
+
+    def test_missing_pump_switch_does_not_trip(self) -> None:
+        active = evaluate(_ctx())
+        self.assertNotIn(FaultCode.PUMP_NOT_CLOSED, active)
+
     def test_cartridge_removed_ignored_when_ready(self) -> None:
         active = evaluate(
             _ctx(

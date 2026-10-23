@@ -20,7 +20,7 @@ from typing import Dict, List, Optional
 # 1 psi = 6894.757293168 Pa; 1 bar = 1e5 Pa.
 PSI_TO_BAR = 0.06894757293168
 
-# Default calibration (same millivolt anchors as simple_examples/ads1115_pressure.py).
+# Default calibration (same millivolt anchors as examples/ads1115_pressure.py).
 _MV_LO, _PSI_LO = -14.858, -11.5
 _MV_HI, _PSI_HI = 96.9, 75.0
 _BAR_LO = _PSI_LO * PSI_TO_BAR

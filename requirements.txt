@@ -30,6 +30,3 @@ adafruit-extended-bus>=1.0.0; sys_platform == "linux"
 pandas>=2.0
 matplotlib>=3.7
 numpy>=1.24
-
-# UART simple_examples (uart_master / uart_slave / uart_listener)
-pyserial>=3.5

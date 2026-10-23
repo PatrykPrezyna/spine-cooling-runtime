@@ -38,6 +38,7 @@ a = Analysis(
     hiddenimports=[
         "cooling_power",
         "fault_catalog",
+        "graph_history",
         "gui",
         "session_logs",
         "PyQt6.QtCore",
