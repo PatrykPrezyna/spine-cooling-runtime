@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from config_sections import actuator_device
+
 
 class SimStepperDriver:
     """Logs stepper commands instead of driving GPIO."""
@@ -11,7 +13,7 @@ class SimStepperDriver:
     DRIVER_NAME = "SimStepper"
 
     def __init__(self, config: dict):
-        stepper_cfg = config.get("stepper_motor", {})
+        stepper_cfg = actuator_device(config, "stepper_motor")
         self.max_speed_rpm: float = float(stepper_cfg.get("max_speed_rpm", 60))
         self.disable_on_idle: bool = bool(stepper_cfg.get("disable_on_idle", True))
         self.is_initialized = True

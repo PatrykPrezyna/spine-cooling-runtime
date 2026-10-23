@@ -1,7 +1,7 @@
 """Fast pressure-only CSV logger with a dedicated capture thread.
 
 A background loop reads pressures and appends CSV rows at
-``pressure_sensors.capture_rate_hz`` (default 100 Hz) for the whole session.
+``sensors.pressure.capture_rate_hz`` (default 100 Hz) for the whole session.
 
 ``start_logging()`` opens ``<session>_pressure_100Hz.csv`` in the shared
 ``logs`` folder. If capture is restarted in the same session, later files
@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from config_sections import pressure_cfg
 from session_log_paths import log_directory, pressure_filename_format
 
 
@@ -30,7 +31,7 @@ class PressureCSVLogger:
     _FLUSH_EVERY_N_ROWS = 50
 
     def __init__(self, config: dict, session_start: Optional[datetime] = None):
-        ps_cfg = config.get("pressure_sensors", {}) or {}
+        ps_cfg = pressure_cfg(config)
         self.csv_directory = log_directory(config, "pressure_csv_directory")
         self.filename_format = pressure_filename_format(config)
         self.capture_rate_hz = max(

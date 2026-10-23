@@ -3,9 +3,10 @@
 Digital sensor I/O is isolated in this module so the rest of the app
 (main, state machine, UI) only sees named boolean readings.
 
-Each sensor is defined in ``config.yaml`` under ``sensors``: a ``name``
-(e.g. "Level Low") and ``gpio_pin`` (BCM pin number), plus optional
-``active_high`` and ``pull_up`` settings.
+Each sensor is defined in ``config.yaml`` under
+``sensors.digital_sensors.sensors``: a ``name`` (e.g. "Level Low") and
+``gpio_pin`` (BCM pin number), plus optional ``active_high`` and ``pull_up``
+settings. ``sensors.digital_sensors.sample_rate_hz`` is the poll rate.
 """
 
 import time
@@ -13,13 +14,15 @@ from typing import Dict, List, Optional
 
 import RPi.GPIO as GPIO
 
+from config_sections import digital_sample_rate_hz, digital_sensor_entries
+
 
 class MultiSensorReader:
     """Read multiple digital sensors via GPIO pins."""
 
     def __init__(self, config: dict):
-        self.sensors = config['sensors']
-        self.sample_rate_hz = config['sample_rate_hz']
+        self.sensors = digital_sensor_entries(config)
+        self.sample_rate_hz = digital_sample_rate_hz(config)
 
         self.is_initialized = False
         self.sensor_states: Dict[str, bool] = {}

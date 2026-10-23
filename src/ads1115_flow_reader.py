@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Optional
 
 from ads1115_thermistor_reader import _open_i2c_bus
+from config_sections import flow_cfg
 
 _DEFAULT_SHUNT_OHM = 220.0
 _DEFAULT_MA_LO = 4.0
@@ -64,7 +65,7 @@ class ADS1115FlowReader:
     """Read one 4–20 mA flow channel as ml/min."""
 
     def __init__(self, config: dict):
-        fs_cfg = config.get("flow_sensor", {}) or {}
+        fs_cfg = flow_cfg(config)
         self.enabled = bool(fs_cfg.get("enabled", False))
         self.i2c_bus = int(fs_cfg.get("i2c_bus", 6))
         self.i2c_address = int(fs_cfg.get("i2c_address", 0x49))

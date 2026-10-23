@@ -32,6 +32,8 @@ from ads1115_pressure_reader import (  # noqa: E402
     _MV_LO,
 )
 
+from config_sections import pressure_cfg  # noqa: E402
+
 
 # Calibration anchors (must match example + config.yaml).
 MV_LO, PSI_LO = -14.858, -11.5
@@ -115,13 +117,13 @@ class ConfigCalibrationTests(unittest.TestCase):
         with config_path.open(encoding="utf-8") as fh:
             config = yaml.safe_load(fh)
 
-        cal = config["pressure_sensors"]["calibration"]
+        cal = pressure_cfg(config)["calibration"]
         self.assertAlmostEqual(float(cal["mv_lo"]), MV_LO)
         self.assertAlmostEqual(float(cal["bar_lo"]), BAR_LO, places=6)
         self.assertAlmostEqual(float(cal["mv_hi"]), MV_HI)
         self.assertAlmostEqual(float(cal["bar_hi"]), BAR_HI, places=6)
 
-        labels_map = config["pressure_sensors"]["labels"]
+        labels_map = pressure_cfg(config)["labels"]
         labels = [labels_map[i] for i in range(4)]
         self.assertEqual(
             labels,

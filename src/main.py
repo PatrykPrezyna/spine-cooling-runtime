@@ -28,6 +28,11 @@ except Exception:  # pragma: no cover - non-RPi environments
     GPIO = None  # type: ignore
 
 from compressor_control import average_temperature_c, heat_ex_labels_from_config
+from config_sections import (
+    actuator_device,
+    control_temp_label,
+    ensure_actuator_device,
+)
 from cooling_tracker import CoolingEffectivenessTracker
 from csv_logger import CSVLogger
 from pressure_csv_logger import PressureCSVLogger, PressureCaptureLoop
@@ -178,7 +183,7 @@ class SensorMonitorApp(QObject):
             if len(self.temperature_sensor_names) > 1
             else (self.temperature_sensor_names[0] if self.temperature_sensor_names else None)
         )
-        self.control_temp_label = str(self.config.get("control_temp_label", "CSF 2"))
+        self.control_temp_label = control_temp_label(self.config)
 
         self.sensor_reader: Any = None
         self.sensor_injection: Optional[SensorInjectionController] = None
@@ -203,10 +208,10 @@ class SensorMonitorApp(QObject):
         self.thermistor_reader: Any = None
         self.pressure_reader: Any = None
         self.flow_reader: Any = None
-        stepper_cfg = self.config.get('stepper_motor', {})
-        compressor_cfg = self.config.get('compressor', {})
+        stepper_cfg = actuator_device(self.config, "stepper_motor")
+        compressor_cfg = actuator_device(self.config, "compressor")
         self.pump_flow_controller = PumpFlowController.from_config_dict(
-            self.config.get("pump_control")
+            actuator_device(self.config, "pump_control") or None
         )
         self.stepper_speed_rpm: int = int(stepper_cfg.get('default_speed_rpm', 30))
         # Fallback RPM if closed-loop control has no temperature yet (~max flow).
@@ -817,7 +822,10 @@ class SensorMonitorApp(QObject):
         if self.stepper_driver:
             requested = min(requested, int(self.stepper_driver.max_speed_rpm))
         if enforce_min:
-            min_rpm = int(self.config.get("stepper_motor", {}).get("min_pump_speed_rpm", 0) or 0)
+            min_rpm = int(
+                actuator_device(self.config, "stepper_motor").get("min_pump_speed_rpm", 0)
+                or 0
+            )
             if min_rpm > 0:
                 requested = max(min_rpm, requested)
         return requested
@@ -1120,7 +1128,7 @@ class SensorMonitorApp(QObject):
         self.compressor_on_temp_c = on_c
         self._log_setpoint_if_changed("compressor_off_c", f"{off_c:.1f}")
         self._log_setpoint_if_changed("compressor_on_c", f"{on_c:.1f}")
-        compressor_cfg = self.config.setdefault('compressor', {})
+        compressor_cfg = ensure_actuator_device(self.config, "compressor")
         compressor_cfg['off_below_temp_c'] = off_c
         compressor_cfg['on_above_temp_c'] = on_c
         self._save_config()

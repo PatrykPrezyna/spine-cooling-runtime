@@ -10,12 +10,12 @@ description: >-
 # Rename temp probes
 
 Logical UI / CSV / control temperatures come from the 12 ADS1115 thermistors.
-**Source of truth** is `config.yaml` → `thermistor_sensors.labels` (channels 0–11).
+**Source of truth** is `config.yaml` → `sensors.thermistors.labels` (channels 0–11).
 Order of those labels is display order.
 
 ## Workflow
 
-1. Read `thermistor_sensors.labels` and the user's new names.
+1. Read `sensors.thermistors.labels` and the user's new names.
 2. Apply names to channel 0–11. Every name must be **unique** (YAML maps and reading dicts drop duplicates).
 3. Copy the same 12 names, same order, into every list below.
 4. Retarget config keys that still point at an old name.
@@ -29,12 +29,12 @@ Preserve the `Cartrige` spelling unless the user asks to fix it.
 
 | Location | What to set |
 |---|---|
-| `config.yaml` `thermistor_sensors.labels` | Channel 0–11 display names. This is also the UI / CSV temperature list. |
+| `config.yaml` `sensors.thermistors.labels` | Channel 0–11 display names. This is also the UI / CSV temperature list. |
 | `config.yaml` `simulation.thermistors` | Same 12 keys; keep prior °C if the name is unchanged |
 | `tools/log_viewer/log_analyzer.py` `_DEFAULT_TEMP_NAMES` | Same 12 names in order |
 | `tools/generate_operator_pdf.py` `TEMPS` | Same 12 keys (dummy °C ok) |
 
-`tests/test_thermistor_reader.py` (`test_config_yaml_temperature_labels_follow_channels`) asserts labels 8–11. Update the 8–11 expected list when those names change. Do not reintroduce `temperature_sources`; every probe is a thermistor, and `thermistor_sensors.labels` is the only name list.
+`tests/test_thermistor_reader.py` (`test_config_yaml_temperature_labels_follow_channels`) asserts labels 8–11. Update the 8–11 expected list when those names change. Do not reintroduce `temperature_sources`; every probe is a thermistor, and `sensors.thermistors.labels` is the only name list.
 
 ## Config keys that reference a probe by name
 

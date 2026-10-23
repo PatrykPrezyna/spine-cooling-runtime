@@ -15,6 +15,7 @@ from ads1115_thermistor_reader import (  # noqa: E402
     _PLATE_TABLE_CSV,
     chip_key_for_channel,
 )
+from config_sections import thermistor_cfg
 from hardware_factory import build_hardware  # noqa: E402
 from sensor_injection import (  # noqa: E402
     temperature_labels_from_config,
@@ -211,7 +212,7 @@ class ExtraBusThermistorTests(unittest.TestCase):
         with (PROJECT_ROOT / "config.yaml").open(encoding="utf-8") as fh:
             config = yaml.safe_load(fh)
         self.assertNotIn("temperature_sources", config)
-        ts = config["thermistor_sensors"]
+        ts = thermistor_cfg(config)
         self.assertNotIn("i2c_addresses", ts)
         self.assertEqual(
             [ts["labels"][i] for i in range(8, 12)],

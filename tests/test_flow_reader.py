@@ -19,6 +19,7 @@ from ads1115_flow_reader import (  # noqa: E402
     voltage_to_ma,
 )
 from hardware_factory import build_hardware  # noqa: E402
+from config_sections import flow_cfg, pressure_cfg, thermistor_cfg  # noqa: E402
 
 
 class FlowConversionTests(unittest.TestCase):
@@ -59,14 +60,14 @@ class FlowConfigTests(unittest.TestCase):
 
         with (PROJECT_ROOT / "config.yaml").open(encoding="utf-8") as fh:
             config = yaml.safe_load(fh)
-        fs = config["flow_sensor"]
+        fs = flow_cfg(config)
         self.assertTrue(fs["enabled"])
         self.assertEqual(int(fs["i2c_bus"]), 6)
         self.assertEqual(int(fs["i2c_address"]), 0x49)
         self.assertEqual(int(fs["analog_input"]), 0)
         self.assertAlmostEqual(float(fs["shunt_ohm"]), 220.0)
-        self.assertEqual(config["thermistor_sensors"]["labels"][4], "Cartrige In")
-        self.assertEqual(config["pressure_sensors"]["i2c_addresses"], [74, 75])
+        self.assertEqual(thermistor_cfg(config)["labels"][4], "Cartrige In")
+        self.assertEqual(pressure_cfg(config)["i2c_addresses"], [74, 75])
 
     def test_sim_reads_configured_flow(self) -> None:
         bundle = build_hardware(

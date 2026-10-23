@@ -7,6 +7,12 @@ from typing import Dict, Optional
 
 from ads1115_thermistor_reader import labels_from_config
 from compressor_control import heat_ex_labels_from_config
+from config_sections import (
+    actuator_device,
+    flow_cfg,
+    digital_sensor_entries,
+    pressure_cfg,
+)
 
 
 def _sim_cfg(config: dict) -> dict:
@@ -18,8 +24,8 @@ class _SimThermalLoop:
 
     def __init__(self, config: dict):
         sim_cfg = _sim_cfg(config)
-        compressor_cfg = config.get("compressor", {}) or {}
-        stepper_cfg = config.get("stepper_motor", {}) or {}
+        compressor_cfg = actuator_device(config, "compressor")
+        stepper_cfg = actuator_device(config, "stepper_motor")
         self.csf_label = str(sim_cfg.get("csf_label", "CSF"))
         self.csf_max_c = float(sim_cfg.get("csf_max_c", 37.0))
         self.csf_min_c = float(sim_cfg.get("csf_min_c", 25.0))
@@ -172,7 +178,7 @@ class SimSensorReader:
     """Digital GPIO sensors backed by in-memory booleans."""
 
     def __init__(self, config: dict):
-        self.sensors = config["sensors"]
+        self.sensors = digital_sensor_entries(config)
         overrides = _sim_cfg(config).get("sensors", {}) or {}
         self.sensor_states: Dict[str, bool] = {}
         for sensor in self.sensors:
@@ -276,7 +282,7 @@ class SimPressureReader:
     """Pressure readings from config defaults (differential ADS1115 simulation)."""
 
     def __init__(self, config: dict):
-        ps_cfg = config.get("pressure_sensors", {})
+        ps_cfg = pressure_cfg(config)
         self.enabled = bool(ps_cfg.get("enabled", False))
         self.channels = ps_cfg.get("channels", [0, 1, 2, 3])
         self.channel_labels = self._parse_labels(ps_cfg)
@@ -339,7 +345,7 @@ class SimFlowReader:
     """Flow in ml/min from ``simulation.flow_ml_per_min``."""
 
     def __init__(self, config: dict):
-        fs_cfg = config.get("flow_sensor", {}) or {}
+        fs_cfg = flow_cfg(config)
         self.enabled = bool(fs_cfg.get("enabled", False))
         self.last_error: Optional[str] = None
         self.is_initialized = False

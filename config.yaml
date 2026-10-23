@@ -1,4 +1,138 @@
-control_temp_label: Tip
+ui:
+  main_view: spine
+  window_width: 500
+  window_height: 450
+  update_interval_ms: 100
+  fullscreen: true
+sensors:
+  digital_sensors:
+    sample_rate_hz: 1.0
+    sensors:
+    - name: Level Low
+      gpio_pin: 12
+      active_high: true
+      pull_up: true
+    - name: Level Critical
+      gpio_pin: 20
+      active_high: true
+      pull_up: true
+    - name: Cartridge In Place
+      gpio_pin: 19
+      active_high: true
+      pull_up: true
+    - name: Pump Closed
+      gpio_pin: 21
+      active_high: true
+      pull_up: true
+    - name: Leak Sensor
+      gpio_pin: 26
+      active_high: true
+      pull_up: true
+  thermistors:
+    labels:
+      0: Tip
+      1: Cartrige Out
+      2: Catheter In
+      3: Catheter Out
+      4: Cartrige In
+      5: Plate 2
+      6: Plate 1
+      7: Body Temp
+      8: Hot bath1
+      9: Plate 2b
+      10: Plate 1b
+      11: Probe 4
+  flow:
+    enabled: true
+    i2c_bus: 6
+    i2c_address: 73
+    analog_input: 0
+    shunt_ohm: 220
+    gain: 2/3
+    data_rate: 128
+    ma_lo: 4.0
+    ma_hi: 20.0
+    flow_lo_ml_per_min: 0.0
+    flow_hi_ml_per_min: 100.0
+  pressure:
+    enabled: true
+    sample_rate_hz: 10
+    capture_rate_hz: 100
+    data_rate: 860
+    i2c_addresses:
+    - 74
+    - 75
+    gain: 16
+    channels:
+    - 0
+    - 1
+    - 2
+    - 3
+    labels:
+      0: Pump In
+      1: Pump Out
+      2: Catheter In
+      3: Catheter Out
+    calibration:
+      mv_lo: -14.858
+      bar_lo: -0.792897
+      mv_hi: 96.9
+      bar_hi: 5.171068
+actuators:
+  control_temp_label: Tip
+  stepper_motor:
+    driver: TB6600
+    steps_per_revolution: 200
+    microstepping: 16
+    default_speed_rpm: 20
+    pumping_speed_rpm: 69
+    pumping_slow_speed_rpm: 10
+    max_speed_rpm: 390
+    min_pump_speed_rpm: 10
+    min_speed_rpm: 1
+    ramp_start_fraction: 0.5
+    continuous_direction: -1
+    enable_on_startup: false
+    disable_on_idle: true
+    en_active_high: false
+    pins:
+      en_fault: 24
+      step: 5
+      dir: 25
+  pump_control:
+    max_flow_ml_per_min: 60.0
+    min_flow_ml_per_min: 10.0
+    full_speed_error_c: 0.5
+    kp: 180.0
+    ki: 40.0
+    kd: 5.0
+    integral_limit: 2.0
+  compressor:
+    relay_pin: 16
+    heat_ex_labels:
+    - Plate 1
+    off_below_temp_c: -0.5
+    on_above_temp_c: 1.0
+    min_off_before_on_s: 60
+  cooling_power:
+    water_density_kg_per_l: 1.0
+    water_cp_j_per_kg_k: 4184.0
+    catheter_in_label: Catheter In
+    catheter_out_label: Catheter Out
+    cartridge_in_label: Cartrige In
+    cartridge_out_label: Cartrige Out
+  acustic_signal_gpio_pin: 16
+logging:
+  directory: logs
+  sensors_filename_format: '%Y%m%d_%H%M%S_sensors.csv'
+  pressure_filename_format: '%Y%m%d_%H%M%S_pressure_100Hz.csv'
+  status_filename_format: '%Y%m%d_%H%M%S_status_and_errors.csv'
+  usb:
+    enabled: true
+    volume_label: SPINELOGS
+    destination_subdir: logs
+    interval_s: 2.0
+    mount_path: ''
 alarms:
   csf_label: Body Temp
   csf_low_temp_c: 28.0
@@ -56,134 +190,3 @@ simulation:
     Plate 1b: 4.0
     Probe 4: 25.0
   flow_ml_per_min: 30.0
-acustic_signal_gpio_pin: 16
-sensors:
-- name: Level Low
-  gpio_pin: 12
-  active_high: true
-  pull_up: true
-- name: Level Critical
-  gpio_pin: 20
-  active_high: true
-  pull_up: true
-- name: Cartridge In Place
-  gpio_pin: 19
-  active_high: true
-  pull_up: true
-- name: Pump Closed
-  gpio_pin: 21
-  active_high: true
-  pull_up: true
-- name: Leak Sensor
-  gpio_pin: 26
-  active_high: true
-  pull_up: true
-sample_rate_hz: 1.0
-thermistor_sensors:
-  labels:
-    0: Tip
-    1: Cartrige Out
-    2: Catheter In
-    3: Catheter Out
-    4: Cartrige In
-    5: Plate 2
-    6: Plate 1
-    7: Body Temp
-    8: Hot bath1
-    9: Plate 2b
-    10: Plate 1b
-    11: Probe 4
-flow_sensor:
-  enabled: true
-  i2c_bus: 6
-  i2c_address: 73
-  analog_input: 0
-  shunt_ohm: 220
-  gain: 2/3
-  data_rate: 128
-  ma_lo: 4.0
-  ma_hi: 20.0
-  flow_lo_ml_per_min: 0.0
-  flow_hi_ml_per_min: 100.0
-pressure_sensors:
-  enabled: true
-  sample_rate_hz: 10
-  capture_rate_hz: 100
-  data_rate: 860
-  i2c_addresses:
-  - 74
-  - 75
-  gain: 16
-  channels:
-  - 0
-  - 1
-  - 2
-  - 3
-  labels:
-    0: Pump In
-    1: Pump Out
-    2: Catheter In
-    3: Catheter Out
-  calibration:
-    mv_lo: -14.858
-    bar_lo: -0.792897
-    mv_hi: 96.9
-    bar_hi: 5.171068
-compressor:
-  relay_pin: 16
-  heat_ex_labels:
-  - Plate 1
-  off_below_temp_c: -0.5
-  on_above_temp_c: 1.0
-  min_off_before_on_s: 60
-logging:
-  directory: logs
-  sensors_filename_format: '%Y%m%d_%H%M%S_sensors.csv'
-  pressure_filename_format: '%Y%m%d_%H%M%S_pressure_100Hz.csv'
-  status_filename_format: '%Y%m%d_%H%M%S_status_and_errors.csv'
-  usb:
-    enabled: true
-    volume_label: SPINELOGS
-    destination_subdir: logs
-    interval_s: 2.0
-    mount_path: ''
-cooling_power:
-  water_density_kg_per_l: 1.0
-  water_cp_j_per_kg_k: 4184.0
-  catheter_in_label: Catheter In
-  catheter_out_label: Catheter Out
-  cartridge_in_label: Cartrige In
-  cartridge_out_label: Cartrige Out
-pump_control:
-  max_flow_ml_per_min: 60.0
-  min_flow_ml_per_min: 10.0
-  full_speed_error_c: 0.5
-  kp: 180.0
-  ki: 40.0
-  kd: 5.0
-  integral_limit: 2.0
-ui:
-  main_view: spine
-  window_width: 500
-  window_height: 450
-  update_interval_ms: 100
-  fullscreen: true
-stepper_motor:
-  driver: TB6600
-  steps_per_revolution: 200
-  microstepping: 16
-  default_speed_rpm: 20
-  pumping_speed_rpm: 69
-  pumping_slow_speed_rpm: 10
-  max_speed_rpm: 390
-  min_pump_speed_rpm: 10
-  min_speed_rpm: 1
-  ramp_start_fraction: 0.5
-  continuous_direction: -1
-  enable_on_startup: false
-  disable_on_idle: true
-  en_active_high: false
-  pins:
-    en_fault: 24
-    step: 5
-    dir: 25

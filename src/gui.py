@@ -36,6 +36,7 @@ from cooling_power import (
     cartridge_cooling_power_w,
     catheter_cooling_power_w,
 )
+from config_sections import actuator_device, digital_sensor_entries
 from fault_catalog import FaultCode, operator_help
 from graph_history import (
     GRAPH_HISTORY_SEC as _GRAPH_HISTORY_SEC,
@@ -3779,7 +3780,7 @@ class PowerGraphTab(TemperatureGraphTab):
 
     def __init__(self, config: Optional[dict] = None):
         self.power_config = CoolingPowerConfig.from_config_dict(
-            (config or {}).get("cooling_power")
+            actuator_device(config, "cooling_power") if config else None
         )
         series_names = [self.CATHETER_SERIES, self.CARTRIDGE_SERIES]
         graph_widget = MultiTemperatureGraphWidget(
@@ -3857,7 +3858,9 @@ class MainScreen(QMainWindow):
 
         self.config = config
         self.temperature_sensor_names = self._temperature_sensor_names_from_config(config)
-        cooling_cfg = CoolingPowerConfig.from_config_dict(config.get("cooling_power"))
+        cooling_cfg = CoolingPowerConfig.from_config_dict(
+            actuator_device(config, "cooling_power")
+        )
         self.catheter_in_temperature_label = cooling_cfg.catheter_in_label
         self.catheter_out_temperature_label = cooling_cfg.catheter_out_label
         self.primary_temperature_label = self._pick_primary_temperature_label(
@@ -3902,7 +3905,11 @@ class MainScreen(QMainWindow):
 
     @staticmethod
     def _digital_sensor_names_from_config(config: dict) -> list[str]:
-        return [str(s["name"]) for s in config.get("sensors", []) if s.get("name")]
+        return [
+            str(sensor["name"])
+            for sensor in digital_sensor_entries(config)
+            if isinstance(sensor, dict) and sensor.get("name")
+        ]
 
     @staticmethod
     def _pressure_sensor_names_from_config(config: dict) -> list[str]:
@@ -4064,8 +4071,8 @@ class MainScreen(QMainWindow):
         self.main_graph_widget.setMinimumHeight(280)
         self.main_graph_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
-        # Temperature graph tab (names from thermistor_sensors.labels)
-        compressor_cfg = self.config.get("compressor") or {}
+        # Temperature graph tab (names from sensors.thermistors.labels)
+        compressor_cfg = actuator_device(self.config, "compressor")
         self.temperature_graph_tab = TemperatureGraphTab(
             self.temperature_sensor_names,
             show_compressor_toggle=True,
@@ -4076,8 +4083,8 @@ class MainScreen(QMainWindow):
 
         # Service tab
         self.service_tab = ServiceTab(
-            self.config.get('stepper_motor', {}),
-            self.config.get('compressor', {}),
+            actuator_device(self.config, "stepper_motor"),
+            actuator_device(self.config, "compressor"),
         )
         self.service_tab._configure_flow_slider_range()
         self.service_tab._refresh_speed_readout()

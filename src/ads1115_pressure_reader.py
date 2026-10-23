@@ -17,6 +17,8 @@ from __future__ import annotations
 import threading
 from typing import Dict, List, Optional
 
+from config_sections import pressure_cfg
+
 # 1 psi = 6894.757293168 Pa; 1 bar = 1e5 Pa.
 PSI_TO_BAR = 0.06894757293168
 
@@ -51,7 +53,7 @@ class ADS1115PressureReader:
     """Read up to four differential pressure channels as bar."""
 
     def __init__(self, config: dict):
-        ps_cfg = config.get("pressure_sensors", {})
+        ps_cfg = pressure_cfg(config)
         self.enabled = bool(ps_cfg.get("enabled", False))
         self.i2c_addresses = self._parse_addresses(ps_cfg)
         self.channels = [int(ch) for ch in ps_cfg.get("channels", [0, 1, 2, 3])]

@@ -6,14 +6,19 @@ from typing import Any, Dict, Optional
 
 from hardware_factory import HardwareBundle
 from ads1115_thermistor_reader import labels_from_config
+from config_sections import digital_sensor_entries, pressure_cfg
 
 
 def digital_sensor_names(config: dict) -> list[str]:
-    return [str(s["name"]) for s in config.get("sensors", []) if s.get("name")]
+    names: list[str] = []
+    for sensor in digital_sensor_entries(config):
+        if isinstance(sensor, dict) and sensor.get("name"):
+            names.append(str(sensor["name"]))
+    return names
 
 
 def thermistor_labels_from_config(config: dict) -> list[str]:
-    """Return thermistor names from ``thermistor_sensors.labels``, channel order."""
+    """Return thermistor names from ``sensors.thermistors.labels``, channel order."""
     names: list[str] = []
     seen: set[str] = set()
     for _channel, name in sorted(labels_from_config(config).items()):
@@ -27,7 +32,7 @@ def temperature_labels_from_config(config: dict) -> list[str]:
     """Return ordered temperature labels for control, UI, and CSV.
 
     Every temperature channel is a thermistor. Names and order come from
-    ``thermistor_sensors.labels``.
+    ``sensors.thermistors.labels``.
     """
     return thermistor_labels_from_config(config)
 
@@ -54,10 +59,10 @@ def select_temperatures(
 def pressure_channel_labels_from_config(config: dict) -> dict[int, str]:
     """Return channel → label for pressure sensors.
 
-    Prefers flat ``pressure_sensors.labels`` (same shape as thermistors).
+    Prefers ``sensors.pressure.labels`` (same shape as thermistors).
     ``channel_configs[].label`` overrides when present.
     """
-    ps_cfg = config.get("pressure_sensors", {}) or {}
+    ps_cfg = pressure_cfg(config)
     labels: dict[int, str] = {}
     raw_labels = ps_cfg.get("labels", {}) or {}
     for key, value in raw_labels.items():
@@ -78,7 +83,7 @@ def pressure_channel_labels_from_config(config: dict) -> dict[int, str]:
 
 def pressure_labels_from_config(config: dict) -> list[str]:
     """Return ordered pressure channel labels from config."""
-    ps_cfg = config.get("pressure_sensors", {}) or {}
+    ps_cfg = pressure_cfg(config)
     channels = ps_cfg.get("channels", [])
     labels = pressure_channel_labels_from_config(config)
     names: list[str] = []

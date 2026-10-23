@@ -39,6 +39,7 @@ from PyQt6.QtWidgets import (
 )
 
 from compressor_control import MIN_OFF_BEFORE_ON_S
+from config_sections import actuator_device
 from gui import (
     PowerGraphTab,
     PressureServiceTab,
@@ -117,7 +118,7 @@ def _compressor_min_off_s() -> float:
     try:
         with path.open(encoding="utf-8") as handle:
             loaded = yaml.safe_load(handle) or {}
-        raw = (loaded.get("compressor") or {}).get(
+        raw = actuator_device(loaded, "compressor").get(
             "min_off_before_on_s",
             MIN_OFF_BEFORE_ON_S,
         )

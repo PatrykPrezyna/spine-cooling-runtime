@@ -12,7 +12,8 @@ Conversion is fixed: 2.5 V / 100 kΩ divider. MA300TA103C by default;
 channel 0 (Tip) uses AB6N2; channels 5–6 (Plate 2 / Plate 1) use
 NTCASCWE3103F ``Rnom``.
 
-Only ``thermistor_sensors.labels`` is read from config (channel → name).
+Only ``sensors.thermistors.labels`` is read from config (channel → name).
+Older configs may still use top-level ``thermistor_sensors.labels``.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Optional, Sequence, Tuple
 
+from config_sections import thermistor_cfg
 from thermistor_conversion import (
     DEFAULT_RS_OHM,
     DEFAULT_VREF_V,
@@ -61,7 +63,7 @@ def chip_key_for_channel(channel: int) -> ChipKey:
 
 
 def labels_from_config(config: dict) -> Dict[int, str]:
-    raw = (config.get("thermistor_sensors") or {}).get("labels") or {}
+    raw = thermistor_cfg(config).get("labels") or {}
     labels: Dict[int, str] = {}
     for key, value in raw.items():
         try:

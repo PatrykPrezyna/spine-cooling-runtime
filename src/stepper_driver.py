@@ -51,10 +51,12 @@ class TB6600Driver:
 
         Args:
             config: Configuration dictionary. The relevant section is
-                ``stepper_motor`` with a ``pins`` sub-section containing
+                ``actuators.stepper_motor`` with a ``pins`` sub-section containing
                 ``pul/step``, ``dir``, and ``ena/en_fault``.
         """
-        stepper_cfg = config.get('stepper_motor', {})
+        from config_sections import actuator_device
+
+        stepper_cfg = actuator_device(config, "stepper_motor")
         pins_cfg = stepper_cfg.get('pins', {})
 
         self.pin_enable: int = pins_cfg.get('ena', pins_cfg.get('en_fault', 24))
