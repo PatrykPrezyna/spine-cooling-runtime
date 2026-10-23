@@ -141,20 +141,22 @@ class ThermistorConversionTests(unittest.TestCase):
 
 
 class ThermistorHardwareTests(unittest.TestCase):
-    def test_labels_use_thermistor_order_when_sources_absent(self) -> None:
+    def test_temperature_labels_follow_thermistor_order(self) -> None:
         self.assertEqual(temperature_labels_from_config(_CONFIG), ["CSF", "Heat Ex"])
         self.assertEqual(thermistor_labels_from_config(_CONFIG), ["CSF", "Heat Ex"])
 
-    def test_temperature_sources_select_thermistor_values(self) -> None:
+    def test_select_temperatures_uses_thermistor_labels(self) -> None:
         from sensor_injection import select_temperatures
 
         cfg = {
             **_CONFIG,
-            "temperature_sources": {
-                "CSF": "thermistor",
-                "Cart In": "thermistor",
-                "Heat Ex": "thermistor",
-                "Room Temp": "thermistor",
+            "thermistor_sensors": {
+                "labels": {
+                    0: "CSF",
+                    1: "Cart In",
+                    2: "Heat Ex",
+                    3: "Room Temp",
+                },
             },
         }
         self.assertEqual(
@@ -171,12 +173,12 @@ class ThermistorHardwareTests(unittest.TestCase):
         self.assertAlmostEqual(selected["Room Temp"], 21.5)
         self.assertEqual(list(selected.keys()), ["CSF", "Cart In", "Heat Ex", "Room Temp"])
 
-    def test_temperature_sources_missing_board_value_is_nan(self) -> None:
+    def test_missing_thermistor_reading_is_nan(self) -> None:
         from sensor_injection import select_temperatures
         import math
 
         cfg = {
-            "temperature_sources": {"CSF": "thermistor", "Room Temp": "thermistor"},
+            "thermistor_sensors": {"labels": {0: "CSF", 1: "Room Temp"}},
         }
         selected = select_temperatures({"CSF": 37.0}, cfg)
         self.assertAlmostEqual(selected["CSF"], 37.0)
@@ -203,23 +205,20 @@ class ExtraBusThermistorTests(unittest.TestCase):
         self.assertEqual(chip_key_for_channel(8), (6, 72))
         self.assertEqual(chip_key_for_channel(11), (6, 72))
 
-    def test_config_yaml_labels_match_temperature_sources(self) -> None:
+    def test_config_yaml_temperature_labels_follow_channels(self) -> None:
         import yaml
 
         with (PROJECT_ROOT / "config.yaml").open(encoding="utf-8") as fh:
             config = yaml.safe_load(fh)
+        self.assertNotIn("temperature_sources", config)
         ts = config["thermistor_sensors"]
         self.assertNotIn("i2c_addresses", ts)
         self.assertEqual(
             [ts["labels"][i] for i in range(8, 12)],
             ["Hot bath1", "Plate 2b", "Plate 1b", "Probe 4"],
         )
-        expected_ui = [
-            ts["labels"][i] for i in sorted(ts["labels"])
-        ]
-        self.assertEqual(list(config["temperature_sources"].keys()), expected_ui)
-        for name in expected_ui:
-            self.assertEqual(config["temperature_sources"][name], "thermistor")
+        expected_ui = [ts["labels"][i] for i in sorted(ts["labels"])]
+        self.assertEqual(temperature_labels_from_config(config), expected_ui)
 
 
 if __name__ == "__main__":

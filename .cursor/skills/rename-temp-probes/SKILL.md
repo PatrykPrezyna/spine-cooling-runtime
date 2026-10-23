@@ -3,8 +3,8 @@ name: rename-temp-probes
 description: >-
   Rename thermistor temperature probes and keep every copy of the 12-channel
   name/order in sync. Use when the user wants to rename temp probes, rename
-  thermistors, change thermistor labels, retitle temperature sensors, update
-  temperature_sources, or make the temp sensor order the same everywhere.
+  thermistors, change thermistor labels, retitle temperature sensors, or make
+  the temp sensor order the same everywhere.
 ---
 
 # Rename temp probes
@@ -29,13 +29,12 @@ Preserve the `Cartrige` spelling unless the user asks to fix it.
 
 | Location | What to set |
 |---|---|
-| `config.yaml` `thermistor_sensors.labels` | Channel 0–11 display names |
-| `config.yaml` `temperature_sources` | Same 12 keys, each `thermistor` |
+| `config.yaml` `thermistor_sensors.labels` | Channel 0–11 display names. This is also the UI / CSV temperature list. |
 | `config.yaml` `simulation.thermistors` | Same 12 keys; keep prior °C if the name is unchanged |
 | `tools/log_viewer/log_analyzer.py` `_DEFAULT_TEMP_NAMES` | Same 12 names in order |
 | `tools/generate_operator_pdf.py` `TEMPS` | Same 12 keys (dummy °C ok) |
 
-`tests/test_thermistor_reader.py` (`test_config_yaml_adds_four_thermistors_on_i2c6`) asserts labels 8–11 and that `temperature_sources` keys equal labels in channel order. Update the 8–11 expected list when those names change.
+`tests/test_thermistor_reader.py` (`test_config_yaml_temperature_labels_follow_channels`) asserts labels 8–11. Update the 8–11 expected list when those names change. Do not reintroduce `temperature_sources`; every probe is a thermistor, and `thermistor_sensors.labels` is the only name list.
 
 ## Config keys that reference a probe by name
 

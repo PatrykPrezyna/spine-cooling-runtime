@@ -24,21 +24,11 @@ def thermistor_labels_from_config(config: dict) -> list[str]:
 
 
 def temperature_labels_from_config(config: dict) -> list[str]:
-    """Return ordered logical temperature labels for control / UI / CSV.
+    """Return ordered temperature labels for control, UI, and CSV.
 
-    ``config["temperature_sources"]`` is an ordered map of display names
-    (values are ignored; every listed name is a thermistor). When absent,
-    fall back to ``thermistor_sensors.labels`` in channel order.
+    Every temperature channel is a thermistor. Names and order come from
+    ``thermistor_sensors.labels``.
     """
-    raw = config.get("temperature_sources")
-    if isinstance(raw, dict) and raw:
-        names: list[str] = []
-        for label in raw:
-            name = str(label).strip()
-            if name:
-                names.append(name)
-        if names:
-            return names
     return thermistor_labels_from_config(config)
 
 

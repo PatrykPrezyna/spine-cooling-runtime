@@ -23,9 +23,8 @@ _CONFIG = {
         "directory": "unused",
         "sensors_filename_format": "%Y%m%d_%H%M%S_sensors.csv",
     },
-    "temperature_sources": {
-        "CSF": "thermistor",
-        "Heat Ex": "thermistor",
+    "thermistor_sensors": {
+        "labels": {0: "CSF", 1: "Heat Ex"},
     },
     "pressure_sensors": {
         "enabled": True,

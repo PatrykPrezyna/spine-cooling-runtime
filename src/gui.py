@@ -4064,7 +4064,7 @@ class MainScreen(QMainWindow):
         self.main_graph_widget.setMinimumHeight(280)
         self.main_graph_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
-        # Temperature graph tab (logical temps from temperature_sources)
+        # Temperature graph tab (names from thermistor_sensors.labels)
         compressor_cfg = self.config.get("compressor") or {}
         self.temperature_graph_tab = TemperatureGraphTab(
             self.temperature_sensor_names,

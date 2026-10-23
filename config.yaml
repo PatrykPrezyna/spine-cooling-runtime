@@ -1,17 +1,4 @@
 control_temp_label: Tip
-temperature_sources:
-  Tip: thermistor
-  Cartrige Out: thermistor
-  Catheter In: thermistor
-  Catheter Out: thermistor
-  Cartrige In: thermistor
-  Plate 2: thermistor
-  Plate 1: thermistor
-  Body Temp: thermistor
-  Hot bath1: thermistor
-  Plate 2b: thermistor
-  Plate 1b: thermistor
-  Probe 4: thermistor
 alarms:
   csf_label: Body Temp
   csf_low_temp_c: 28.0
