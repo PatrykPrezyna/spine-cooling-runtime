@@ -13,7 +13,6 @@ examples/              Pi bench scripts for one subsystem (see examples/README.m
 tools/                 log viewer, plots, operator-guide builder
 docs/                  guides, verification, faults, state machine
 data/calibration/      thermistor resistance tables loaded at runtime
-packaging/             PyInstaller spec for the Windows log viewer
 ```
 
 `logs/` is created when the app runs. It is not in git.
@@ -29,7 +28,7 @@ packaging/             PyInstaller spec for the Windows log viewer
 | Change pins, names, or limits | `config.yaml` |
 | Run without a Pi | `python src/main.py --sim` (`src/sim/`, `src/hardware_factory.py`) |
 | Check one sensor on the bench | `examples/` |
-| Read a recorded session | `tools/log_analyzer.py` |
+| Read a recorded session | `python tools/log_viewer/log_analyzer.py` |
 
 ### `src/` — the program
 
@@ -63,7 +62,6 @@ packaging/             PyInstaller spec for the Windows log viewer
 | `session_logs.py` | Read those CSVs back |
 | `usb_log_mirror.py` | Copy new log bytes onto a USB stick |
 | `sensor_injection.py`, `sensor_override_ui.py` | Manual sensor values with `--test-ui` |
-| `log_analyzer.py` | Offline viewer. Launch it with `tools/log_analyzer.py` |
 
 ### `docs/`
 
@@ -82,10 +80,8 @@ Regenerate the guide from the current UI with `python tools/generate_operator_pd
 
 | Script | Role |
 |--------|------|
-| `tools/log_analyzer.py` | Open a session in the same graphs as the expert view |
-| `tools/build_log_analyzer.ps1` | Build `dist/SpineCoolingLogViewer.exe` on Windows |
-| `tools/plot_temps.py` | Plot heat-exchanger and CSF temperature from a sensor CSV |
-| `tools/pump_flow_fit.py` | Show the RPM → ml/min calibration and its residuals |
+| `tools/log_viewer/` | Windows session viewer. How to open it and build the exe: `tools/log_viewer/README.md` |
+| `tools/pump_flow_fit/` | Fit RPM → ml/min from `pump_flow_data.csv` and save the residual plot. Pass another CSV to use a different calibration. |
 | `tools/generate_operator_pdf.py` | Capture screenshots and write the operator PDF |
 
 The log viewer looks for `*_sensors.csv` in the repo root, in `logs/`, and in a local `evaluation tool/` folder (sample sessions and the built exe live there; CSVs and exe files are gitignored).

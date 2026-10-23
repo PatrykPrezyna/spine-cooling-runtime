@@ -26,7 +26,7 @@ adafruit-extended-bus>=1.0.0; sys_platform == "linux"
 # OPTIONAL / TOOLS
 # ============================================================================
 
-# Offline analysis (tools/plot_temps.py, tools/pump_flow_fit.py)
+# Offline analysis (tools/pump_flow_fit/pump_flow_fit.py) and joining session CSVs
 pandas>=2.0
 matplotlib>=3.7
 numpy>=1.24

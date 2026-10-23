@@ -32,7 +32,7 @@ Preserve the `Cartrige` spelling unless the user asks to fix it.
 | `config.yaml` `thermistor_sensors.labels` | Channel 0–11 display names |
 | `config.yaml` `temperature_sources` | Same 12 keys, each `thermistor` |
 | `config.yaml` `simulation.thermistors` | Same 12 keys; keep prior °C if the name is unchanged |
-| `src/log_analyzer.py` `_DEFAULT_TEMP_NAMES` | Same 12 names in order |
+| `tools/log_viewer/log_analyzer.py` `_DEFAULT_TEMP_NAMES` | Same 12 names in order |
 | `tools/generate_operator_pdf.py` `TEMPS` | Same 12 keys (dummy °C ok) |
 
 `tests/test_thermistor_reader.py` (`test_config_yaml_adds_four_thermistors_on_i2c6`) asserts labels 8–11 and that `temperature_sources` keys equal labels in channel order. Update the 8–11 expected list when those names change.

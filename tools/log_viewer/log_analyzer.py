@@ -13,6 +13,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+_SRC = Path(__file__).resolve().parents[2] / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
 from PyQt6.QtCore import Qt, QRectF, QSize
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
@@ -125,7 +129,7 @@ def _compressor_min_off_s() -> float:
 def application_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[2]
 
 
 def find_default_session() -> Optional[Path]:

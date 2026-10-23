@@ -5,8 +5,9 @@ from pathlib import Path
 
 import PyQt6
 
-ROOT = Path(SPECPATH).resolve().parent
+ROOT = Path(SPECPATH).resolve().parents[2]
 SRC = ROOT / "src"
+VIEWER = ROOT / "tools" / "log_viewer"
 PYQT_BIN = Path(PyQt6.__file__).resolve().parent / "Qt6" / "bin"
 
 # QtCore.pyd loads Qt6Core.dll from PyQt6/Qt6/bin. Copy the load-time
@@ -31,7 +32,7 @@ for name in _FLAT_DLLS:
         flat_binaries.append((str(dll), "."))
 
 a = Analysis(
-    [str(SRC / "log_analyzer.py")],
+    [str(VIEWER / "log_analyzer.py")],
     pathex=[str(SRC)],
     binaries=flat_binaries,
     datas=[],
@@ -48,7 +49,7 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[str(ROOT / "packaging" / "pyi_rth_qt6_dlls.py")],
+    runtime_hooks=[str(VIEWER / "pyi_rth_qt6_dlls.py")],
     excludes=[
         "matplotlib",
         "pandas",

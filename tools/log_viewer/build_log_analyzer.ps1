@@ -5,7 +5,7 @@
 #   .\build\logviewer-venv\Scripts\python.exe -m pip install PyQt6 pyinstaller pyyaml
 
 $ErrorActionPreference = "Stop"
-$root = Split-Path -Parent $PSScriptRoot
+$root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $root
 
 $py = Join-Path $root "build\logviewer-venv\Scripts\python.exe"
@@ -14,7 +14,7 @@ if (-not (Test-Path $py)) {
 }
 
 & $py -m PyInstaller --noconfirm --clean --distpath dist --workpath build\pyinstaller `
-    packaging\log_analyzer.spec
+    (Join-Path $PSScriptRoot "log_analyzer.spec")
 
 $exe = Join-Path $root "dist\SpineCoolingLogViewer.exe"
 if (-not (Test-Path $exe)) {
