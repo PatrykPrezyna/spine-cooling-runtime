@@ -24,7 +24,7 @@ data/calibration/      thermistor resistance tables loaded at runtime
 |--------------|------|
 | Run on seted up Raspberry PI | `cd spine-cooling-runtime`, `source venv/bin/activate`, `src/main.py` |
 | Change operating states | `src/state_machine.py`, then `python tools/generate_state_machine_diagram.py` |
-| Change when a fault trips, and the text the operator sees | `src/safety_rules.py`, `src/fault_catalog.py` |
+| Change when a fault trips, and the text the operator sees | `src/safety_rules.py`, `src/fault_catalog.py`, then `python tools/generate_fault_list.py` |
 | Change pins, names, or limits | `config.yaml` |
 | Run without a Pi | `python src/main.py --sim`|
 | Run without a Pi for testing | `python src/main.py --sim --test-ui`|
@@ -69,12 +69,12 @@ data/calibration/      thermistor resistance tables loaded at runtime
 
 | File | Who it is for |
 |------|----------------|
-| `docs/Spine_Cooling_Operator_Guide.html` (and the PDF next to it) | People running the device |
+| `docs/operator-guide/Spine_Cooling_Operator_Guide.html` (PDF and screenshots in the same folder) | People running the device |
 | `docs/state-machine.svg` | Operating states, generated from the code |
+| `docs/fault-list.html` | Errors and warnings, generated from the code |
 | `docs/verification/Verification_Protocol.html` | Verification steps |
 | `docs/fault-messages-and-reactions.pptx` and `.xlsx` | Fault text and the reaction to each fault |
 | `docs/GANTT.md` | Prototype schedule |
-| `docs/screenshots/` | Pictures used by the operator guide |
 
 Regenerate the guide from the current UI with `python tools/generate_operator_pdf.py`.
 
@@ -86,6 +86,7 @@ Regenerate the guide from the current UI with `python tools/generate_operator_pd
 | `tools/pump_flow_fit/` | Fit RPM → ml/min from `pump_flow_data.csv` and save the residual plot. Pass another CSV to use a different calibration. |
 | `tools/generate_operator_pdf.py` | Capture screenshots and write the operator PDF |
 | `tools/generate_state_machine_diagram.py` | Rebuild the operating-state drawing from `src/state_machine.py` |
+| `tools/generate_fault_list.py` | Rebuild the fault list from `src/safety_rules.py` and `src/fault_catalog.py` |
 
 The log viewer looks for `*_sensors.csv` in the repo root, in `logs/`, and in a local `evaluation tool/` folder (sample sessions and the built exe live there; CSVs and exe files are gitignored).
 

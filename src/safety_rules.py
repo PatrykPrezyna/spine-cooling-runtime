@@ -1,9 +1,13 @@
-"""Pure safety rule evaluation for the spine cooling runtime."""
+"""Pure safety rule evaluation for the spine cooling runtime.
+
+``RULES`` is every check. ``docs/fault-list.html`` is generated from this
+table and the fault catalog.
+"""
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Callable, NamedTuple, Optional
 
-from fault_catalog import FaultCode
+from fault_catalog import FaultCode, Severity, get_fault, stop_priority
 from state_machine import State
 
 if TYPE_CHECKING:
@@ -40,38 +44,26 @@ class RuleContext:
     now: float = 0.0
 
 
+class FaultRule(NamedTuple):
+    """One safety check.
+
+    ``when`` is the sentence on the generated fault list.
+    ``tools/generate_fault_list.py`` reads this table.
+    """
+
+    code: FaultCode
+    when: str
+    check: Callable[["RuleContext"], bool]
+
+
 def is_fault_still_active(code: FaultCode, ctx: RuleContext) -> bool:
     """Return True if ``code`` would fire for the given context."""
     return code in evaluate(ctx)
 
 
 def evaluate(ctx: RuleContext) -> set[FaultCode]:
-    active: set[FaultCode] = set()
-    if _check_level_sensors(ctx):
-        active.add(FaultCode.LEVEL_SENSOR)
-    if _check_cartridge_removed(ctx):
-        active.add(FaultCode.CARTRIDGE_REMOVED)
-    if _check_pump_not_closed(ctx):
-        active.add(FaultCode.PUMP_NOT_CLOSED)
-    if _check_csf_low_temp(ctx):
-        active.add(FaultCode.CSF_LOW_TEMP)
-    if _check_heat_ex_min(ctx):
-        active.add(FaultCode.HEAT_EX_TOO_COLD)
-    if _check_leak(ctx):
-        active.add(FaultCode.LEAK_DETECTED)
-    if _check_cooling_ineffective(ctx):
-        active.add(FaultCode.COOLING_INEFFECTIVE)
-    if _check_battery_low(ctx):
-        active.add(FaultCode.BATTERY_LOW)
-    if _check_usb_not_present(ctx):
-        active.add(FaultCode.USB_NOT_PRESENT)
-    if _check_sd_storage_low(ctx):
-        active.add(FaultCode.SD_STORAGE_LOW)
-    if _check_usb_storage_low(ctx):
-        active.add(FaultCode.USB_STORAGE_LOW)
-    if _check_fridge_defect(ctx):
-        active.add(FaultCode.FRIDGE_DEFECT)
-    return active
+    """Return every fault whose rule matches this context."""
+    return {rule.code for rule in RULES if rule.check(ctx)}
 
 
 def _alarms(ctx: RuleContext) -> dict:
@@ -211,3 +203,88 @@ def _check_usb_storage_low(ctx: RuleContext) -> bool:
 
 def _check_fridge_defect(ctx: RuleContext) -> bool:
     return ctx.telemetry.fridge_defect is True
+
+
+_DURING_RUN = f"{State.COOLING.value} or {State.PUMPING.value}"
+
+# ``when`` is the line in the generated list. Keep it in step with the check.
+RULES: tuple[FaultRule, ...] = (
+    FaultRule(
+        FaultCode.LEVEL_SENSOR,
+        f"{_DURING_RUN}, and Level Low or Level Critical is missing or not OK.",
+        _check_level_sensors,
+    ),
+    FaultRule(
+        FaultCode.CARTRIDGE_REMOVED,
+        f"{_DURING_RUN}, and Cartridge In Place is missing or off.",
+        _check_cartridge_removed,
+    ),
+    FaultRule(
+        FaultCode.PUMP_NOT_CLOSED,
+        "The pump-closed switch is present and off, and the pump is running "
+        f"or the state is {State.PUMPING.value}.",
+        _check_pump_not_closed,
+    ),
+    FaultRule(
+        FaultCode.CSF_LOW_TEMP,
+        f"{_DURING_RUN}, and the configured CSF sensor is below the low-temperature limit.",
+        _check_csf_low_temp,
+    ),
+    FaultRule(
+        FaultCode.HEAT_EX_TOO_COLD,
+        f"{_DURING_RUN}, and the configured heat-exchanger sensor is below the minimum temperature.",
+        _check_heat_ex_min,
+    ),
+    FaultRule(
+        FaultCode.LEAK_DETECTED,
+        "Leak detection is on, the state is not "
+        f"{State.INIT.value} or {State.ERROR.value}, and the leak sensor is present and low. "
+        "With a debounce tracker, that low reading must be held.",
+        _check_leak,
+    ),
+    FaultRule(
+        FaultCode.COOLING_INEFFECTIVE,
+        f"{_DURING_RUN}, with the pump and compressor on, and CSF has not dropped "
+        "by the required amount within the timeout.",
+        _check_cooling_ineffective,
+    ),
+    FaultRule(
+        FaultCode.BATTERY_LOW,
+        "A battery reading is present and below the low-battery threshold.",
+        _check_battery_low,
+    ),
+    FaultRule(
+        FaultCode.USB_NOT_PRESENT,
+        "USB logging is on, the stick was not ejected, and no stick is present.",
+        _check_usb_not_present,
+    ),
+    FaultRule(
+        FaultCode.SD_STORAGE_LOW,
+        "Local free space is known and below the storage minimum.",
+        _check_sd_storage_low,
+    ),
+    FaultRule(
+        FaultCode.USB_STORAGE_LOW,
+        "USB logging is on, a stick is present, and its free space is below the storage minimum.",
+        _check_usb_storage_low,
+    ),
+    FaultRule(
+        FaultCode.FRIDGE_DEFECT,
+        "The fridge defect flag is set.",
+        _check_fridge_defect,
+    ),
+)
+
+
+def listed_faults() -> tuple[FaultRule, ...]:
+    """Stop faults in latch priority, then message faults in check order."""
+    stops = tuple(
+        sorted(
+            (rule for rule in RULES if get_fault(rule.code).severity == Severity.STOP),
+            key=lambda rule: (stop_priority(rule.code), rule.code.value),
+        )
+    )
+    messages = tuple(
+        rule for rule in RULES if get_fault(rule.code).severity == Severity.MESSAGE
+    )
+    return stops + messages

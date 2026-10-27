@@ -1,4 +1,7 @@
-"""Static fault definitions for the spine cooling runtime."""
+"""Static fault definitions for the spine cooling runtime.
+
+``docs/fault-list.html`` is generated from this catalog and the safety rules.
+"""
 
 from dataclasses import dataclass
 from enum import Enum

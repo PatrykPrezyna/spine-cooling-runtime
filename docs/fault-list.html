@@ -1,0 +1,144 @@
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Errors and warnings</title>
+<link rel="stylesheet" href="docs.css"/>
+<style>
+.sheet { max-width: 12.5in; }
+td ul { margin: 0; padding-left: 1.1em; }
+td li { margin: 0 0 2px; }
+</style>
+</head>
+<body>
+<div class="sheet">
+<header>
+<h1>Errors and warnings</h1>
+<p>Generated from src/safety_rules.py and src/fault_catalog.py. 2026-10-27 13:07:54, version 0.0.1.</p>
+</header>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Message</th>
+<th>Class</th>
+<th>Acknowledge</th>
+<th>When it trips</th>
+<th>Causes</th>
+<th>Steps</th>
+</tr>
+</thead>
+<tbody>
+<tr data-code="LEVEL_SENSOR" data-severity="stop" data-ack="true">
+<td data-field="code">LEVEL_SENSOR</td>
+<td data-field="message">Level sensor failure detected</td>
+<td data-field="class"><span class="badge stop">Stop</span></td>
+<td data-field="acknowledge">Required</td>
+<td data-field="when">Cooling or Pumping, and Level Low or Level Critical is missing or not OK.</td>
+<td><ul data-field="causes"><li>Coolant level has dropped below a level switch.</li><li>The cartridge is not filled enough.</li><li>A level switch is stuck, unplugged, or wired incorrectly.</li></ul></td>
+<td><ul data-field="steps"><li>Inspect the cartridge fill level and top up if it is low.</li><li>Check for leaks around the cartridge and tubing.</li><li>On expert Status, confirm Level Low and Level Critical both read OK.</li><li>Reseat the level-sensor connectors if a switch stays off.</li><li>Acknowledge once both level sensors read OK.</li></ul></td>
+</tr>
+<tr data-code="CARTRIDGE_REMOVED" data-severity="stop" data-ack="true">
+<td data-field="code">CARTRIDGE_REMOVED</td>
+<td data-field="message">Cartridge removed during operation</td>
+<td data-field="class"><span class="badge stop">Stop</span></td>
+<td data-field="acknowledge">Required</td>
+<td data-field="when">Cooling or Pumping, and Cartridge In Place is missing or off.</td>
+<td><ul data-field="causes"><li>The cartridge was pulled out or is not fully seated.</li><li>The cartridge-in-place switch is not detecting the cartridge.</li></ul></td>
+<td><ul data-field="steps"><li>Fully seat the cartridge until it is locked in place.</li><li>On expert Status, confirm Cartridge In Place is ON.</li><li>Check the cartridge sensor connector if it stays OFF.</li><li>Acknowledge once the cartridge is detected.</li></ul></td>
+</tr>
+<tr data-code="PUMP_NOT_CLOSED" data-severity="stop" data-ack="true">
+<td data-field="code">PUMP_NOT_CLOSED</td>
+<td data-field="message">Pump not closed</td>
+<td data-field="class"><span class="badge stop">Stop</span></td>
+<td data-field="acknowledge">Required</td>
+<td data-field="when">The pump-closed switch is present and off, and the pump is running or the state is Pumping.</td>
+<td><ul data-field="causes"><li>The pump head or cover is open.</li><li>The pump-closed switch is not made.</li><li>The switch connector or wiring is loose.</li></ul></td>
+<td><ul data-field="steps"><li>Close the pump head until it is latched.</li><li>On expert Status, confirm Pump Closed is ON.</li><li>Do not start the pump while the switch stays OFF.</li><li>Acknowledge once Pump Closed reads ON.</li></ul></td>
+</tr>
+<tr data-code="FRIDGE_DEFECT" data-severity="stop" data-ack="true">
+<td data-field="code">FRIDGE_DEFECT</td>
+<td data-field="message">Fridge defect</td>
+<td data-field="class"><span class="badge stop">Stop</span></td>
+<td data-field="acknowledge">Required</td>
+<td data-field="when">The fridge defect flag is set.</td>
+<td><ul data-field="causes"><li>The compressor or fridge reported a defect flag.</li><li>Coolant is not circulating through the fridge.</li><li>The plate is not cooling while the compressor is commanded on.</li></ul></td>
+<td><ul data-field="steps"><li>On Manual Operation, check whether the compressor is running.</li><li>Check the plate / heat-exchanger temperature.</li><li>Inspect fridge power and coolant hoses.</li><li>Service the fridge if the defect remains.</li><li>Acknowledge only after the defect flag is cleared.</li></ul></td>
+</tr>
+<tr data-code="LEAK_DETECTED" data-severity="stop" data-ack="true">
+<td data-field="code">LEAK_DETECTED</td>
+<td data-field="message">Leak detected</td>
+<td data-field="class"><span class="badge stop">Stop</span></td>
+<td data-field="acknowledge">Required</td>
+<td data-field="when">Leak detection is on, the state is not Init or Error, and the leak sensor is present and low. With a debounce tracker, that low reading must be held.</td>
+<td><ul data-field="causes"><li>Fluid is on the leak sensor (a real leak).</li><li>Splash, condensation, or a wet tray is holding the sensor low.</li><li>The leak sensor is stuck low or its pull-up is missing.</li></ul></td>
+<td><ul data-field="steps"><li>Do not restart cooling until the area is dry.</li><li>Inspect the cartridge, catheter, and tubing for leaks.</li><li>Dry the leak sensor and the tray.</li><li>On expert Status, confirm the leak sensor reads dry.</li><li>Acknowledge once the sensor stays dry.</li></ul></td>
+</tr>
+<tr data-code="CSF_LOW_TEMP" data-severity="stop" data-ack="true">
+<td data-field="code">CSF_LOW_TEMP</td>
+<td data-field="message">CSF low temp</td>
+<td data-field="class"><span class="badge stop">Stop</span></td>
+<td data-field="acknowledge">Required</td>
+<td data-field="when">Cooling or Pumping, and the configured CSF sensor is below the low-temperature limit.</td>
+<td><ul data-field="causes"><li>Cooling ran longer or harder than intended.</li><li>The setpoint is lower than the allowed CSF limit.</li><li>The CSF sensor is reading low (poor contact, unplugged, or calibration).</li></ul></td>
+<td><ul data-field="steps"><li>Check the CSF temperature on the main display.</li><li>Raise the setpoint if it is below the intended target.</li><li>Confirm the CSF sensor is connected and reading a plausible value.</li><li>Wait until CSF is back above the low-temperature limit.</li><li>Acknowledge once the temperature is in range.</li></ul></td>
+</tr>
+<tr data-code="HEAT_EX_TOO_COLD" data-severity="stop" data-ack="true">
+<td data-field="code">HEAT_EX_TOO_COLD</td>
+<td data-field="message">Heat exchanger too cold</td>
+<td data-field="class"><span class="badge stop">Stop</span></td>
+<td data-field="acknowledge">Required</td>
+<td data-field="when">Cooling or Pumping, and the configured heat-exchanger sensor is below the minimum temperature.</td>
+<td><ul data-field="causes"><li>The compressor is running with little or no coolant flow.</li><li>The plate / heat exchanger overcooled.</li><li>The plate sensor is reading incorrectly.</li></ul></td>
+<td><ul data-field="steps"><li>Check the plate / heat-exchanger temperature.</li><li>Confirm the pump is circulating coolant.</li><li>Allow the plate to warm above the minimum limit.</li><li>Check the plate sensor connection if the reading looks wrong.</li><li>Acknowledge once the temperature is in range.</li></ul></td>
+</tr>
+<tr data-code="COOLING_INEFFECTIVE" data-severity="stop" data-ack="true">
+<td data-field="code">COOLING_INEFFECTIVE</td>
+<td data-field="message">Cooling ineffective</td>
+<td data-field="class"><span class="badge stop">Stop</span></td>
+<td data-field="acknowledge">Required</td>
+<td data-field="when">Cooling or Pumping, with the pump and compressor on, and CSF has not dropped by the required amount within the timeout.</td>
+<td><ul data-field="causes"><li>The catheter is not placed or has poor thermal contact.</li><li>The pump is not delivering enough flow.</li><li>The compressor is not cooling the cartridge.</li><li>The CSF sensor is not tracking the true temperature.</li></ul></td>
+<td><ul data-field="steps"><li>Confirm the catheter is placed and connected.</li><li>Check pump speed, flow, and pressures on the expert page.</li><li>Confirm the compressor is on and the plate is cooling.</li><li>Check the CSF sensor reading.</li><li>Fix the cause, then acknowledge to return to Ready.</li></ul></td>
+</tr>
+<tr data-code="BATTERY_LOW" data-severity="message" data-ack="false">
+<td data-field="code">BATTERY_LOW</td>
+<td data-field="message">Battery low</td>
+<td data-field="class"><span class="badge warn">Message</span></td>
+<td data-field="acknowledge">Not required</td>
+<td data-field="when">A battery reading is present and below the low-battery threshold.</td>
+<td><ul data-field="causes"><li>Supply voltage or reported battery charge is below the warning threshold.</li><li>The power source is disconnected or a battery is aging.</li></ul></td>
+<td><ul data-field="steps"><li>Connect mains power or replace/charge the battery.</li><li>Confirm the power lead is fully seated.</li><li>Continue only if the warning clears; otherwise stop the session.</li></ul></td>
+</tr>
+<tr data-code="USB_NOT_PRESENT" data-severity="message" data-ack="false">
+<td data-field="code">USB_NOT_PRESENT</td>
+<td data-field="message">USB stick not present</td>
+<td data-field="class"><span class="badge warn">Message</span></td>
+<td data-field="acknowledge">Not required</td>
+<td data-field="when">USB logging is on, the stick was not ejected, and no stick is present.</td>
+<td><ul data-field="causes"><li>No USB stick labeled SPINELOGS is mounted.</li><li>The stick was unplugged, not formatted with that label, or failed to mount.</li></ul></td>
+<td><ul data-field="steps"><li>Insert a USB stick labeled SPINELOGS (exFAT or FAT32).</li><li>Wait until Service → Manual Operation shows copying.</li><li>Use Eject before removing the stick.</li></ul></td>
+</tr>
+<tr data-code="SD_STORAGE_LOW" data-severity="message" data-ack="false">
+<td data-field="code">SD_STORAGE_LOW</td>
+<td data-field="message">SD card storage below 1 GB</td>
+<td data-field="class"><span class="badge warn">Message</span></td>
+<td data-field="acknowledge">Not required</td>
+<td data-field="when">Local free space is known and below the storage minimum.</td>
+<td><ul data-field="causes"><li>The SD card (local logs folder) has less than 1 GB free.</li><li>Old session CSVs are filling the card.</li></ul></td>
+<td><ul data-field="steps"><li>Copy logs off the Pi and delete old files from logs/.</li><li>Do not start a long session until more than 1 GB is free.</li></ul></td>
+</tr>
+<tr data-code="USB_STORAGE_LOW" data-severity="message" data-ack="false">
+<td data-field="code">USB_STORAGE_LOW</td>
+<td data-field="message">USB stick storage below 1 GB</td>
+<td data-field="class"><span class="badge warn">Message</span></td>
+<td data-field="acknowledge">Not required</td>
+<td data-field="when">USB logging is on, a stick is present, and its free space is below the storage minimum.</td>
+<td><ul data-field="causes"><li>The USB stick has less than 1 GB free.</li><li>Previous session copies are filling the stick.</li></ul></td>
+<td><ul data-field="steps"><li>Eject the stick, copy files off, and delete old logs.</li><li>Reinsert a stick with more than 1 GB free.</li></ul></td>
+</tr>
+</tbody>
+</table>
+<p class="foot">Regenerate with python tools/generate_fault_list.py.</p>
+</div>
+</body>
+</html>

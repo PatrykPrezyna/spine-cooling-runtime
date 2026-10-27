@@ -46,7 +46,6 @@ _BUS_Y = 214
 
 _INK = "#1e1e1e"
 _FAULT = "#9a4038"
-_DASH = "#8a8175"
 _FONT = "Segoe UI, sans-serif"
 
 
@@ -78,8 +77,6 @@ def classify(item: Transition) -> str:
         (State.PUMPING, State.COOLING): "stop-pumping",
         (State.ERROR, State.READY): "acknowledge",
         (State.INIT, State.ERROR): "init-failed",
-        (State.COOLING, State.READY): "back-to-ready",
-        (State.PUMPING, State.READY): "pumping-to-ready",
     }
     if item.target == State.ERROR and item.label == "stop fault":
         return "bus"
@@ -151,18 +148,16 @@ def _path(
     points: list[tuple[float, float]],
     color: str,
     marker: str | None = None,
-    dashed: bool = False,
     item: Transition | None = None,
 ) -> str:
     drawn = " ".join(
         ("M" if index == 0 else "L") + f"{x:.1f} {y:.1f}"
         for index, (x, y) in enumerate(points)
     )
-    dash = ' stroke-dasharray="6 4"' if dashed else ""
     arrow = f' marker-end="url(#{marker})"' if marker else ""
     return (
         f'<path d="{drawn}" fill="none" stroke="{color}" stroke-width="1.5"'
-        f'{dash}{arrow}{_edge_attrs(item)}/>'
+        f'{arrow}{_edge_attrs(item)}/>'
     )
 
 
@@ -280,38 +275,10 @@ def _init_failed(_item: Transition) -> list[str]:
     ]
 
 
-def _back_to_ready(_item: Transition) -> list[str]:
-    y = _box(State.READY)[1] + _box(State.READY)[3] - 10
-    start = _side(State.COOLING, "left", y)
-    end = _side(State.READY, "right", y)
-    return [_path([start, end], _DASH, "dash", dashed=True, item=_item)]
-
-
-def _down_to_ready(source: State, lane_y: float, start_x: float, end_x: float, item: Transition) -> list[str]:
-    """Dashed compatibility return that stays above the Error box."""
-    bottom = _side(source, "bottom")[1]
-    ready_bottom = _side(State.READY, "bottom")[1]
-    return [
-        _path(
-            [(start_x, bottom), (start_x, lane_y), (end_x, lane_y), (end_x, ready_bottom)],
-            _DASH,
-            "dash",
-            dashed=True,
-            item=item,
-        )
-    ]
-
-
-def _pumping_to_ready(item: Transition) -> list[str]:
-    return _down_to_ready(State.PUMPING, 248, 820, 360, item)
-
-
 _ROUTE = {
     "stop-pumping": _stop_pumping,
     "acknowledge": _acknowledge,
     "init-failed": _init_failed,
-    "back-to-ready": _back_to_ready,
-    "pumping-to-ready": _pumping_to_ready,
 }
 
 
@@ -349,7 +316,6 @@ def svg() -> str:
         "<defs>",
         _marker("arrow", _INK),
         _marker("fault", _FAULT),
-        _marker("dash", _DASH),
         "</defs>",
         f'<circle cx="{start_x:.1f}" cy="{start_y:.1f}" r="6" fill="{_INK}"/>',
         _path([(start_x + 6, start_y), (init_left, start_y)], _INK, "arrow"),

@@ -17,6 +17,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from version import __version__
+
+# Answer before the Qt import. A broken PyQt6 build must not hide the version.
+if __name__ == "__main__" and "--version" in sys.argv[1:]:
+    print(f"Spine Cooling Runtime {__version__}")
+    raise SystemExit(0)
+
 import yaml
 from PyQt6.QtCore import QObject, Qt, QThread, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import QApplication
@@ -1160,6 +1167,11 @@ class CoolingRuntime(QObject):
 def main() -> int:
     parser = argparse.ArgumentParser(description="Spine Cooling Runtime")
     parser.add_argument(
+        "--version",
+        action="version",
+        version=f"Spine Cooling Runtime {__version__}",
+    )
+    parser.add_argument(
         "--sim",
         action="store_true",
         help="Use in-memory hardware fakes (no Raspberry Pi required)",
@@ -1177,7 +1189,7 @@ def main() -> int:
     args = parser.parse_args()
 
     print("=" * 50)
-    print("Spine Cooling Runtime")
+    print(f"Spine Cooling Runtime {__version__}")
     print("Medical Device Prototype")
     if args.sim:
         print("Mode: SIMULATION")

@@ -11,11 +11,11 @@ epics:
       - id: planning-and-preparation
         kind: task
         name: "Planning & Preparation"
-        status: future
+        status: done
       - id: discussion-with-coolspine-team
         kind: task
         name: Discussion with CoolSpine Team
-        status: future
+        status: done
       - id: medical-device-design-course-project-kickoff
         kind: task
         name: Medical Device Design course project kickoff
@@ -25,13 +25,13 @@ epics:
       - id: team-established
         kind: task
         name: Team Established
-        status: future
+        status: done
         start: "2026-01-01"
         end: "2026-01-01"
       - id: onsite-with-sage-pd-detailed-project-review-and-establishment-of-responsibilities
         kind: task
         name: "Onsite with Sage PD – detailed project review and establishment of responsibilities"
-        status: in_progress
+        status: done
         start: "2026-01-01"
         end: "2026-01-01"
       - id: establishment-of-design-functional-requirements
@@ -67,7 +67,7 @@ epics:
       - id: new-task
         kind: task
         name: New task
-        status: future
+        status: done
   - id: concept-presentation
     name: Concept Presentation
     items:
@@ -191,11 +191,11 @@ epics:
       - id: analytical-model-creation-catheder-to-tissue-to-be-verified
         kind: task
         name: Analytical Model creation - catheder to tissue (to be verified)
-        status: future
+        status: done
       - id: cathether-design-fixed-sage
         kind: task
         name: Cathether design fixed (SAGE)
-        status: future
+        status: done
       - id: cool-plates-and-cartrige-design
         kind: task
         name: Cool plates and cartrige design
@@ -255,7 +255,7 @@ epics:
         status: future
       - id: oder-second-cartrige-from-r-and-d
         kind: task
-        name: "Oder second cartrige from \"R&D\""
+        name: "order second cartrige from \"R&D\""
         status: in_progress
         start: "2026-10-22"
         end: "2026-10-22"
@@ -273,7 +273,7 @@ epics:
         end: "2026-12-03"
       - id: manufacture-final-from-material
         kind: task
-        name: Manufacture final from material
+        name: Manufacture final cartrige from selected material
         status: future
   - id: tubing
     name: Tubing
@@ -340,7 +340,7 @@ epics:
       - id: cad-modeling
         kind: task
         name: CAD modeling
-        status: future
+        status: done
       - id: order
         kind: task
         name: Order

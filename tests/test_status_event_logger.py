@@ -18,6 +18,7 @@ if str(SRC_DIR) not in sys.path:
 from fault_catalog import FaultCode  # noqa: E402
 from state_machine import State, StateMachine  # noqa: E402
 from status_event_logger import StatusEventLogger  # noqa: E402
+from version import __version__  # noqa: E402
 
 
 class StatusEventLoggerTests(unittest.TestCase):
@@ -44,6 +45,7 @@ class StatusEventLoggerTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["event"], "session_start")
         self.assertEqual(rows[0]["severity"], "info")
+        self.assertEqual(rows[0]["message"], f"Logging started, version {__version__}")
 
     def test_state_change_and_error_and_warning_rows(self) -> None:
         self.assertTrue(self.logger.start_logging())

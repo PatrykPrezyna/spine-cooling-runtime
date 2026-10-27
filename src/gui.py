@@ -46,6 +46,7 @@ from graph_history import (
     tick_decimals as _tick_decimals,
 )
 from pump_flow_control import flow_ml_per_min_to_rpm_exact, rpm_to_flow_ml_per_min
+from version import __version__
 
 from PyQt6.QtCore import QTimer, Qt, QEvent, QRectF, QPointF, QSize, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -3927,7 +3928,7 @@ class AppWindow(QMainWindow):
         either pinned to that same size in windowed mode or expands to the
         full display in fullscreen mode (with the content frame centered).
         """
-        self.setWindowTitle("Spine Cooling Runtime")
+        self.setWindowTitle(f"Spine Cooling Runtime {__version__}")
         ui_config = self.config.get("ui", {})
         self._fullscreen_requested = bool(ui_config.get("fullscreen", False))
         if self._fullscreen_requested:
@@ -4217,6 +4218,14 @@ class AppWindow(QMainWindow):
             self._status_chip_style("#e9eef2", "#d6dde3", "#2f3b47")
         )
 
+        self.version_label = QLabel(__version__)
+        self.version_label.setMinimumHeight(32)
+        self.version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.version_label.setToolTip("Software version")
+        self.version_label.setStyleSheet(
+            self._status_chip_style("#e9eef2", "#d6dde3", "#2f3b47")
+        )
+
         self._workflow_state_name = "Init"
 
         # Pumping toggle button - acts as "START PUMPING" in Cooling state
@@ -4294,12 +4303,13 @@ class AppWindow(QMainWindow):
         main_layout.setContentsMargins(8, 5, 8, 5)
         main_layout.setSpacing(4)
         
-        # Header row: state (left), then corner icons (gear on main, house on service).
+        # Header row: state, error, version, session time, then corner icons.
         header_row = QHBoxLayout()
         header_row.setContentsMargins(0, 0, 0, 0)
         header_row.setSpacing(10)
         header_row.addWidget(self.state_label, 3)
         header_row.addWidget(self.error_status_label, 7)
+        header_row.addWidget(self.version_label, 0)
         header_row.addWidget(self.session_timer_label, 0)
         header_row.addWidget(self.expert_view_button, 0, Qt.AlignmentFlag.AlignRight)
         header_row.addWidget(self.to_main_menu_button, 0, Qt.AlignmentFlag.AlignRight)

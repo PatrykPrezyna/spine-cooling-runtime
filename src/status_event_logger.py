@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from session_log_paths import log_directory, status_filename_format
+from version import __version__
 
 
 def _is_usb_copy_error(message: str) -> bool:
@@ -104,7 +105,7 @@ class StatusEventLogger:
                 self._write_unlocked(
                     event="session_start",
                     severity="info",
-                    message="Logging started",
+                    message=f"Logging started, version {__version__}",
                 )
                 print(f"Started status logging to: {self.csv_file}")
                 return True

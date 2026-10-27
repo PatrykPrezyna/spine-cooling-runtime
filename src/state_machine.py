@@ -60,10 +60,8 @@ TRANSITIONS: tuple[Transition, ...] = (
     Transition(State.READY, State.COOLING, "sensors OK", "All conditions met"),
     Transition(State.READY, State.ERROR, "stop fault"),
     Transition(State.COOLING, State.PUMPING, "start pumping", "User started pumping"),
-    Transition(State.COOLING, State.READY, "", requested=False),
     Transition(State.COOLING, State.ERROR, "stop fault"),
     Transition(State.PUMPING, State.COOLING, "stop pumping", "User stopped pumping"),
-    Transition(State.PUMPING, State.READY, "", requested=False),
     Transition(State.PUMPING, State.ERROR, "stop fault"),
     Transition(State.ERROR, State.READY, "acknowledge", "Error acknowledged"),
 )

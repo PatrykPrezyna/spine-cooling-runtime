@@ -26,8 +26,8 @@ from PyQt6.QtGui import QPixmap  # noqa: E402
 from fault_catalog import FAULTS, FaultCode, Severity, operator_help  # noqa: E402
 from gui import FaultHelpDialog, AppWindow  # noqa: E402
 
-SHOT_DIR = ROOT / "docs" / "screenshots"
-PDF_PATH = ROOT / "docs" / "Spine_Cooling_Operator_Guide.pdf"
+SHOT_DIR = ROOT / "docs" / "operator-guide" / "screenshots"
+PDF_PATH = ROOT / "docs" / "operator-guide" / "Spine_Cooling_Operator_Guide.pdf"
 
 TEMPS = {
     "Tip": 36.4,
