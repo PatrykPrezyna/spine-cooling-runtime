@@ -1,0 +1,41 @@
+# Roadmap file for the lean GANTT tool.
+# Copy this shape. The Cool Spine file is tools/GANTT/roadmap.yaml.
+# Dates are sprint starts, quoted YYYY-MM-DD. A sprint is sprint_days long.
+# A one-sprint task has the same start and end. Omit start/end when there is no bar.
+# Omit date when a milestone has no day yet.
+# status is only for tasks: done, in_progress, future.
+# ids stay put when a name changes. Ids are unique across the whole file.
+
+version: 1
+title: Example roadmap
+timeline:
+  start: "2026-01-01"
+  sprint_days: 14
+  sprint_count: 4
+epics:
+  - id: cooling
+    name: Cooling
+    items:
+      - id: bench-test
+        kind: task
+        name: Bench test
+        status: done
+        start: "2026-01-01"
+        end: "2026-01-01"
+      - id: tune-loop
+        kind: task
+        name: Tune the loop
+        status: in_progress
+        start: "2026-01-15"
+        end: "2026-01-29"
+      - id: freeze-design
+        kind: task
+        name: Freeze the design
+        status: future
+      - id: animal-study
+        kind: milestone
+        name: Animal study
+        date: "2026-02-12"
+      - id: design-freeze
+        kind: milestone
+        name: Design freeze

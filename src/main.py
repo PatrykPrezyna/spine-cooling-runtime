@@ -1,10 +1,9 @@
 """Application entry point.
 
-Wires together the sensor reader, CSV logger, state machine, drivers
-(stepper, compressor, thermistor) and the Qt UI.
+Wires together hardware, the session recorder, the state machine, and the Qt UI.
 
 - **GUI thread** — Qt UI and screen updates
-- **IO worker thread** — sensor reads, thermistor I2C, CSV logging
+- **IO worker thread** — sensor reads and thermistor I2C; sensor CSV rows go through SessionRecorder
 - **Stepper thread** — motor pulse timing
 
 Slow I/O runs on the worker so the GUI stays responsive and the stepper
@@ -34,21 +33,6 @@ from config_sections import (
     ensure_actuator_device,
 )
 from cooling_tracker import CoolingEffectivenessTracker
-from csv_logger import CSVLogger
-from pressure_csv_logger import PressureCSVLogger, PressureCaptureLoop
-from session_log_paths import log_directory
-from status_event_logger import StatusEventLogger, warning_log_edges
-from usb_log_mirror import (
-    STATE_CATCHING_UP,
-    STATE_DISABLED,
-    STATE_EJECTING,
-    STATE_ERROR,
-    STATE_MIRRORING,
-    STATE_SAFE_TO_REMOVE,
-    STATE_WAITING,
-    UsbLogMirror,
-    disk_free_bytes,
-)
 from leak_debounce import LeakDebounceTracker
 from fault_catalog import FaultCode, Severity, get_fault, stop_priority
 from gui import MainScreen
@@ -61,6 +45,7 @@ from pump_flow_control import (
 from safety_rules import RuleContext, TelemetrySnapshot, evaluate, is_fault_still_active
 from sensor_injection import SensorInjectionController, select_temperatures
 from sensor_override_ui import SensorOverrideWindow
+from session_recorder import SessionRecorder
 from state_machine import State, StateMachine
 
 
@@ -79,7 +64,7 @@ class _BackgroundIOWorker(QObject):
         sensor_reader: Any,
         thermistor_reader: Any,
         pressure_reader: Any,
-        csv_logger: Optional[CSVLogger],
+        recorder: Optional[SessionRecorder],
         config: Optional[dict] = None,
         flow_reader: Any = None,
     ):
@@ -88,7 +73,7 @@ class _BackgroundIOWorker(QObject):
         self._thermistor_reader = thermistor_reader
         self._pressure_reader = pressure_reader
         self._flow_reader = flow_reader
-        self._csv_logger = csv_logger
+        self._recorder = recorder
         self._config = config or {}
 
     @pyqtSlot(bool, int, float, int)
@@ -130,8 +115,8 @@ class _BackgroundIOWorker(QObject):
                 self._flow_reader, "is_initialized", False
             ):
                 flow_ml_per_min = self._flow_reader.read_flow_ml_per_min()
-            if self._csv_logger is not None:
-                self._csv_logger.log(
+            if self._recorder is not None:
+                self._recorder.record_sensors(
                     sensor_states,
                     temperatures,
                     peristaltic_pump_set_speed_rpm=logged_stepper_speed_rpm,
@@ -191,17 +176,7 @@ class SensorMonitorApp(QObject):
         # One stamp for the whole run; sensor, pressure, and status CSVs
         # all live in the same folder and share this filename prefix.
         self.session_start = datetime.now()
-        self.csv_logger: Optional[CSVLogger] = None
-        self.pressure_csv_logger: Optional[PressureCSVLogger] = None
-        self.status_event_logger: Optional[StatusEventLogger] = None
-        self._logged_setpoints: dict[str, str] = {}
-        self._usb_mirror: Optional[UsbLogMirror] = None
-        self._logged_warning_codes: set[FaultCode] = set()
-        # USB absence is logged once per session. Presence checks flicker when
-        # the mount comes and goes, and a stop fault clears the warning set,
-        # which was appending a new row on almost every tick.
-        self._once_logged_warnings: set[FaultCode] = set()
-        self._pressure_capture_loop: Optional[PressureCaptureLoop] = None
+        self.recorder: Optional[SessionRecorder] = None
         self.ui: Optional[MainScreen] = None
         self.state_machine: Optional[StateMachine] = None
         self.stepper_driver: Any = None
@@ -292,16 +267,12 @@ class SensorMonitorApp(QObject):
             print("Initializing components...")
 
             self.state_machine = StateMachine()
-            self.csv_logger = CSVLogger(self.config, session_start=self.session_start)
-            self.pressure_csv_logger = PressureCSVLogger(
-                self.config, session_start=self.session_start
+            self.recorder = SessionRecorder(
+                self.config,
+                self.session_start,
+                simulation=self.simulation,
             )
-            self.status_event_logger = StatusEventLogger(
-                self.config, session_start=self.session_start
-            )
-            Path(log_directory(self.config)).mkdir(parents=True, exist_ok=True)
-            if not self.status_event_logger.start_logging():
-                print("Warning: status logging failed to start; continuing without it")
+            self.recorder.start_status_log()
             self.state_machine.on_state_change = self._on_state_changed
 
             bundle = build_hardware(self.config, simulation=self.simulation)
@@ -332,14 +303,17 @@ class SensorMonitorApp(QObject):
             self.stepper_driver.disable_on_idle = False
             self.stepper_driver.enable()
 
-            if not self.csv_logger.start_logging():
+            if not self.recorder.start_sensor_log():
                 error_msg = "Failed to start CSV logging"
                 print(f"Error: {error_msg}")
                 self.state_machine.handle_init_complete(False, error_msg)
                 return False
 
-            self._autostart_pressure_capture()
-            self._start_usb_mirror()
+            self.recorder.start_pressure_capture(
+                self.pressure_reader,
+                self._logged_pump_set_speed_rpm,
+            )
+            self.recorder.start_usb_mirror()
 
             self.is_running = True
             print("All components initialized successfully")
@@ -431,14 +405,13 @@ class SensorMonitorApp(QObject):
 
         self._stop_io_worker()
 
-        if self.csv_logger:
-            self.csv_logger.stop_logging()
-            print("CSV logging stopped")
-        self._stop_pressure_capture()
-        if self.pressure_csv_logger is not None:
-            self.pressure_csv_logger.stop_logging()
-        self._stop_status_logging("Session ended")
-        self._stop_usb_mirror()
+        if self.recorder is not None:
+            state = (
+                self.state_machine.get_current_state()
+                if self.state_machine is not None
+                else None
+            )
+            self.recorder.stop(state)
 
         if self.thermistor_reader is not None:
             try:
@@ -472,109 +445,35 @@ class SensorMonitorApp(QObject):
 
         print("Cleanup complete")
 
-    def _stop_status_logging(self, message: str = "Session ended") -> None:
-        """Flush a session_stop row and close the status CSV."""
-        logger = self.status_event_logger
-        if logger is None or not logger.is_logging:
-            return
-        state = self.state_machine.get_current_state() if self.state_machine else None
-        logger.log_session_stop(state=state, message=message)
-        logger.stop_logging()
-
     def _sync_warning_log(self, message_codes: list[FaultCode]) -> None:
-        """Log warning appear/clear edges (not every 10 Hz tick).
-
-        ``USB_NOT_PRESENT`` is written once per session. It stays active for
-        the whole run when no stick is inserted, and mount detection plus
-        stop-fault clears were re-logging it on every flicker.
-        """
-        cleared, raised, logged, once_logged = warning_log_edges(
-            self._logged_warning_codes,
-            set(message_codes),
-            once_codes={FaultCode.USB_NOT_PRESENT},
-            once_logged=self._once_logged_warnings,
-        )
-        if not cleared and not raised:
-            self._logged_warning_codes = logged
-            self._once_logged_warnings = once_logged
-            return
-        for code in cleared:
-            self._log_warning(code, cleared=True)
-        for code in raised:
-            self._log_warning(code, cleared=False)
-        self._logged_warning_codes = logged
-        self._once_logged_warnings = once_logged
-
-    def _log_warning(self, code: FaultCode, *, cleared: bool) -> None:
-        logger = self.status_event_logger
-        if logger is None:
+        """Log warning appear/clear edges (not every 10 Hz tick)."""
+        if self.recorder is None:
             return
         state = self.state_machine.get_current_state() if self.state_machine else None
-        logger.log_warning(
-            code,
-            get_fault(code).message,
-            state=state,
-            cleared=cleared,
-        )
-
-    def _flush_session_logs(self) -> None:
-        # Sensor CSV already flushes every row. Only the 100 Hz pressure
-        # logger (and status) keep a buffer the USB copy might otherwise miss.
-        if self.pressure_csv_logger is not None:
-            self.pressure_csv_logger.flush()
-        if self.status_event_logger is not None:
-            self.status_event_logger.flush()
-
-    def _on_usb_mirror_event(self, event: str, message: str) -> None:
-        logger = self.status_event_logger
-        if logger is None:
-            return
-        logger.log(event=event, severity="info", message=message)
-
-    def _start_usb_mirror(self) -> None:
-        self._usb_mirror = UsbLogMirror(
-            self.config,
-            source_directory=Path(log_directory(self.config)),
-            on_event=self._on_usb_mirror_event,
-            flush_sources=self._flush_session_logs,
-        )
-        if not self._usb_mirror.enabled:
-            print("USB log copy disabled")
-            return
-        self._usb_mirror.start()
-        print(
-            f"USB log copy started (label {self._usb_mirror.volume_label}, "
-            f"every {self._usb_mirror.interval_s:.1f}s)"
-        )
-
-    def _stop_usb_mirror(self) -> None:
-        if self._usb_mirror is None:
-            return
-        self._usb_mirror.stop()
-        self._usb_mirror = None
+        self.recorder.sync_warnings(message_codes, state)
 
     def _refresh_usb_ui(self) -> None:
         if not self.ui:
             return
-        mirror = self._usb_mirror
-        if mirror is None:
+        status = self.recorder.usb_ui_status() if self.recorder is not None else None
+        if status is None:
             self.ui.service_tab.update_usb_status(
                 state="disabled",
                 message="USB copy off",
                 can_eject=False,
             )
             return
-        status = mirror.status()
+        state, message, can_eject = status
         self.ui.service_tab.update_usb_status(
-            state=status.state,
-            message=status.message,
-            can_eject=status.can_eject,
+            state=state,
+            message=message,
+            can_eject=can_eject,
         )
 
     def on_usb_eject(self) -> None:
-        if self._usb_mirror is None:
+        if self.recorder is None:
             return
-        self._usb_mirror.request_eject()
+        self.recorder.request_usb_eject()
         self._refresh_usb_ui()
 
     # ------------------------------------------------------------------
@@ -588,7 +487,7 @@ class SensorMonitorApp(QObject):
             self.sensor_reader,
             self.thermistor_reader,
             self.pressure_reader,
-            self.csv_logger,
+            self.recorder,
             self.config,
             flow_reader=self.flow_reader,
         )
@@ -662,40 +561,9 @@ class SensorMonitorApp(QObject):
 
     def _storage_telemetry(self) -> TelemetrySnapshot:
         """USB presence and free space for MESSAGE-severity storage warnings."""
-        local_free = disk_free_bytes(Path(log_directory(self.config)))
-        # --sim has no physical SPINELOGS stick; skip presence/storage faults.
-        if self.simulation:
-            return TelemetrySnapshot(
-                usb_logging_enabled=False,
-                local_free_bytes=local_free,
-            )
-        mirror = self._usb_mirror
-        if mirror is None or not mirror.enabled:
-            return TelemetrySnapshot(
-                usb_logging_enabled=False,
-                local_free_bytes=local_free,
-            )
-        status = mirror.status()
-        ejected = status.state in (STATE_EJECTING, STATE_SAFE_TO_REMOVE)
-        present = status.state in (
-            STATE_MIRRORING,
-            STATE_CATCHING_UP,
-            STATE_ERROR,
-        ) and bool(status.mount_path)
-        if status.state == STATE_WAITING:
-            present = False
-        if status.state == STATE_DISABLED:
-            return TelemetrySnapshot(
-                usb_logging_enabled=False,
-                local_free_bytes=local_free,
-            )
-        return TelemetrySnapshot(
-            usb_logging_enabled=True,
-            usb_present=present if not ejected else False,
-            usb_ejected=ejected,
-            usb_free_bytes=status.free_bytes if present and not ejected else None,
-            local_free_bytes=local_free,
-        )
+        if self.recorder is None:
+            return TelemetrySnapshot()
+        return self.recorder.storage_telemetry()
 
     def _evaluate_and_dispatch_safety(
         self,
@@ -781,13 +649,13 @@ class SensorMonitorApp(QObject):
             self.ui.set_acknowledge_enabled(False)
 
     def _on_state_changed(self, old_state: State, new_state: State, reason: str = ""):
-        if self.status_event_logger is not None:
+        if self.recorder is not None:
             fault_code = (
                 self.state_machine.get_latched_fault_code()
                 if self.state_machine is not None and new_state == State.ERROR
                 else None
             )
-            self.status_event_logger.log_state_change(
+            self.recorder.log_state_change(
                 old_state,
                 new_state,
                 reason,
@@ -1080,41 +948,6 @@ class SensorMonitorApp(QObject):
         if self.ui:
             self._update_stepper_ui_status()
 
-    def _stop_pressure_capture(self) -> None:
-        """Stop the high-rate pressure capture thread if it is running."""
-        if self._pressure_capture_loop is not None:
-            self._pressure_capture_loop.stop()
-            self._pressure_capture_loop = None
-
-    def _start_pressure_capture(self) -> bool:
-        """Open a new pressure CSV run and start the capture thread."""
-        if self.pressure_csv_logger is None:
-            return False
-        self._stop_pressure_capture()
-        if not self.pressure_csv_logger.start_logging():
-            return False
-        self._pressure_capture_loop = PressureCaptureLoop(
-            self.pressure_reader,
-            self.pressure_csv_logger,
-            pump_set_speed_rpm_getter=self._logged_pump_set_speed_rpm,
-        )
-        self._pressure_capture_loop.start()
-        return True
-
-    def _autostart_pressure_capture(self) -> None:
-        """Begin high-rate pressure capture alongside the session CSV.
-
-        Runs for the whole session. Skipped when the reader is unavailable,
-        which would otherwise fill a 100 Hz file with blank rows. Capture
-        failure is not fatal: the session CSV still carries pressures at the
-        UI tick rate.
-        """
-        if self.pressure_reader is None or not self.pressure_reader.is_initialized:
-            print("Pressure CSV start skipped: pressure reader unavailable")
-            return
-        if not self._start_pressure_capture():
-            print("Warning: pressure CSV start failed; continuing without it")
-
     def _logged_pump_set_speed_rpm(self) -> int:
         """Stepper setpoint for CSV: speed when running, else 0."""
         return int(self.stepper_speed_rpm) if self.stepper_motor_running else 0
@@ -1288,11 +1121,9 @@ class SensorMonitorApp(QObject):
 
     def _log_setpoint_if_changed(self, name: str, value: str) -> None:
         """Append a setpoint row when the commanded value differs from the last one."""
-        if self._logged_setpoints.get(name) == value:
+        if self.recorder is None:
             return
-        self._logged_setpoints[name] = value
-        if self.status_event_logger is not None:
-            self.status_event_logger.log_setpoint(name, value)
+        self.recorder.log_setpoint_if_changed(name, value)
 
     def _commanded_pump_flow_ml_per_min(self) -> str:
         """Return the operator flow setpoint, or the flow equivalent of the set RPM."""

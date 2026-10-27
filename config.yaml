@@ -85,7 +85,7 @@ actuators:
     steps_per_revolution: 200
     microstepping: 16
     default_speed_rpm: 20
-    pumping_speed_rpm: 69
+    pumping_speed_rpm: 50
     pumping_slow_speed_rpm: 10
     max_speed_rpm: 390
     min_pump_speed_rpm: 10
@@ -112,7 +112,7 @@ actuators:
     heat_ex_labels:
     - Plate 1
     off_below_temp_c: -0.5
-    on_above_temp_c: 1.0
+    on_above_temp_c: 1.3
     min_off_before_on_s: 60
   cooling_power:
     water_density_kg_per_l: 1.0

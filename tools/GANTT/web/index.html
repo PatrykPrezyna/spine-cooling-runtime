@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Roadmap</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex;
+      flex-direction: column;
+      color: #1c2430;
+      background: #f6f7f9;
+      font: 13px/1.4 "Segoe UI", "Helvetica Neue", sans-serif;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 24px;
+      padding: 12px 16px;
+      background: #fff;
+      border-bottom: 1px solid #e3e8ee;
+    }
+    h1 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+    .sub { margin: 2px 0 0; color: #5c6b7a; }
+    .legend { display: flex; align-items: center; gap: 12px; color: #5c6b7a; white-space: nowrap; }
+    .swatch { width: 28px; height: 10px; border-radius: 6px; background: #6fa86a; display: inline-block; }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .pill {
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .pill.done { background: #e7f2ea; color: #1e5a38; }
+    .pill.in_progress { background: #e6effa; color: #1a4478; }
+    .pill.future { background: #eef0f3; color: #4b5563; }
+    #error {
+      margin: 0;
+      padding: 8px 16px;
+      background: #fdecec;
+      color: #8a1f1f;
+    }
+    #error[hidden] { display: none; }
+    #scroller { flex: 1; min-height: 0; overflow: auto; background: #fff; }
+    table { width: max-content; border-collapse: separate; border-spacing: 0; }
+    thead th {
+      position: sticky;
+      background: #fff;
+      z-index: 4;
+    }
+    thead tr:first-child th.year { top: 0; height: 26px; }
+    thead tr:last-child th { top: 26px; height: 40px; }
+    th.name-col { top: 0; }
+    th.name-col, td.name-col {
+      position: sticky;
+      left: 0;
+      width: 380px;
+      min-width: 380px;
+      max-width: 380px;
+      z-index: 5;
+      border-right: 1px solid #d5dbe3;
+      box-shadow: 4px 0 8px rgba(20, 30, 40, 0.04);
+    }
+    th.name-col { z-index: 6; text-align: left; padding-left: 12px; font-size: 12px; color: #5c6b7a; }
+    th.year {
+      text-align: left;
+      padding: 0;
+      font-size: 12px;
+      font-weight: 700;
+      color: #1c2430;
+      border-bottom: 1px solid #e3e8ee;
+      z-index: 4;
+    }
+    .year-label {
+      position: sticky;
+      left: 392px;
+      display: inline-block;
+      padding: 4px 12px 4px 8px;
+      background: #fff;
+    }
+    th.sprint {
+      width: 36px;
+      min-width: 36px;
+      padding: 4px 0 6px;
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 1.15;
+      color: #5c6b7a;
+      vertical-align: bottom;
+      border-bottom: 1px solid #e3e8ee;
+      border-right: 1px solid #eef1f4;
+    }
+    th.sprint .day { display: block; color: #1c2430; font-size: 12px; font-variant-numeric: tabular-nums; }
+    th.sprint.current { background: #e7f0fa; }
+    th.sprint.current .day { color: #1a4478; }
+    td.sprint, th.sprint { user-select: none; }
+    td.sprint {
+      height: 36px;
+      padding: 0;
+      text-align: center;
+      vertical-align: middle;
+      border-bottom: 1px solid #e6ebf0;
+      border-right: 1px solid #eef1f4;
+    }
+    td.name-col { border-bottom: 1px solid #e6ebf0; background: #fff; }
+    tr.epic td { background: #e8eef5; }
+    tr.epic td.name-col { background: #e8eef5; }
+    tr.task td.current { background: #f3f7fc; }
+    tr.task:hover td.name-col { background: #f7faf8; }
+    tr.task td.sprint { cursor: pointer; }
+    tr.task td.sprint:hover { background: #f2f6f3; }
+    tr.task td.preview { background: #e3f2d9; }
+    tr.task td.anchor { box-shadow: inset 0 0 0 2px #1a4478; }
+    .mark { display: block; height: 10px; }
+    tr.task td.in-bar .mark { background: #6fa86a; }
+    tr.task td.single .mark { margin: 0 4px; border-radius: 6px; }
+    tr.task td.bar-start .mark { margin-left: 4px; border-radius: 6px 0 0 6px; }
+    tr.task td.bar-end .mark { margin-right: 4px; border-radius: 0 6px 6px 0; }
+    .name-inner { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px 0 10px; }
+    .label {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    tr.epic .label { font-weight: 700; }
+    button.name, button.add, button.clear {
+      font: inherit;
+      cursor: pointer;
+    }
+    button.name {
+      appearance: none;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+    }
+    button.name:hover { text-decoration: underline; text-underline-offset: 2px; }
+    input.name {
+      flex: 1;
+      min-width: 0;
+      font: inherit;
+      border: 1px solid #1a4478;
+      border-radius: 4px;
+      padding: 3px 6px;
+    }
+    select.status {
+      flex: 0 0 auto;
+      border: 0;
+      border-radius: 999px;
+      padding: 3px 6px;
+      font: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    select.status[data-status="done"] { background: #e7f2ea; color: #1e5a38; }
+    select.status[data-status="in_progress"] { background: #e6effa; color: #1a4478; }
+    select.status[data-status="future"] { background: #eef0f3; color: #4b5563; }
+    button.add, button.clear {
+      flex: 0 0 auto;
+      border: 1px solid #d5dbe3;
+      background: #fff;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 650;
+      color: #1c2430;
+    }
+    button.add:hover, button.clear:hover { border-color: #1a4478; color: #1a4478; }
+    .tag {
+      flex: 0 0 auto;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #9a3412;
+      background: #fff4e8;
+      border-radius: 999px;
+      padding: 2px 6px;
+    }
+    .gem {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      background: #c2410c;
+      transform: rotate(45deg);
+    }
+    tr.flash td.name-col { background: #e7f6df; }
+    button:focus-visible, select:focus-visible, input:focus-visible {
+      outline: 2px solid #1a4478;
+      outline-offset: 1px;
+    }
+    body.saving #scroller { pointer-events: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1 id="title">Roadmap</h1>
+      <p class="sub" id="hint">Click a sprint, then another, to set how long a task runs.</p>
+    </div>
+    <div class="legend">
+      <span class="legend-item"><span class="swatch"></span> Duration</span>
+      <span class="pill done">Done</span>
+      <span class="pill in_progress">In progress</span>
+      <span class="pill future">Future</span>
+      <span class="legend-item"><span class="gem"></span> Milestone</span>
+    </div>
+  </header>
+  <p id="error" hidden></p>
+  <div id="scroller">
+    <table>
+      <thead id="head"></thead>
+      <tbody id="body"></tbody>
+    </table>
+  </div>
+  <script>
+    const BOOT = null;
+    const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const STATUSES = [
+      ["done", "Done"],
+      ["in_progress", "In progress"],
+      ["future", "Future"]
+    ];
+    const state = { roadmap: null, anchor: null, scrolled: false };
+
+    const titleEl = document.getElementById("title");
+    const hintEl = document.getElementById("hint");
+    const errorEl = document.getElementById("error");
+    const headEl = document.getElementById("head");
+    const bodyEl = document.getElementById("body");
+    const scrollerEl = document.getElementById("scroller");
+
+    function showError(message) {
+      errorEl.hidden = false;
+      errorEl.textContent = message;
+    }
+
+    function clearError() {
+      errorEl.hidden = true;
+      errorEl.textContent = "";
+    }
+
+    function setHint() {
+      hintEl.textContent = state.anchor
+        ? "Click the last sprint. Click the same cell again for one sprint."
+        : "Click a sprint, then another, to set how long a task runs.";
+    }
+
+    async function api(method, url, body) {
+      const response = await fetch(url, {
+        method,
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined
+      });
+      const text = await response.text();
+      let data = {};
+      if (text) {
+        try { data = JSON.parse(text); } catch { data = { error: text }; }
+      }
+      if (!response.ok) throw new Error(data.error || "Save failed");
+      return data;
+    }
+
+    function findItem(id) {
+      for (const epic of state.roadmap.epics) {
+        for (const item of epic.items) {
+          if (item.id === id) return item;
+        }
+      }
+      return null;
+    }
+
+    function sprintLabel(iso) {
+      const [, month, day] = iso.split("-");
+      return MONTHS[Number(month) - 1] + " " + Number(day);
+    }
+
+    function barEdges(start, end, sprintId) {
+      if (!start || !end || sprintId < start || sprintId > end) return "";
+      if (start === end) return "in-bar single";
+      if (sprintId === start) return "in-bar bar-start";
+      if (sprintId === end) return "in-bar bar-end";
+      return "in-bar";
+    }
+
+    function buildHead(data) {
+      headEl.replaceChildren();
+      const yearRow = document.createElement("tr");
+      const corner = document.createElement("th");
+      corner.className = "name-col";
+      corner.rowSpan = 2;
+      corner.textContent = "Task";
+      yearRow.append(corner);
+      let previousYear = "";
+      for (const sprint of data.sprints) {
+        const year = sprint.id.slice(0, 4);
+        if (year !== previousYear) {
+          const cell = document.createElement("th");
+          cell.className = "year";
+          cell.colSpan = data.sprints.filter((item) => item.id.slice(0, 4) === year).length;
+          const label = document.createElement("span");
+          label.className = "year-label";
+          label.textContent = year;
+          cell.append(label);
+          yearRow.append(cell);
+          previousYear = year;
+        }
+      }
+      const sprintRow = document.createElement("tr");
+      for (const sprint of data.sprints) {
+        const cell = document.createElement("th");
+        cell.className = "sprint" + (sprint.id === data.today_sprint ? " current" : "");
+        cell.title = sprintLabel(sprint.id) + " – " + sprintLabel(sprint.last_day) + ", " + sprint.id.slice(0, 4);
+        const day = document.createElement("span");
+        day.className = "day";
+        day.textContent = String(Number(sprint.id.slice(8, 10)));
+        const month = document.createElement("span");
+        month.textContent = MONTHS[Number(sprint.id.slice(5, 7)) - 1];
+        cell.append(day, month);
+        sprintRow.append(cell);
+      }
+      headEl.append(yearRow, sprintRow);
+    }
+
+    function buildBody(data) {
+      const fragment = document.createDocumentFragment();
+      for (const epic of data.epics) {
+        fragment.append(epicRow(epic, data));
+        for (const item of epic.items) {
+          fragment.append(item.kind === "milestone" ? milestoneRow(item, data) : taskRow(item, data));
+        }
+      }
+      bodyEl.replaceChildren(fragment);
+    }
+
+    function epicRow(epic, data) {
+      const row = document.createElement("tr");
+      row.className = "epic";
+      row.append(nameCell(epicName(epic)));
+      for (const sprint of data.sprints) row.append(plainCell(sprint, data));
+      return row;
+    }
+
+    function epicName(epic) {
+      const wrap = document.createElement("div");
+      wrap.className = "name-inner";
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = epic.name;
+      label.title = epic.name;
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "add";
+      add.textContent = "Add task";
+      add.setAttribute("aria-label", "Add task to " + epic.name);
+      add.addEventListener("click", () => addTask(epic.id));
+      wrap.append(label, add);
+      return wrap;
+    }
+
+    function taskRow(task, data) {
+      const row = document.createElement("tr");
+      row.className = "task";
+      row.dataset.id = task.id;
+      row.append(nameCell(taskName(task)));
+      for (const sprint of data.sprints) {
+        const cell = document.createElement("td");
+        cell.className = "sprint " + barEdges(task.start, task.end, sprint.id);
+        if (sprint.id === data.today_sprint) cell.classList.add("current");
+        if (state.anchor && state.anchor.itemId === task.id && state.anchor.sprintId === sprint.id) {
+          cell.classList.add("anchor");
+        }
+        cell.dataset.item = task.id;
+        cell.dataset.sprint = sprint.id;
+        cell.title = sprintLabel(sprint.id) + " – " + sprintLabel(sprint.last_day);
+        const mark = document.createElement("span");
+        mark.className = "mark";
+        cell.append(mark);
+        row.append(cell);
+      }
+      return row;
+    }
+
+    function taskName(task) {
+      const wrap = document.createElement("div");
+      wrap.className = "name-inner";
+      const select = document.createElement("select");
+      select.className = "status";
+      select.dataset.status = task.status;
+      select.setAttribute("aria-label", "Status for " + task.name);
+      for (const [value, label] of STATUSES) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        select.append(option);
+      }
+      select.value = task.status;
+      select.addEventListener("change", () => {
+        select.dataset.status = select.value;
+        savePatch(task.id, { status: select.value });
+      });
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "name";
+      button.dataset.id = task.id;
+      button.textContent = task.name;
+      button.title = task.name;
+      button.setAttribute("aria-label", "Rename " + task.name);
+      button.addEventListener("click", () => beginEdit(button));
+      wrap.append(select, button);
+      if (task.start && task.end) {
+        const clear = document.createElement("button");
+        clear.type = "button";
+        clear.className = "clear";
+        clear.textContent = "Clear";
+        clear.setAttribute("aria-label", "Clear duration");
+        clear.addEventListener("click", () => {
+          state.anchor = null;
+          setHint();
+          savePatch(task.id, { start: null, end: null });
+        });
+        wrap.append(clear);
+      }
+      return wrap;
+    }
+
+    function beginEdit(button) {
+      const id = button.dataset.id;
+      const original = button.textContent;
+      const input = document.createElement("input");
+      input.className = "name";
+      input.value = original;
+      input.spellcheck = false;
+      input.setAttribute("aria-label", "Task name");
+      button.replaceWith(input);
+      input.focus();
+      input.select();
+      let closed = false;
+      function finish(save) {
+        if (closed) return;
+        closed = true;
+        const next = input.value.trim();
+        if (!save || next === original) {
+          renderBody();
+          return;
+        }
+        if (!next) {
+          showError("A task name cannot be empty.");
+          renderBody();
+          return;
+        }
+        savePatch(id, { name: next });
+      }
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          finish(true);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          finish(false);
+        }
+      });
+      input.addEventListener("blur", () => finish(true));
+    }
+
+    function milestoneRow(item, data) {
+      const row = document.createElement("tr");
+      row.className = "milestone";
+      row.dataset.id = item.id;
+      const wrap = document.createElement("div");
+      wrap.className = "name-inner";
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = "Milestone";
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = item.name;
+      label.title = item.name;
+      wrap.append(tag, label);
+      row.append(nameCell(wrap));
+      const placed = sprintForDate(data.sprints, item.date);
+      for (const sprint of data.sprints) {
+        const cell = plainCell(sprint, data);
+        if (placed === sprint.id) {
+          const gem = document.createElement("span");
+          gem.className = "gem";
+          gem.title = item.date;
+          cell.append(gem);
+        }
+        row.append(cell);
+      }
+      return row;
+    }
+
+    function nameCell(child) {
+      const cell = document.createElement("td");
+      cell.className = "name-col";
+      cell.append(child);
+      return cell;
+    }
+
+    function plainCell(sprint, data) {
+      const cell = document.createElement("td");
+      cell.className = "sprint" + (sprint.id === data.today_sprint ? " current" : "");
+      return cell;
+    }
+
+    function sprintForDate(sprints, iso) {
+      if (!iso) return null;
+      for (const sprint of sprints) {
+        if (sprint.id <= iso && iso <= sprint.last_day) return sprint.id;
+      }
+      return null;
+    }
+
+    function renderBody() {
+      buildBody(state.roadmap);
+      setHint();
+    }
+
+    function render() {
+      const data = state.roadmap;
+      document.title = data.title;
+      titleEl.textContent = data.title;
+      buildHead(data);
+      renderBody();
+      if (!state.scrolled) {
+        const current = headEl.querySelector("th.sprint.current");
+        if (current) {
+          const left = current.getBoundingClientRect().left - scrollerEl.getBoundingClientRect().left;
+          scrollerEl.scrollLeft = scrollerEl.scrollLeft + left - 380 - 24;
+        }
+        const row = [...bodyEl.querySelectorAll("tr.task")].find((item) => item.querySelector("td.current.in-bar"));
+        if (row) {
+          const top = row.getBoundingClientRect().top - scrollerEl.getBoundingClientRect().top;
+          scrollerEl.scrollTop += top - 48;
+        }
+        state.scrolled = true;
+      }
+    }
+
+    async function savePatch(id, body) {
+      const top = scrollerEl.scrollTop;
+      const left = scrollerEl.scrollLeft;
+      document.body.classList.add("saving");
+      try {
+        state.roadmap = await api("PATCH", "/api/items/" + encodeURIComponent(id), body);
+        clearError();
+      } catch (error) {
+        showError(error.message);
+        try { state.roadmap = await api("GET", "/api/roadmap"); } catch { /* keep the last good copy */ }
+      } finally {
+        document.body.classList.remove("saving");
+        renderBody();
+        scrollerEl.scrollTop = top;
+        scrollerEl.scrollLeft = left;
+      }
+    }
+
+    async function addTask(epicId) {
+      const top = scrollerEl.scrollTop;
+      const left = scrollerEl.scrollLeft;
+      document.body.classList.add("saving");
+      try {
+        state.roadmap = await api("POST", "/api/epics/" + encodeURIComponent(epicId) + "/tasks");
+        clearError();
+      } catch (error) {
+        showError(error.message);
+        return;
+      } finally {
+        document.body.classList.remove("saving");
+      }
+      const epic = state.roadmap.epics.find((item) => item.id === epicId);
+      const created = epic.items[epic.items.length - 1];
+      renderBody();
+      scrollerEl.scrollTop = top;
+      scrollerEl.scrollLeft = left;
+      const row = bodyEl.querySelector('tr[data-id="' + CSS.escape(created.id) + '"]');
+      if (!row) return;
+      row.classList.add("flash");
+      const bounds = row.getBoundingClientRect();
+      const frame = scrollerEl.getBoundingClientRect();
+      if (bounds.top < frame.top || bounds.bottom > frame.bottom) {
+        scrollerEl.scrollTop += bounds.top - frame.top - 80;
+      }
+      const button = row.querySelector("button.name");
+      if (button) beginEdit(button);
+    }
+
+    function onSprintClick(cell) {
+      const itemId = cell.dataset.item;
+      const sprintId = cell.dataset.sprint;
+      if (!itemId || document.body.classList.contains("saving")) return;
+      if (!state.anchor || state.anchor.itemId !== itemId) {
+        state.anchor = { itemId, sprintId };
+        renderBody();
+        return;
+      }
+      const task = findItem(itemId);
+      const start = state.anchor.sprintId < sprintId ? state.anchor.sprintId : sprintId;
+      const end = state.anchor.sprintId < sprintId ? sprintId : state.anchor.sprintId;
+      state.anchor = null;
+      if (task && task.start === start && task.end === end) {
+        renderBody();
+        return;
+      }
+      savePatch(itemId, { start, end });
+    }
+
+    function preview(cell) {
+      bodyEl.querySelectorAll("td.preview").forEach((item) => item.classList.remove("preview"));
+      if (!cell || !state.anchor || cell.dataset.item !== state.anchor.itemId) return;
+      const sprintId = cell.dataset.sprint;
+      const start = state.anchor.sprintId < sprintId ? state.anchor.sprintId : sprintId;
+      const end = state.anchor.sprintId < sprintId ? sprintId : state.anchor.sprintId;
+      bodyEl.querySelectorAll('td.sprint[data-item="' + CSS.escape(state.anchor.itemId) + '"]').forEach((item) => {
+        if (item.dataset.sprint >= start && item.dataset.sprint <= end) item.classList.add("preview");
+      });
+    }
+
+    bodyEl.addEventListener("click", (event) => {
+      const cell = event.target.closest("td.sprint");
+      if (cell && bodyEl.contains(cell)) onSprintClick(cell);
+    });
+    bodyEl.addEventListener("mouseover", (event) => {
+      preview(event.target.closest("td.sprint"));
+    });
+    bodyEl.addEventListener("mouseleave", () => preview(null));
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && state.anchor && document.activeElement.tagName !== "INPUT") {
+        state.anchor = null;
+        renderBody();
+      }
+    });
+
+    async function init() {
+      try {
+        state.roadmap = BOOT || await api("GET", "/api/roadmap");
+        render();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

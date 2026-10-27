@@ -21,12 +21,12 @@ data/calibration/      thermistor resistance tables loaded at runtime
 
 | You want to… | Open |
 |--------------|------|
-| Run or change startup, threads, and wiring | `src/main.py` |
-| Change the touchscreen | `src/gui.py` |
+| Run on seted up Raspberry PI | `cd spine-cooling-runtime`, `source venv/bin/activate`, `src/main.py` |
 | Change operating states | `src/state_machine.py`, `docs/state-machine.md` |
 | Change when a fault trips, and the text the operator sees | `src/safety_rules.py`, `src/fault_catalog.py` |
 | Change pins, names, or limits | `config.yaml` |
-| Run without a Pi | `python src/main.py --sim` (`src/sim/`, `src/hardware_factory.py`) |
+| Run without a Pi | `python src/main.py --sim`|
+| Run without a Pi for testing | `python src/main.py --sim --test-ui`|
 | Check one sensor on the bench | `examples/` |
 | Read a recorded session | `python tools/log_viewer/log_analyzer.py` |
 
@@ -55,6 +55,7 @@ data/calibration/      thermistor resistance tables loaded at runtime
 | `cooling_power.py` | Cooling power from flow and temperatures |
 | `cooling_tracker.py` | Whether cooling is actually taking effect |
 | `leak_debounce.py` | Leak input must hold before it trips |
+| `session_recorder.py` | Owns the session CSVs and the USB copy |
 | `csv_logger.py` | Sensor CSV (UI rate, about 10 Hz) |
 | `pressure_csv_logger.py` | Pressure CSV (about 100 Hz) |
 | `status_event_logger.py` | State changes, stops, and warnings |

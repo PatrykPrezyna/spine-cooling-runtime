@@ -1,0 +1,612 @@
+version: 1
+title: Cool Spine
+timeline:
+  start: "2026-01-01"
+  sprint_days: 14
+  sprint_count: 47
+epics:
+  - id: preperation
+    name: Preperation
+    items:
+      - id: planning-and-preparation
+        kind: task
+        name: "Planning & Preparation"
+        status: future
+      - id: discussion-with-coolspine-team
+        kind: task
+        name: Discussion with CoolSpine Team
+        status: future
+      - id: medical-device-design-course-project-kickoff
+        kind: task
+        name: Medical Device Design course project kickoff
+        status: done
+        start: "2026-01-01"
+        end: "2026-01-01"
+      - id: team-established
+        kind: task
+        name: Team Established
+        status: future
+        start: "2026-01-01"
+        end: "2026-01-01"
+      - id: onsite-with-sage-pd-detailed-project-review-and-establishment-of-responsibilities
+        kind: task
+        name: "Onsite with Sage PD – detailed project review and establishment of responsibilities"
+        status: in_progress
+        start: "2026-01-01"
+        end: "2026-01-01"
+      - id: establishment-of-design-functional-requirements
+        kind: task
+        name: Establishment of design Functional Requirements
+        status: done
+        start: "2026-01-15"
+        end: "2026-01-15"
+      - id: course-275-final-presentations
+        kind: task
+        name: Course 2.75 - Final presentations
+        status: done
+        start: "2026-01-15"
+        end: "2026-01-15"
+      - id: strategy-presentations
+        kind: task
+        name: Strategy Presentations
+        status: done
+        start: "2026-01-15"
+        end: "2026-01-15"
+      - id: studied-refrigeration-v-thermoelectric-cooling
+        kind: task
+        name: Studied refrigeration v. thermoelectric cooling
+        status: done
+        start: "2026-01-29"
+        end: "2026-01-29"
+      - id: reviewed-zoll-system
+        kind: task
+        name: Reviewed Zoll system
+        status: done
+        start: "2026-01-29"
+        end: "2026-01-29"
+      - id: new-task
+        kind: task
+        name: New task
+        status: future
+  - id: concept-presentation
+    name: Concept Presentation
+    items:
+      - id: de-selection-of-thermoelectric-cooling
+        kind: task
+        name: De-selection of thermoelectric cooling
+        status: done
+        start: "2026-01-29"
+        end: "2026-01-29"
+      - id: hub-connector-review-with-sage
+        kind: task
+        name: Hub connector review with Sage
+        status: done
+        start: "2026-02-12"
+        end: "2026-02-12"
+      - id: modelling-of-worst-case-maximum-cooling
+        kind: task
+        name: Modelling of worst-case maximum cooling
+        status: done
+        start: "2026-02-12"
+        end: "2026-02-12"
+      - id: fabrication-and-assembly-of-test-fluid-cooling-loop
+        kind: task
+        name: Fabrication and assembly of test fluid cooling loop
+        status: done
+        start: "2026-02-12"
+        end: "2026-02-12"
+      - id: testing
+        kind: task
+        name: Testing
+        status: done
+        start: "2026-02-12"
+        end: "2026-02-12"
+      - id: preliminary-uiux-including-pump-controls-and-alarms
+        kind: task
+        name: Preliminary UIUX, including pump controls and alarms
+        status: done
+        start: "2026-02-26"
+        end: "2026-02-26"
+      - id: full-system-concept-design-established
+        kind: task
+        name: Full system concept design established
+        status: done
+        start: "2026-02-26"
+        end: "2026-02-26"
+      - id: model-of-required-cooling-power-and-cooling-power-v-time
+        kind: task
+        name: Model of required cooling power and cooling power v time
+        status: done
+        start: "2026-02-26"
+        end: "2026-02-26"
+      - id: bench-testing
+        kind: task
+        name: Bench testing
+        status: done
+        start: "2026-02-26"
+        end: "2026-02-26"
+      - id: course-275-final-presentations-2
+        kind: task
+        name: Course 2.75 - Final presentations
+        status: done
+        start: "2026-02-26"
+        end: "2026-02-26"
+      - id: thermistor-selection-and-meeting-with-sage-and-amphenol
+        kind: task
+        name: "Thermistor selection & meeting with Sage and Amphenol"
+        status: done
+        start: "2026-03-12"
+        end: "2026-03-12"
+      - id: assembly-of-pressure-and-temperature-sensing-modules
+        kind: task
+        name: Assembly of pressure and temperature sensing modules
+        status: done
+        start: "2026-03-12"
+        end: "2026-03-12"
+      - id: finalization-of-uiux
+        kind: task
+        name: Finalization of UIUX
+        status: done
+        start: "2026-03-12"
+        end: "2026-03-12"
+      - id: risk-and-dmea-review-with-sage
+        kind: task
+        name: "Risk & DMEA Review with Sage"
+        status: done
+        start: "2026-03-26"
+        end: "2026-03-26"
+      - id: onsite-catheter-testing-at-mit-with-sage
+        kind: task
+        name: Onsite catheter testing at MIT with Sage
+        status: done
+        start: "2026-03-26"
+        end: "2026-03-26"
+      - id: revision-of-cooling-system-design-to-support-cartridge-design
+        kind: task
+        name: Revision of cooling system design to support cartridge design
+        status: done
+        start: "2026-03-26"
+        end: "2026-03-26"
+      - id: preliminary-discussion-with-aspen
+        kind: task
+        name: Preliminary discussion with Aspen
+        status: done
+        start: "2026-03-26"
+        end: "2026-03-26"
+      - id: propane-r290-check-with-aspen-supplier-if-the-gas-we-are-using-may-be-used-in-the-operating-room-and-if-they-have-any-experience-with-it-in-medical-devices
+        kind: task
+        name: Propane R290, Check with Aspen (supplier) if the gas we are using may be used in the operating room, and if they have any experience with it in medical devices
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: catheter-test-to-failure
+        kind: task
+        name: Catheter test to failure
+        status: done
+        start: "2026-03-26"
+        end: "2026-03-26"
+  - id: catheter-power
+    name: Catheter power
+    items:
+      - id: analytical-model-creation-catheder-to-tissue-to-be-verified
+        kind: task
+        name: Analytical Model creation - catheder to tissue (to be verified)
+        status: future
+      - id: cathether-design-fixed-sage
+        kind: task
+        name: Cathether design fixed (SAGE)
+        status: future
+      - id: cool-plates-and-cartrige-design
+        kind: task
+        name: Cool plates and cartrige design
+        status: future
+      - id: banchmark-catheder-test-body-phantom-0c-40w-at-y-mlmin
+        kind: task
+        name: "Banchmark catheder test (body phantom) 0C -> 40W at y ml/min"
+        status: future
+      - id: termistors-study
+        kind: task
+        name: Termistors study
+        status: in_progress
+        start: "2026-11-05"
+        end: "2026-11-05"
+  - id: cartrige
+    name: Cartrige
+    items:
+      - id: analytical-model-creation
+        kind: task
+        name: Analytical Model creation
+        status: done
+      - id: manufacture-a-3d-printed-cartrige
+        kind: task
+        name: Manufacture a 3d printed cartrige
+        status: done
+      - id: test-in-ice-bath
+        kind: task
+        name: Test in ice bath
+        status: done
+      - id: test-with-cool-plate-system
+        kind: task
+        name: "Test with cool plate system ?"
+        status: done
+      - id: cooling-system
+        kind: task
+        name: Cooling System
+        status: future
+      - id: current-coldplate-2-1-testing-27w
+        kind: task
+        name: "Current coldplate (-2-1) testing -> -27W"
+        status: future
+      - id: tuning-of-the-current-system
+        kind: task
+        name: Tuning of the current system
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: contingency-plan-if-we-need-bigger-coldplate-10weeks-10k
+        kind: task
+        name: "CONTINGENCY PLAN (if we need: bigger coldplate, 10weeks - 10K ?)"
+        status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
+      - id: contingency-2-think-about-peltier
+        kind: task
+        name: CONTINGENCY 2 (think about peltier ...)
+        status: future
+      - id: oder-second-cartrige-from-r-and-d
+        kind: task
+        name: "Oder second cartrige from \"R&D\""
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: test-the-second-cartrige
+        kind: task
+        name: Test the second cartrige
+        status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
+      - id: v2-including-the-deboubler
+        kind: task
+        name: "V2 - including the deboubler ?"
+        status: future
+        start: "2026-11-19"
+        end: "2026-12-03"
+      - id: manufacture-final-from-material
+        kind: task
+        name: Manufacture final from material
+        status: future
+  - id: tubing
+    name: Tubing
+    items:
+      - id: conduct-test-with-the-tygoon-pvc-10-drop-at-after-20min
+        kind: task
+        name: "Conduct test with the Tygoon PVC (10% drop at after 20min)"
+        status: future
+      - id: conduct-tests-for-the-current-tubing-moving-it-along-the-length-every-30min
+        kind: task
+        name: Conduct tests for the current tubing, moving it along the length every 30min
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: identify-alternate-tubing
+        kind: task
+        name: Identify alternate tubing
+        status: future
+      - id: test-and-verify
+        kind: task
+        name: "Test & Verify"
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: masterflex-qualified-sesrs
+        kind: task
+        name: masterflex qualified sesrs
+        status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
+      - id: 3-materials-6h-approriate-temp-and-flowrate-closed-lines
+        kind: task
+        name: "3 materials: 6h approriate temp and flowrate, closed lines,"
+        status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
+      - id: reach-out-to-2-different-tubing-companies
+        kind: task
+        name: reach out to 2 different tubing companies
+        status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
+      - id: move-charges-venture-well
+        kind: task
+        name: move charges venture well
+        status: future
+        start: "2026-11-19"
+        end: "2026-11-19"
+      - id: use-silicon-caulking
+        kind: task
+        name: use silicon caulking
+        status: future
+        start: "2026-11-19"
+        end: "2026-11-19"
+      - id: create-new-sensors-tshaped-connectors
+        kind: task
+        name: create new sensors Tshaped connectors
+        status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
+  - id: housing-p15
+    name: Housing  P1.5
+    items:
+      - id: cad-modeling
+        kind: task
+        name: CAD modeling
+        status: future
+      - id: order
+        kind: task
+        name: Order
+        status: done
+        start: "2026-09-24"
+        end: "2026-10-08"
+      - id: build
+        kind: task
+        name: Build
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-11-05"
+      - id: assemble-and-verify
+        kind: task
+        name: "Assemble & Verify"
+        status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
+  - id: probes
+    name: Probes
+    items:
+      - id: evaluate-probes-from-previous-work-probes-insufficient-new-probes-required
+        kind: task
+        name: "Evaluate probes from previous work --> probes insufficient --> new probes required"
+        status: future
+      - id: design
+        kind: task
+        name: Design
+        status: future
+      - id: manufacture
+        kind: task
+        name: Manufacture
+        status: future
+      - id: test-and-integrate
+        kind: task
+        name: "Test & Integrate"
+        status: future
+      - id: design-new-probes-for-the-animal-study
+        kind: task
+        name: Design new probes for the animal study
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: order-needls-and-extension-cables
+        kind: task
+        name: Order needls and extension cables
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: integrate-and-test-the-probes
+        kind: task
+        name: Integrate and test the probes
+        status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
+      - id: wire-the-peristaltic-pump-limit-switch
+        kind: task
+        name: WIRE THE Peristaltic pump limit switch
+        status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
+      - id: liquid-level-sensor
+        kind: task
+        name: Liquid level sensor
+        status: future
+      - id: try-the-sensro-we-allready-have
+        kind: task
+        name: Try the sensro we allready have
+        status: future
+      - id: send-a-quote
+        kind: task
+        name: Send a quote
+        status: future
+      - id: dboubler
+        kind: task
+        name: Dboubler
+        status: future
+  - id: circut-board
+    name: Circut Board
+    items:
+      - id: design-2
+        kind: task
+        name: Design
+        status: done
+        start: "2026-09-24"
+        end: "2026-10-08"
+      - id: order-2
+        kind: task
+        name: Order
+        status: done
+        start: "2026-10-08"
+        end: "2026-10-08"
+      - id: integrate-and-test
+        kind: task
+        name: "Integrate & Test"
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: revise
+        kind: task
+        name: Revise
+        status: future
+        start: "2026-11-05"
+        end: "2026-12-03"
+  - id: battery-system
+    name: Battery System
+    items:
+      - id: integrate-the-battery
+        kind: task
+        name: Integrate the Battery
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: implement-ui-and-error-cases
+        kind: task
+        name: Implement UI and Error cases
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: test
+        kind: task
+        name: Test
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: simulate-30min-operation
+        kind: task
+        name: Simulate 30min operation
+        status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
+      - id: test-whether-usb-c-input-is-an-option
+        kind: task
+        name: Test whether USB-C input is an option
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+  - id: sage-test-setup
+    name: Sage Test Setup
+    items:
+      - id: design-and-order
+        kind: task
+        name: Design and order
+        status: future
+      - id: build-2
+        kind: task
+        name: Build
+        status: future
+  - id: prep-for-animal-study
+    name: Prep for Animal Study
+    items:
+      - id: study-previous-experiments
+        kind: task
+        name: Study previous experiments
+        status: in_progress
+        start: "2026-10-08"
+        end: "2026-11-05"
+      - id: make-contact-with-the-ohaio-people
+        kind: task
+        name: Make contact with the Ohaio people
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: desing-the-study-protocol-especially-probe-placement
+        kind: task
+        name: Desing the Study protocol - especially probe placement
+        status: future
+      - id: freeze-the-softwarehardware-version-and-conduct-final-verification
+        kind: task
+        name: Freeze the software/hardware version and conduct final verification
+        status: future
+      - id: software
+        kind: task
+        name: Software
+        status: future
+      - id: move-the-repos-to-mit-hosted-github
+        kind: task
+        name: Move the repos to mit hosted Github
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: review-the-falut-codes-and-connect-to-the-error-code-excel
+        kind: task
+        name: Review the falut codes and connect to the error code excel
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: reverse-enginginerg-of-the-early-criolife-prototype
+        kind: task
+        name: Reverse Enginginerg of the early criolife prototype
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+  - id: intellectual-property
+    name: Intellectual Property
+    items:
+      - id: internal-innovation-review-id-potential-new-ip
+        kind: task
+        name: Internal Innovation Review - ID potential new IP
+        status: future
+      - id: review-pertinent-prior-art
+        kind: task
+        name: Review pertinent prior art
+        status: future
+      - id: review-prior-art
+        kind: task
+        name: Review prior art
+        status: future
+      - id: submit-ip-disclosure
+        kind: task
+        name: Submit IP disclosure
+        status: future
+      - id: documentation
+        kind: task
+        name: Documentation
+        status: future
+      - id: build-documentation-package
+        kind: task
+        name: Build documentation package
+        status: future
+      - id: identify-next-potential-partners
+        kind: task
+        name: Identify next potential partners
+        status: future
+      - id: conduct-tranfer
+        kind: task
+        name: Conduct tranfer
+        status: future
+      - id: cadaver-test
+        kind: milestone
+        name: Cadaver Test
+        date: "2026-12-17"
+      - id: create-protokoll
+        kind: task
+        name: Create protokoll
+        status: future
+      - id: conducts
+        kind: task
+        name: conducts
+        status: future
+      - id: testing-2
+        kind: task
+        name: Testing
+        status: future
+      - id: sous-vide
+        kind: task
+        name: Sous vide
+        status: in_progress
+        start: "2026-09-24"
+        end: "2026-11-05"
+      - id: bain-marie-test
+        kind: task
+        name: bain marie test
+        status: future
+        start: "2026-11-05"
+        end: "2026-12-03"
+      - id: non-glp-animal-study
+        kind: milestone
+        name: Non GLP Animal Study
+      - id: glp-animla-study
+        kind: task
+        name: GLP Animla Study
+        status: future
+      - id: electromagnetic-compatibility-testing
+        kind: task
+        name: Electromagnetic compatibility testing
+        status: future
+        start: "2027-01-14"
+        end: "2027-01-28"
