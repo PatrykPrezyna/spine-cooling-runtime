@@ -15,13 +15,13 @@ this machine only owns workflow states.
 Button handlers call ``start_pumping()``, ``stop_pumping()``,
 and ``acknowledge_error()``.
 
-``PUMPING_SLOWLY`` is retained for backward-compatible transitions/UI but
-is no longer entered by temperature hysteresis.
+``TRANSITIONS`` lists every legal move. ``docs/state-machine.svg`` is
+generated from that table.
 """
 
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Callable, Optional
+from typing import Callable, NamedTuple, Optional
 
 from fault_catalog import FaultCode, get_fault
 
@@ -31,8 +31,56 @@ class State(Enum):
     READY = "Ready"
     COOLING = "Cooling"
     PUMPING = "Pumping"
-    PUMPING_SLOWLY = "Pumping Slowly"
     ERROR = "Error"
+
+
+INITIAL_STATE = State.INIT
+
+
+class Transition(NamedTuple):
+    """One legal move.
+
+    ``label`` is the short name on the generated diagram.
+    ``log_reason`` is the fixed session-log text, when the caller does not
+    supply its own (a fault message, or the init failure text).
+    ``requested`` is false for moves the machine still accepts and no current
+    caller takes. ``tools/generate_state_machine_diagram.py`` reads this table.
+    """
+
+    source: State
+    target: State
+    label: str
+    log_reason: Optional[str] = None
+    requested: bool = True
+
+
+TRANSITIONS: tuple[Transition, ...] = (
+    Transition(State.INIT, State.READY, "init ok", "Initialization complete"),
+    Transition(State.INIT, State.ERROR, "init failed"),
+    Transition(State.READY, State.COOLING, "sensors OK", "All conditions met"),
+    Transition(State.READY, State.ERROR, "stop fault"),
+    Transition(State.COOLING, State.PUMPING, "start pumping", "User started pumping"),
+    Transition(State.COOLING, State.READY, "", requested=False),
+    Transition(State.COOLING, State.ERROR, "stop fault"),
+    Transition(State.PUMPING, State.COOLING, "stop pumping", "User stopped pumping"),
+    Transition(State.PUMPING, State.READY, "", requested=False),
+    Transition(State.PUMPING, State.ERROR, "stop fault"),
+    Transition(State.ERROR, State.READY, "acknowledge", "Error acknowledged"),
+)
+
+_TRANSITIONS = {(item.source, item.target): item for item in TRANSITIONS}
+
+
+def find_transition(source: State, target: State) -> Transition:
+    try:
+        return _TRANSITIONS[(source, target)]
+    except KeyError as exc:
+        raise KeyError(f"No transition {source.value} -> {target.value}") from exc
+
+
+def log_reason(source: State, target: State) -> str:
+    """Fixed log text for a transition, or "" when the caller passes the reason."""
+    return find_transition(source, target).log_reason or ""
 
 
 class StateMachine:
@@ -41,7 +89,7 @@ class StateMachine:
     READY_HOLD_AFTER_STARTUP_S = 10.0
 
     def __init__(self, ready_hold_after_startup_s: float = READY_HOLD_AFTER_STARTUP_S):
-        self.current_state = State.INIT
+        self.current_state = INITIAL_STATE
         self.error_message: Optional[str] = None
         self.latched_fault_code: Optional[FaultCode] = None
         self.fault_context_state: Optional[State] = None
@@ -75,7 +123,7 @@ class StateMachine:
                 self._startup_ready_hold_until = (
                     datetime.now() + timedelta(seconds=self._ready_hold_after_startup_s)
                 )
-            return self._change_state(State.READY, "Initialization complete")
+            return self._change_state(State.READY, log_reason(State.INIT, State.READY))
         self.error_message = error_msg or "Initialization failed"
         return self._change_state(State.ERROR, self.error_message)
 
@@ -85,13 +133,13 @@ class StateMachine:
         """User pressed START PUMPING while in COOLING."""
         if self.current_state != State.COOLING:
             return False
-        return self._change_state(State.PUMPING, "User started pumping")
+        return self._change_state(State.PUMPING, log_reason(State.COOLING, State.PUMPING))
 
     def stop_pumping(self) -> bool:
         """User pressed STOP PUMPING."""
-        if self.current_state not in (State.PUMPING, State.PUMPING_SLOWLY):
+        if self.current_state != State.PUMPING:
             return False
-        return self._change_state(State.COOLING, "User stopped pumping")
+        return self._change_state(State.COOLING, log_reason(State.PUMPING, State.COOLING))
 
     def apply_fault(self, code: FaultCode, message_override: Optional[str] = None) -> bool:
         """Enter ERROR from a catalog fault (STOP severity)."""
@@ -107,7 +155,7 @@ class StateMachine:
         """Operator cleared the error screen."""
         if self.current_state != State.ERROR:
             return False
-        return self._change_state(State.READY, "Error acknowledged")
+        return self._change_state(State.READY, log_reason(State.ERROR, State.READY))
 
     def update(
         self,
@@ -135,29 +183,14 @@ class StateMachine:
                     return
                 self._startup_ready_hold_until = None
             if cartridge and level_low and level_critical:
-                self._change_state(State.COOLING, "All conditions met")
+                self._change_state(State.COOLING, log_reason(State.READY, State.COOLING))
 
     # --- internal: validate and apply a state change ------------------
 
     def _change_state(self, new_state: State, reason: str = "") -> bool:
         old_state = self.current_state
 
-        # Allowed moves, written out explicitly (see module docstring).
-        ok = (
-            (old_state == State.INIT and new_state in (State.READY, State.ERROR))
-            or (old_state == State.READY and new_state in (State.COOLING, State.ERROR))
-            or (old_state == State.COOLING and new_state in (State.PUMPING, State.READY, State.ERROR))
-            or (
-                old_state == State.PUMPING
-                and new_state in (State.PUMPING_SLOWLY, State.COOLING, State.READY, State.ERROR)
-            )
-            or (
-                old_state == State.PUMPING_SLOWLY
-                and new_state in (State.PUMPING, State.COOLING, State.READY, State.ERROR)
-            )
-            or (old_state == State.ERROR and new_state == State.READY)
-        )
-        if not ok:
+        if (old_state, new_state) not in _TRANSITIONS:
             print(f"Invalid transition from {old_state.value} to {new_state.value}")
             return False
 

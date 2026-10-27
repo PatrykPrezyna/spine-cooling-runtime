@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from cooling_tracker import CoolingEffectivenessTracker
     from leak_debounce import LeakDebounceTracker
 
-ACTIVE_STATES = (State.COOLING, State.PUMPING, State.PUMPING_SLOWLY)
+ACTIVE_STATES = (State.COOLING, State.PUMPING)
 
 
 @dataclass
@@ -105,7 +105,7 @@ def _check_pump_not_closed(ctx: RuleContext) -> bool:
         return False
     if ctx.pump_running:
         return True
-    return ctx.current_state in (State.PUMPING, State.PUMPING_SLOWLY)
+    return ctx.current_state == State.PUMPING
 
 
 def _check_csf_low_temp(ctx: RuleContext) -> bool:

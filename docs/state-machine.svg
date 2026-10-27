@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="968" height="370" viewBox="0 0 968 370" role="img">
+<title>Operating states</title>
+<rect width="968" height="370" fill="#ffffff"/>
+<defs>
+<marker id="arrow" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#1e1e1e"/></marker>
+<marker id="fault" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#9a4038"/></marker>
+<marker id="dash" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#8a8175"/></marker>
+</defs>
+<circle cx="24.0" cy="109.0" r="6" fill="#1e1e1e"/>
+<path d="M30.0 109.0 L52.0 109.0" fill="none" stroke="#1e1e1e" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M184.0 109.0 L260.0 109.0" fill="none" stroke="#1e1e1e" stroke-width="1.5" marker-end="url(#arrow)" data-from="Init" data-to="Ready" data-label="init ok"/>
+<text x="222.0" y="95.0" fill="#1e1e1e" font-family="Segoe UI, sans-serif" font-size="13" text-anchor="middle" dominant-baseline="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke fill" stroke-linejoin="round">init ok</text>
+<path d="M118.0 132.0 L118.0 323.0 L260.0 323.0" fill="none" stroke="#9a4038" stroke-width="1.5" marker-end="url(#fault)" data-from="Init" data-to="Error" data-label="init failed"/>
+<text x="189.0" y="309.0" fill="#9a4038" font-family="Segoe UI, sans-serif" font-size="13" text-anchor="middle" dominant-baseline="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke fill" stroke-linejoin="round">init failed</text>
+<path d="M396.0 109.0 L512.0 109.0" fill="none" stroke="#1e1e1e" stroke-width="1.5" marker-end="url(#arrow)" data-from="Ready" data-to="Cooling" data-label="sensors OK"/>
+<text x="454.0" y="95.0" fill="#1e1e1e" font-family="Segoe UI, sans-serif" font-size="13" text-anchor="middle" dominant-baseline="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke fill" stroke-linejoin="round">sensors OK</text>
+<path d="M662.0 109.0 L778.0 109.0" fill="none" stroke="#1e1e1e" stroke-width="1.5" marker-end="url(#arrow)" data-from="Cooling" data-to="Pumping" data-label="start pumping"/>
+<text x="720.0" y="95.0" fill="#1e1e1e" font-family="Segoe UI, sans-serif" font-size="13" text-anchor="middle" dominant-baseline="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke fill" stroke-linejoin="round">start pumping</text>
+<path d="M512.0 122.0 L396.0 122.0" fill="none" stroke="#8a8175" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#dash)" data-from="Cooling" data-to="Ready" data-label=""/>
+<path d="M853.0 86.0 L853.0 56.0 L564.5 56.0 L564.5 86.0" fill="none" stroke="#1e1e1e" stroke-width="1.5" marker-end="url(#arrow)" data-from="Pumping" data-to="Cooling" data-label="stop pumping"/>
+<text x="720.0" y="43.0" fill="#1e1e1e" font-family="Segoe UI, sans-serif" font-size="13" text-anchor="middle" dominant-baseline="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke fill" stroke-linejoin="round">stop pumping</text>
+<path d="M820.0 132.0 L820.0 248.0 L360.0 248.0 L360.0 132.0" fill="none" stroke="#8a8175" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#dash)" data-from="Pumping" data-to="Ready" data-label=""/>
+<path d="M308.0 300.0 L308.0 132.0" fill="none" stroke="#1e1e1e" stroke-width="1.5" marker-end="url(#arrow)" data-from="Error" data-to="Ready" data-label="acknowledge"/>
+<text x="252.0" y="216.0" fill="#1e1e1e" font-family="Segoe UI, sans-serif" font-size="13" text-anchor="end" dominant-baseline="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke fill" stroke-linejoin="round">acknowledge</text>
+<path d="M328.0 132.0 L328.0 300.0" fill="none" stroke="#9a4038" stroke-width="1.5" marker-end="url(#fault)" data-from="Ready" data-to="Error" data-label="stop fault"/>
+<path d="M 328.0 214.0 L 853.0 214.0" fill="none" stroke="#9a4038" stroke-width="1.5"/>
+<path d="M587.0 132.0 L587.0 214.0" fill="none" stroke="#9a4038" stroke-width="1.5" data-from="Cooling" data-to="Error" data-label="stop fault"/>
+<path d="M853.0 132.0 L853.0 214.0" fill="none" stroke="#9a4038" stroke-width="1.5" data-from="Pumping" data-to="Error" data-label="stop fault"/>
+<text x="457.5" y="200.0" fill="#9a4038" font-family="Segoe UI, sans-serif" font-size="13" text-anchor="middle" dominant-baseline="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke fill" stroke-linejoin="round">stop fault</text>
+<rect data-state="Init" x="52.0" y="86.0" width="132.0" height="46.0" rx="8" fill="#ffffff" stroke="#1e1e1e" stroke-width="1.5"/>
+<text x="118.0" y="109.0" fill="#1e1e1e" font-family="Segoe UI, sans-serif" font-size="15" text-anchor="middle" dominant-baseline="middle">Init</text>
+<rect data-state="Ready" x="260.0" y="86.0" width="136.0" height="46.0" rx="8" fill="#ffffff" stroke="#1e1e1e" stroke-width="1.5"/>
+<text x="328.0" y="109.0" fill="#1e1e1e" font-family="Segoe UI, sans-serif" font-size="15" text-anchor="middle" dominant-baseline="middle">Ready</text>
+<rect data-state="Cooling" x="512.0" y="86.0" width="150.0" height="46.0" rx="8" fill="#ffffff" stroke="#1e1e1e" stroke-width="1.5"/>
+<text x="587.0" y="109.0" fill="#1e1e1e" font-family="Segoe UI, sans-serif" font-size="15" text-anchor="middle" dominant-baseline="middle">Cooling</text>
+<rect data-state="Pumping" x="778.0" y="86.0" width="150.0" height="46.0" rx="8" fill="#ffffff" stroke="#1e1e1e" stroke-width="1.5"/>
+<text x="853.0" y="109.0" fill="#1e1e1e" font-family="Segoe UI, sans-serif" font-size="15" text-anchor="middle" dominant-baseline="middle">Pumping</text>
+<rect data-state="Error" x="260.0" y="300.0" width="136.0" height="46.0" rx="8" fill="#fff4f2" stroke="#9a4038" stroke-width="1.5"/>
+<text x="328.0" y="323.0" fill="#9a4038" font-family="Segoe UI, sans-serif" font-size="15" text-anchor="middle" dominant-baseline="middle">Error</text>
+</svg>

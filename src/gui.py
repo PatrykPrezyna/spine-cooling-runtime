@@ -4404,7 +4404,7 @@ class AppWindow(QMainWindow):
         - Pumping state  -> stop pumping
         """
         current_state = self._workflow_state_name
-        if current_state in ("Pumping", "Pumping Slowly"):
+        if current_state == "Pumping":
             if self.on_stop_pumping_callback:
                 self.on_stop_pumping_callback()
         elif current_state == "Cooling":
@@ -4498,7 +4498,7 @@ class AppWindow(QMainWindow):
             return "Place and fill the cartridge"
         if state_name == "Cooling":
             return "Place the catheter and start cooling"
-        if state_name in ("Pumping", "Pumping Slowly"):
+        if state_name == "Pumping":
             return "Cooling is taking place"
         return None
 
@@ -4560,7 +4560,7 @@ class AppWindow(QMainWindow):
                 self.error_status_label.setVisible(False)
         
         # Update unified pumping toggle button (label + style + enabled state)
-        if state_name in ("Pumping", "Pumping Slowly"):
+        if state_name == "Pumping":
             self.pumping_toggle_button.setText("STOP COOLING")
             self._apply_pumping_button_style(active=True)
             self.pumping_toggle_button.setEnabled(True)

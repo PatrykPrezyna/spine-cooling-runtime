@@ -2,7 +2,7 @@
 
 Wires together hardware, the session recorder, the state machine, and the Qt UI.
 
-- **GUI thread** — Qt UI and screen updates
+- **Main thread** — Qt window and the control loop (safety, state machine, pump, compressor)
 - **IO worker thread** — sensor reads and thermistor I2C. A callback writes each sensor CSV row; the worker does not know the recorder.
 - **Stepper thread** — motor pulse timing
 
@@ -50,7 +50,7 @@ from state_machine import State, StateMachine
 
 
 class _BackgroundIOWorker(QObject):
-    """Runs all per-tick blocking I/O off the GUI thread.
+    """Runs all per-tick blocking I/O off the main thread.
 
     Owns no UI and no log files. ``record_sensors``, when set, runs on this
     thread after a successful read. Results are emitted via ``tick_complete``
@@ -138,7 +138,7 @@ class _BackgroundIOWorker(QObject):
 
 
 class CoolingRuntime(QObject):
-    """Top-level application coordinator (lives on the GUI thread)."""
+    """Top-level application coordinator (lives on the main thread)."""
 
     # Fallback when config has no ui.update_interval_ms (100 ms → 10 Hz).
     UPDATE_INTERVAL_MS = 100
@@ -666,10 +666,10 @@ class CoolingRuntime(QObject):
                 fault_code=fault_code,
             )
         self._refresh_ui_state_display()
-        if new_state in (State.PUMPING, State.PUMPING_SLOWLY):
-            if old_state not in (State.PUMPING, State.PUMPING_SLOWLY):
+        if new_state == State.PUMPING:
+            if old_state != State.PUMPING:
                 self.pump_flow_controller.reset()
-        elif old_state in (State.PUMPING, State.PUMPING_SLOWLY):
+        elif old_state == State.PUMPING:
             self.pump_flow_controller.reset()
         self._apply_state_driven_stepper_control(new_state)
         self._apply_state_driven_compressor_control(new_state)
@@ -678,7 +678,7 @@ class CoolingRuntime(QObject):
 
     def _apply_state_driven_compressor_control(self, state: State) -> None:
         """Turn compressor on when precooling starts; off when session ends."""
-        active_states = (State.COOLING, State.PUMPING, State.PUMPING_SLOWLY)
+        active_states = (State.COOLING, State.PUMPING)
         if state == State.COOLING:
             self.compressor_control_enabled = True
             self.compressor_latched_on = True
@@ -735,14 +735,11 @@ class CoolingRuntime(QObject):
             return True
         if self.state_machine is None:
             return False
-        return self.state_machine.get_current_state() in (
-            State.PUMPING,
-            State.PUMPING_SLOWLY,
-        )
+        return self.state_machine.get_current_state() == State.PUMPING
 
     def _apply_state_driven_stepper_control(self, state: State):
         """Drive the stepper from state machine transitions."""
-        if state in (State.PUMPING, State.PUMPING_SLOWLY):
+        if state == State.PUMPING:
             # Start at max flow; closed-loop tick will trim within [min, max].
             self.stepper_speed_rpm = self._rpm_for_flow_ml_per_min(
                 self.pump_flow_controller.config.max_flow_ml_per_min,
@@ -753,7 +750,7 @@ class CoolingRuntime(QObject):
             self.on_stepper_continuous_toggle(False)
 
     # ------------------------------------------------------------------
-    # Periodic update tick (now non-blocking on the GUI thread)
+    # Periodic update tick (now non-blocking on the main thread)
     # ------------------------------------------------------------------
     def update_display(self):
         """Request a sensor/IO tick on the worker thread.
@@ -788,7 +785,7 @@ class CoolingRuntime(QObject):
         flow_ml_per_min,
         error_message,
     ):
-        """Apply the worker's results back on the GUI thread."""
+        """Apply the worker's results back on the main thread."""
         try:
             if error_message:
                 # A failed read is logged and this tick is dropped. It does not stop the session.
@@ -1014,8 +1011,7 @@ class CoolingRuntime(QObject):
         self.pump_flow_controller.reset()
         in_workflow = (
             self.state_machine is not None
-            and self.state_machine.get_current_state()
-            in (State.PUMPING, State.PUMPING_SLOWLY)
+            and self.state_machine.get_current_state() == State.PUMPING
         )
         if not in_workflow and self.stepper_continuous_forward:
             self.on_stepper_continuous_toggle(False)

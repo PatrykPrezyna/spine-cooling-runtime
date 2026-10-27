@@ -11,7 +11,8 @@ src/                   application code (table below)
 tests/                 automatic tests
 examples/              Pi bench scripts for one subsystem (see examples/README.md)
 tools/                 log viewer, plots, operator-guide builder
-docs/                  guides, verification, faults, state machine
+docs/                  guides, verification, faults, state diagram
+specification-design_inputs/  architecture drawing
 data/calibration/      thermistor resistance tables loaded at runtime
 ```
 
@@ -22,7 +23,7 @@ data/calibration/      thermistor resistance tables loaded at runtime
 | You want to… | Open |
 |--------------|------|
 | Run on seted up Raspberry PI | `cd spine-cooling-runtime`, `source venv/bin/activate`, `src/main.py` |
-| Change operating states | `src/state_machine.py`, `docs/state-machine.md` |
+| Change operating states | `src/state_machine.py`, then `python tools/generate_state_machine_diagram.py` |
 | Change when a fault trips, and the text the operator sees | `src/safety_rules.py`, `src/fault_catalog.py` |
 | Change pins, names, or limits | `config.yaml` |
 | Run without a Pi | `python src/main.py --sim`|
@@ -36,7 +37,7 @@ data/calibration/      thermistor resistance tables loaded at runtime
 
 | Module | Role |
 |--------|------|
-| `main.py` | Entry point. GUI thread, I/O thread, stepper thread |
+| `main.py` | Entry point. Main thread, I/O thread, stepper thread |
 | `gui.py` | PyQt6 touchscreen |
 | `graph_history.py` | Graph time window and axis ticks (no Qt, so tests can import it anywhere) |
 | `state_machine.py` | Init → Ready → Cooling → Pumping → Error |
@@ -69,7 +70,7 @@ data/calibration/      thermistor resistance tables loaded at runtime
 | File | Who it is for |
 |------|----------------|
 | `docs/Spine_Cooling_Operator_Guide.html` (and the PDF next to it) | People running the device |
-| `docs/state-machine.md` | Operating states and transitions |
+| `docs/state-machine.svg` | Operating states, generated from the code |
 | `docs/verification/Verification_Protocol.html` | Verification steps |
 | `docs/fault-messages-and-reactions.pptx` and `.xlsx` | Fault text and the reaction to each fault |
 | `docs/GANTT.md` | Prototype schedule |
@@ -84,6 +85,7 @@ Regenerate the guide from the current UI with `python tools/generate_operator_pd
 | `tools/log_viewer/` | Windows session viewer. How to open it and build the exe: `tools/log_viewer/README.md` |
 | `tools/pump_flow_fit/` | Fit RPM → ml/min from `pump_flow_data.csv` and save the residual plot. Pass another CSV to use a different calibration. |
 | `tools/generate_operator_pdf.py` | Capture screenshots and write the operator PDF |
+| `tools/generate_state_machine_diagram.py` | Rebuild the operating-state drawing from `src/state_machine.py` |
 
 The log viewer looks for `*_sensors.csv` in the repo root, in `logs/`, and in a local `evaluation tool/` folder (sample sessions and the built exe live there; CSVs and exe files are gitignored).
 

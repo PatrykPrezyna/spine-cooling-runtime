@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Runtime architecture</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #f7f5f0;
+      color: #1e1e1e;
+      font-family: "Segoe UI", sans-serif;
+    }
+    #viewport {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      cursor: grab;
+      touch-action: none;
+    }
+    #viewport.dragging { cursor: grabbing; }
+    #stage {
+      transform-origin: 0 0;
+      width: max-content;
+    }
+    #stage svg { max-width: none !important; }
+    .chrome {
+      position: fixed;
+      right: 16px;
+      bottom: 14px;
+      display: flex;
+      gap: 6px;
+    }
+    button {
+      font: 13px "Segoe UI", sans-serif;
+      background: #fff;
+      color: #1e1e1e;
+      border: 1px solid #c8c2b4;
+      border-radius: 6px;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    button:hover { background: #fffdf8; }
+    .hint {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      margin: 0;
+      font-size: 13px;
+      color: #6b645a;
+    }
+  </style>
+</head>
+<body>
+  <div id="viewport">
+    <div id="stage"></div>
+  </div>
+  <p class="hint">Scroll to zoom. Drag to move.</p>
+  <div class="chrome">
+    <button type="button" id="zoomOut" aria-label="Zoom out">−</button>
+    <button type="button" id="zoomIn" aria-label="Zoom in">+</button>
+    <button type="button" id="fit">Fit</button>
+  </div>
+  <script type="text/plain" id="diagram">
+flowchart LR
+    touch[/Touchscreen/]
+    cfg[(config.yaml)]
+
+    subgraph mainLane ["Main thread"]
+        app[CoolingRuntime]
+        screen[AppWindow]
+        safety[Safety rules]
+        machine[State machine]
+        pump[Pump flow control]
+        plate[Compressor control]
+        stepper[Pump stepper thread]
+        relay[Compressor GPIO]
+    end
+
+    subgraph senseLane ["Sensing"]
+        factory{{Hardware factory}}
+        gpio[GPIO sensors]
+        therm[Thermistors]
+        pressure[Pressure]
+        flowMeter[Flow meter]
+        worker[IO worker thread]
+    end
+
+    subgraph logLane ["Session logs"]
+        recorder[Session recorder]
+        sensorLog[(Sensor CSV)]
+        pressureLog[(Pressure CSV)]
+        statusLog[(Status CSV)]
+        usb[USB mirror thread]
+    end
+
+    touch -->|Operates| screen
+    screen -->|Commands| app
+    screen -->|Set points| app
+    cfg -->|Limits| app
+    cfg -->|Pins| factory
+    factory --> gpio
+    factory --> therm
+    factory --> pressure
+    factory --> flowMeter
+    gpio -->|Digital| worker
+    therm -->|Celsius| worker
+    pressure -->|Bar| worker
+    flowMeter -->|ml per min| worker
+    worker -->|Readings| app
+    worker -->|Readings| recorder
+    app --> safety
+    safety -->|Stop or warn| machine
+    machine -->|Enable| pump
+    app -->|CSF Temp| pump
+    pump -->|RPM| stepper
+    machine -->|Enable| plate
+    app -->|Cooling Plate temp| plate
+    plate -->|On or off| relay
+    app -->|State| screen
+    app -->|States, Errors, Setpoints| recorder
+    recorder -->|10 Hz| sensorLog
+    recorder -->|100 Hz file| pressureLog
+    recorder -->|Events| statusLog
+    recorder -->|Copies| usb
+  </script>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs";
+
+    const viewport = document.getElementById("viewport");
+    const stage = document.getElementById("stage");
+    let scale = 1;
+    let x = 0;
+    let y = 0;
+
+    function apply() {
+      stage.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    }
+
+    function contentSize() {
+      const svg = stage.querySelector("svg");
+      if (!svg) return { w: 0, h: 0 };
+      const box = svg.viewBox && svg.viewBox.baseVal.width
+        ? svg.viewBox.baseVal
+        : null;
+      if (box && box.width && box.height) return { w: box.width, h: box.height };
+      const rect = svg.getBoundingClientRect();
+      return { w: rect.width / scale, h: rect.height / scale };
+    }
+
+    function fit() {
+      const { w, h } = contentSize();
+      if (!w || !h) return;
+      const pad = 48;
+      scale = Math.min(
+        (viewport.clientWidth - pad) / w,
+        (viewport.clientHeight - pad) / h
+      );
+      x = (viewport.clientWidth - w * scale) / 2;
+      y = (viewport.clientHeight - h * scale) / 2;
+      apply();
+    }
+
+    function zoomAt(clientX, clientY, next) {
+      next = Math.min(6, Math.max(0.15, next));
+      const rect = viewport.getBoundingClientRect();
+      const mx = clientX - rect.left;
+      const my = clientY - rect.top;
+      const k = next / scale;
+      x = mx - k * (mx - x);
+      y = my - k * (my - y);
+      scale = next;
+      apply();
+    }
+
+    mermaid.initialize({
+      startOnLoad: false,
+      flowchart: { htmlLabels: true, useMaxWidth: false },
+    });
+    const { svg } = await mermaid.render(
+      "architecture",
+      document.getElementById("diagram").textContent
+    );
+    stage.innerHTML = svg;
+    fit();
+
+    viewport.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+      zoomAt(event.clientX, event.clientY, scale * factor);
+    }, { passive: false });
+
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    viewport.addEventListener("pointerdown", (event) => {
+      dragging = true;
+      lastX = event.clientX;
+      lastY = event.clientY;
+      viewport.classList.add("dragging");
+      viewport.setPointerCapture(event.pointerId);
+    });
+    viewport.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+      x += event.clientX - lastX;
+      y += event.clientY - lastY;
+      lastX = event.clientX;
+      lastY = event.clientY;
+      apply();
+    });
+    viewport.addEventListener("pointerup", () => {
+      dragging = false;
+      viewport.classList.remove("dragging");
+    });
+    viewport.addEventListener("pointercancel", () => {
+      dragging = false;
+      viewport.classList.remove("dragging");
+    });
+    viewport.addEventListener("dblclick", () => fit());
+
+    document.getElementById("zoomIn").addEventListener("click", () => {
+      zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, scale * 1.25);
+    });
+    document.getElementById("zoomOut").addEventListener("click", () => {
+      zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, scale / 1.25);
+    });
+    document.getElementById("fit").addEventListener("click", () => fit());
+  </script>
+</body>
+</html>
