@@ -3,7 +3,7 @@
 Wires together hardware, the session recorder, the state machine, and the Qt UI.
 
 - **GUI thread** — Qt UI and screen updates
-- **IO worker thread** — sensor reads and thermistor I2C; sensor CSV rows go through SessionRecorder
+- **IO worker thread** — sensor reads and thermistor I2C. A callback writes each sensor CSV row; the worker does not know the recorder.
 - **Stepper thread** — motor pulse timing
 
 Slow I/O runs on the worker so the GUI stays responsive and the stepper
@@ -15,7 +15,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import yaml
 from PyQt6.QtCore import QObject, Qt, QThread, pyqtSignal, pyqtSlot
@@ -52,8 +52,9 @@ from state_machine import State, StateMachine
 class _BackgroundIOWorker(QObject):
     """Runs all per-tick blocking I/O off the GUI thread.
 
-    Owns no UI; results are emitted via the ``tick_complete`` signal and
-    consumed back on the main thread.
+    Owns no UI and no log files. ``record_sensors``, when set, runs on this
+    thread after a successful read. Results are emitted via ``tick_complete``
+    and consumed back on the main thread.
     """
 
     tick_complete = pyqtSignal(object, object, object, object, object)
@@ -64,7 +65,7 @@ class _BackgroundIOWorker(QObject):
         sensor_reader: Any,
         thermistor_reader: Any,
         pressure_reader: Any,
-        recorder: Optional[SessionRecorder],
+        record_sensors: Optional[Callable[..., None]] = None,
         config: Optional[dict] = None,
         flow_reader: Any = None,
     ):
@@ -73,7 +74,7 @@ class _BackgroundIOWorker(QObject):
         self._thermistor_reader = thermistor_reader
         self._pressure_reader = pressure_reader
         self._flow_reader = flow_reader
-        self._recorder = recorder
+        self._record_sensors = record_sensors
         self._config = config or {}
 
     @pyqtSlot(bool, int, float, int)
@@ -115,8 +116,8 @@ class _BackgroundIOWorker(QObject):
                 self._flow_reader, "is_initialized", False
             ):
                 flow_ml_per_min = self._flow_reader.read_flow_ml_per_min()
-            if self._recorder is not None:
-                self._recorder.record_sensors(
+            if self._record_sensors is not None:
+                self._record_sensors(
                     sensor_states,
                     temperatures,
                     peristaltic_pump_set_speed_rpm=logged_stepper_speed_rpm,
@@ -483,11 +484,14 @@ class SensorMonitorApp(QObject):
         """Spin up the background QThread that runs the per-tick IO."""
         if self._io_thread is not None:
             return
+        record_sensors = (
+            self.recorder.record_sensors if self.recorder is not None else None
+        )
         worker = _BackgroundIOWorker(
             self.sensor_reader,
             self.thermistor_reader,
             self.pressure_reader,
-            self.recorder,
+            record_sensors,
             self.config,
             flow_reader=self.flow_reader,
         )

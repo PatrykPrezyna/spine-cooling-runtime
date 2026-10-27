@@ -84,7 +84,7 @@ class SessionRecorder:
         pressures: Optional[dict] = None,
         flow_sensor_ml_per_min: Optional[float] = None,
     ) -> None:
-        """Append one sensor-CSV row. Called from the I/O worker thread."""
+        """Append one sensor-CSV row. The I/O worker calls this on its own thread."""
         self.csv_logger.log(
             sensor_states,
             temperatures,
