@@ -1,4 +1,4 @@
-"""Build real or simulated hardware components for SensorMonitorApp."""
+"""Build real or simulated hardware components for CoolingRuntime."""
 
 from __future__ import annotations
 

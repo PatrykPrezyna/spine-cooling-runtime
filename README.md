@@ -32,7 +32,7 @@ data/calibration/      thermistor resistance tables loaded at runtime
 
 ### `src/` — the program
 
-`python src/main.py` puts `src/` on the import path and wires the pieces below. Modules import each other by filename (`from gui import MainScreen`), so they stay in this flat folder.
+`python src/main.py` puts `src/` on the import path and wires the pieces below. Modules import each other by filename (`from gui import AppWindow`), so they stay in this flat folder.
 
 | Module | Role |
 |--------|------|

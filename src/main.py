@@ -35,7 +35,7 @@ from config_sections import (
 from cooling_tracker import CoolingEffectivenessTracker
 from leak_debounce import LeakDebounceTracker
 from fault_catalog import FaultCode, Severity, get_fault, stop_priority
-from gui import MainScreen
+from gui import AppWindow
 from hardware_factory import build_hardware
 from pump_flow_control import (
     PumpFlowController,
@@ -137,7 +137,7 @@ class _BackgroundIOWorker(QObject):
         )
 
 
-class SensorMonitorApp(QObject):
+class CoolingRuntime(QObject):
     """Top-level application coordinator (lives on the GUI thread)."""
 
     # Fallback when config has no ui.update_interval_ms (100 ms → 10 Hz).
@@ -178,7 +178,7 @@ class SensorMonitorApp(QObject):
         # all live in the same folder and share this filename prefix.
         self.session_start = datetime.now()
         self.recorder: Optional[SessionRecorder] = None
-        self.ui: Optional[MainScreen] = None
+        self.ui: Optional[AppWindow] = None
         self.state_machine: Optional[StateMachine] = None
         self.stepper_driver: Any = None
         self.thermistor_reader: Any = None
@@ -1074,7 +1074,7 @@ class SensorMonitorApp(QObject):
 
             app = QApplication(sys.argv)
 
-            self.ui = MainScreen(self.config)
+            self.ui = AppWindow(self.config)
             self._wire_ui_callbacks()
             self._refresh_ui_state_display()
             self.ui.set_update_callback(self.update_display)
@@ -1190,7 +1190,7 @@ def main() -> int:
     print("=" * 50)
     print()
 
-    app = SensorMonitorApp(
+    app = CoolingRuntime(
         config_path=args.config,
         simulation=args.sim,
         test_ui_enabled=args.test_ui,

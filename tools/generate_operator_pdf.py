@@ -24,7 +24,7 @@ from PyQt6.QtCore import Qt  # noqa: E402
 from PyQt6.QtGui import QPixmap  # noqa: E402
 
 from fault_catalog import FAULTS, FaultCode, Severity, operator_help  # noqa: E402
-from gui import FaultHelpDialog, MainScreen  # noqa: E402
+from gui import FaultHelpDialog, AppWindow  # noqa: E402
 
 SHOT_DIR = ROOT / "docs" / "screenshots"
 PDF_PATH = ROOT / "docs" / "Spine_Cooling_Operator_Guide.pdf"
@@ -84,7 +84,7 @@ def _seed_deque(history, n: int, builder) -> None:
         history.append(builder(now - (n - i) * 2.0, i, n))
 
 
-def _seed_graphs(ui: MainScreen) -> None:
+def _seed_graphs(ui: AppWindow) -> None:
     n = 90
     set_temp = ui.main_graph_widget.set_temperature
 
@@ -166,7 +166,7 @@ def _seed_graphs(ui: MainScreen) -> None:
 
 def _capture_all(app: QApplication, config: dict) -> list[tuple[str, str, Path]]:
     shots: list[tuple[str, str, Path]] = []
-    ui = MainScreen(config)
+    ui = AppWindow(config)
     ui.show()
     _process()
     _seed_graphs(ui)

@@ -1,11 +1,11 @@
 """
 PyQt6 user interface for the Spine Cooling runtime.
 
-Contains the main application window (`MainScreen`) and its primary
+Contains the application window (`AppWindow`) and its primary
 visualization/control widget (`MainScreenWidget`), plus the tab widgets used
 by the two sub-pages.
 
-`MainScreen` shows exactly one of three pages:
+`AppWindow` shows exactly one of three pages:
 
 - Main: trend graph, CSF/setpoint readouts and the cooling action buttons
   (`MainScreenWidget`). Its only exit is the expert page.
@@ -3850,7 +3850,7 @@ class PowerGraphTab(TemperatureGraphTab):
         self.add_sample(series_values)
 
 
-class MainScreen(QMainWindow):
+class AppWindow(QMainWindow):
     """Top-level window: hosts the main view and the advanced settings page."""
 
     def __init__(self, config: dict):
@@ -3927,7 +3927,7 @@ class MainScreen(QMainWindow):
         either pinned to that same size in windowed mode or expands to the
         full display in fullscreen mode (with the content frame centered).
         """
-        self.setWindowTitle("Cartridge Level Monitor")
+        self.setWindowTitle("Spine Cooling Runtime")
         ui_config = self.config.get("ui", {})
         self._fullscreen_requested = bool(ui_config.get("fullscreen", False))
         if self._fullscreen_requested:
@@ -4715,13 +4715,13 @@ if __name__ == "__main__":
     import random
     import yaml
 
-    print("Testing MainScreen...")
+    print("Testing AppWindow...")
 
     with open('config.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
     app = QApplication(sys.argv)
-    window = MainScreen(config)
+    window = AppWindow(config)
     window.show()
 
     def _feed_random_update():

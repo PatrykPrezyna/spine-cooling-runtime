@@ -1,6 +1,6 @@
 """Own one run's session CSVs and the USB copy of those files.
 
-``SensorMonitorApp`` decides when a row or event is worth recording.
+``CoolingRuntime`` decides when a row or event is worth recording.
 This class opens the files, writes them, and closes them. It does not
 read sensors or update the screen.
 """
