@@ -195,11 +195,8 @@ class FaultListTests(unittest.TestCase):
             [rule for rule in RULES if get_fault(rule.code).severity == Severity.MESSAGE],
         )
 
-    def test_each_rule_trips_on_its_own(self) -> None:
+    def test_healthy_context_trips_nothing(self) -> None:
         self.assertEqual(evaluate(_context()), set())
-        for rule in RULES:
-            active = evaluate(_trip(rule.code))
-            self.assertEqual(active, {rule.code}, msg=rule.code.value)
 
     def test_html_matches_catalog_and_rules(self) -> None:
         root = _page()
@@ -235,6 +232,52 @@ class FaultListTests(unittest.TestCase):
             self.assertEqual(_text(_field(row, "when")), rule.when)
             self.assertEqual(_items(_field(row, "causes")), list(fault.causes))
             self.assertEqual(_items(_field(row, "steps")), list(fault.steps))
+
+
+class _TripCase:
+    def _trips_on_its_own(self, code: FaultCode) -> None:
+        active = evaluate(_trip(code))
+        self.assertEqual(active, {code}, msg=code.value)
+
+
+class ErrorTests(_TripCase, unittest.TestCase):
+    def test_LEVEL_SENSOR_trips_on_its_own(self) -> None:
+        self._trips_on_its_own(FaultCode.LEVEL_SENSOR)
+
+    def test_CARTRIDGE_REMOVED_trips_on_its_own(self) -> None:
+        self._trips_on_its_own(FaultCode.CARTRIDGE_REMOVED)
+
+    def test_PUMP_NOT_CLOSED_trips_on_its_own(self) -> None:
+        self._trips_on_its_own(FaultCode.PUMP_NOT_CLOSED)
+
+    def test_FRIDGE_DEFECT_trips_on_its_own(self) -> None:
+        self._trips_on_its_own(FaultCode.FRIDGE_DEFECT)
+
+    def test_LEAK_DETECTED_trips_on_its_own(self) -> None:
+        self._trips_on_its_own(FaultCode.LEAK_DETECTED)
+
+    def test_CSF_LOW_TEMP_trips_on_its_own(self) -> None:
+        self._trips_on_its_own(FaultCode.CSF_LOW_TEMP)
+
+    def test_HEAT_EX_TOO_COLD_trips_on_its_own(self) -> None:
+        self._trips_on_its_own(FaultCode.HEAT_EX_TOO_COLD)
+
+    def test_COOLING_INEFFECTIVE_trips_on_its_own(self) -> None:
+        self._trips_on_its_own(FaultCode.COOLING_INEFFECTIVE)
+
+
+class WarningTests(_TripCase, unittest.TestCase):
+    def test_BATTERY_LOW_trips_on_its_own(self) -> None:
+        self._trips_on_its_own(FaultCode.BATTERY_LOW)
+
+    def test_USB_NOT_PRESENT_trips_on_its_own(self) -> None:
+        self._trips_on_its_own(FaultCode.USB_NOT_PRESENT)
+
+    def test_SD_STORAGE_LOW_trips_on_its_own(self) -> None:
+        self._trips_on_its_own(FaultCode.SD_STORAGE_LOW)
+
+    def test_USB_STORAGE_LOW_trips_on_its_own(self) -> None:
+        self._trips_on_its_own(FaultCode.USB_STORAGE_LOW)
 
 
 if __name__ == "__main__":

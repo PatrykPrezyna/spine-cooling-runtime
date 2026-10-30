@@ -1,4 +1,8 @@
-"""Unit tests for safety rule evaluation."""
+"""Unit tests for safety rule evaluation.
+
+Stop faults are errors. Message faults are warnings. Each test name starts
+with the fault code, for example ``test_LEVEL_SENSOR_``.
+"""
 
 import sys
 import unittest
@@ -52,28 +56,20 @@ def _ctx(
     )
 
 
-class SafetyRulesTests(unittest.TestCase):
-    def test_csf_low_temp_active(self) -> None:
-        active = evaluate(_ctx(temperatures={"CSF": 27.9}))
-        self.assertIn(FaultCode.CSF_LOW_TEMP, active)
+class ErrorTests(unittest.TestCase):
+    def test_LEVEL_SENSOR_fault(self) -> None:
+        active = evaluate(
+            _ctx(
+                sensor_states={
+                    "Cartridge In Place": True,
+                    "Level Low": False,
+                    "Level Critical": True,
+                }
+            )
+        )
+        self.assertIn(FaultCode.LEVEL_SENSOR, active)
 
-    def test_csf_low_temp_idle(self) -> None:
-        active = evaluate(_ctx(state=State.READY, temperatures={"CSF": 27.9}))
-        self.assertNotIn(FaultCode.CSF_LOW_TEMP, active)
-
-    def test_csf_at_limit(self) -> None:
-        active = evaluate(_ctx(temperatures={"CSF": 28.0}))
-        self.assertNotIn(FaultCode.CSF_LOW_TEMP, active)
-
-    def test_csf_fault_still_active_for_ack_check(self) -> None:
-        ctx = _ctx(temperatures={"CSF": 27.0})
-        self.assertTrue(is_fault_still_active(FaultCode.CSF_LOW_TEMP, ctx))
-
-    def test_csf_fault_cleared_for_ack_check(self) -> None:
-        ctx = _ctx(temperatures={"CSF": 29.0})
-        self.assertFalse(is_fault_still_active(FaultCode.CSF_LOW_TEMP, ctx))
-
-    def test_cartridge_removed_during_operation(self) -> None:
+    def test_CARTRIDGE_REMOVED_during_operation(self) -> None:
         active = evaluate(
             _ctx(
                 sensor_states={
@@ -85,64 +81,7 @@ class SafetyRulesTests(unittest.TestCase):
         )
         self.assertIn(FaultCode.CARTRIDGE_REMOVED, active)
 
-    def test_pump_not_closed_while_pumping(self) -> None:
-        active = evaluate(
-            _ctx(
-                sensor_states={
-                    "Cartridge In Place": True,
-                    "Level Low": True,
-                    "Level Critical": True,
-                    "Pump Closed": False,
-                }
-            )
-        )
-        self.assertIn(FaultCode.PUMP_NOT_CLOSED, active)
-
-    def test_pump_not_closed_blocks_running_motor_outside_pumping(self) -> None:
-        active = evaluate(
-            _ctx(
-                state=State.READY,
-                sensor_states={
-                    "Cartridge In Place": True,
-                    "Level Low": True,
-                    "Level Critical": True,
-                    "Pump Closed": False,
-                },
-            )
-        )
-        self.assertIn(FaultCode.PUMP_NOT_CLOSED, active)
-
-    def test_pump_open_during_cooling_does_not_trip_until_pump_runs(self) -> None:
-        ctx = _ctx(
-            state=State.COOLING,
-            sensor_states={
-                "Cartridge In Place": True,
-                "Level Low": True,
-                "Level Critical": True,
-                "Pump Closed": False,
-            },
-        )
-        ctx.pump_running = False
-        self.assertNotIn(FaultCode.PUMP_NOT_CLOSED, evaluate(ctx))
-
-    def test_pump_closed_does_not_trip(self) -> None:
-        active = evaluate(
-            _ctx(
-                sensor_states={
-                    "Cartridge In Place": True,
-                    "Level Low": True,
-                    "Level Critical": True,
-                    "Pump Closed": True,
-                }
-            )
-        )
-        self.assertNotIn(FaultCode.PUMP_NOT_CLOSED, active)
-
-    def test_missing_pump_switch_does_not_trip(self) -> None:
-        active = evaluate(_ctx())
-        self.assertNotIn(FaultCode.PUMP_NOT_CLOSED, active)
-
-    def test_cartridge_removed_ignored_when_ready(self) -> None:
+    def test_CARTRIDGE_REMOVED_ignored_when_ready(self) -> None:
         active = evaluate(
             _ctx(
                 state=State.READY,
@@ -155,29 +94,188 @@ class SafetyRulesTests(unittest.TestCase):
         )
         self.assertNotIn(FaultCode.CARTRIDGE_REMOVED, active)
 
-    def test_level_sensor_fault(self) -> None:
+    def test_PUMP_NOT_CLOSED_while_pumping(self) -> None:
         active = evaluate(
             _ctx(
                 sensor_states={
                     "Cartridge In Place": True,
-                    "Level Low": False,
+                    "Level Low": True,
                     "Level Critical": True,
+                    "Pump Closed": False,
                 }
             )
         )
-        self.assertIn(FaultCode.LEVEL_SENSOR, active)
+        self.assertIn(FaultCode.PUMP_NOT_CLOSED, active)
 
-    def test_battery_stub_inactive(self) -> None:
+    def test_PUMP_NOT_CLOSED_blocks_running_motor_outside_pumping(self) -> None:
+        active = evaluate(
+            _ctx(
+                state=State.READY,
+                sensor_states={
+                    "Cartridge In Place": True,
+                    "Level Low": True,
+                    "Level Critical": True,
+                    "Pump Closed": False,
+                },
+            )
+        )
+        self.assertIn(FaultCode.PUMP_NOT_CLOSED, active)
+
+    def test_PUMP_NOT_CLOSED_open_during_cooling_does_not_trip_until_pump_runs(self) -> None:
+        ctx = _ctx(
+            state=State.COOLING,
+            sensor_states={
+                "Cartridge In Place": True,
+                "Level Low": True,
+                "Level Critical": True,
+                "Pump Closed": False,
+            },
+        )
+        ctx.pump_running = False
+        self.assertNotIn(FaultCode.PUMP_NOT_CLOSED, evaluate(ctx))
+
+    def test_PUMP_NOT_CLOSED_closed_does_not_trip(self) -> None:
+        active = evaluate(
+            _ctx(
+                sensor_states={
+                    "Cartridge In Place": True,
+                    "Level Low": True,
+                    "Level Critical": True,
+                    "Pump Closed": True,
+                }
+            )
+        )
+        self.assertNotIn(FaultCode.PUMP_NOT_CLOSED, active)
+
+    def test_PUMP_NOT_CLOSED_missing_switch_does_not_trip(self) -> None:
+        active = evaluate(_ctx())
+        self.assertNotIn(FaultCode.PUMP_NOT_CLOSED, active)
+
+    def test_LEAK_DETECTED_when_sensor_low(self) -> None:
+        active = evaluate(
+            _ctx(
+                state=State.PUMPING,
+                sensor_states={"Leak Sensor": False},
+            )
+        )
+        self.assertIn(FaultCode.LEAK_DETECTED, active)
+
+    def test_LEAK_DETECTED_clear_when_sensor_high(self) -> None:
+        active = evaluate(
+            _ctx(
+                state=State.PUMPING,
+                sensor_states={"Leak Sensor": True},
+            )
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+
+    def test_LEAK_DETECTED_in_cooling(self) -> None:
+        active = evaluate(
+            _ctx(
+                state=State.COOLING,
+                sensor_states={"Leak Sensor": False},
+            )
+        )
+        self.assertIn(FaultCode.LEAK_DETECTED, active)
+
+    def test_LEAK_DETECTED_not_checked_during_init(self) -> None:
+        active = evaluate(
+            _ctx(
+                state=State.INIT,
+                sensor_states={"Leak Sensor": False},
+            )
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+
+    def test_LEAK_DETECTED_debounce_ignores_brief_flicker(self) -> None:
+        tracker = LeakDebounceTracker(hold_s=0.5)
+        # Signal drops low but not yet for the full hold time.
+        active = evaluate(
+            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.0)
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+        active = evaluate(
+            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.3)
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+        # A high reading clears the pending leak (flicker rejected).
+        active = evaluate(
+            _ctx(sensor_states={"Leak Sensor": True}, leak_tracker=tracker, now=0.4)
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+        active = evaluate(
+            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.6)
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+
+    def test_LEAK_DETECTED_debounce_fires_after_hold(self) -> None:
+        tracker = LeakDebounceTracker(hold_s=0.5)
+        active = evaluate(
+            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.0)
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+        # Stayed low continuously past the hold time.
+        active = evaluate(
+            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.5)
+        )
+        self.assertIn(FaultCode.LEAK_DETECTED, active)
+
+    def test_LEAK_DETECTED_ignored_when_sensor_absent(self) -> None:
+        active = evaluate(
+            _ctx(
+                state=State.PUMPING,
+                sensor_states={
+                    "Cartridge In Place": True,
+                    "Level Low": True,
+                    "Level Critical": True,
+                },
+            )
+        )
+        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
+
+    def test_CSF_LOW_TEMP_active(self) -> None:
+        active = evaluate(_ctx(temperatures={"CSF": 27.9}))
+        self.assertIn(FaultCode.CSF_LOW_TEMP, active)
+
+    def test_CSF_LOW_TEMP_idle(self) -> None:
+        active = evaluate(_ctx(state=State.READY, temperatures={"CSF": 27.9}))
+        self.assertNotIn(FaultCode.CSF_LOW_TEMP, active)
+
+    def test_CSF_LOW_TEMP_at_limit(self) -> None:
+        active = evaluate(_ctx(temperatures={"CSF": 28.0}))
+        self.assertNotIn(FaultCode.CSF_LOW_TEMP, active)
+
+    def test_CSF_LOW_TEMP_still_active_for_ack_check(self) -> None:
+        ctx = _ctx(temperatures={"CSF": 27.0})
+        self.assertTrue(is_fault_still_active(FaultCode.CSF_LOW_TEMP, ctx))
+
+    def test_CSF_LOW_TEMP_cleared_for_ack_check(self) -> None:
+        ctx = _ctx(temperatures={"CSF": 29.0})
+        self.assertFalse(is_fault_still_active(FaultCode.CSF_LOW_TEMP, ctx))
+
+    def test_HEAT_EX_TOO_COLD_active(self) -> None:
+        config = {
+            "alarms": {
+                "heat_ex_label": "Heat Ex",
+                "heat_ex_min_c": -10.0,
+            }
+        }
+        active = evaluate(_ctx(temperatures={"Heat Ex": -10.5}, config=config))
+        self.assertIn(FaultCode.HEAT_EX_TOO_COLD, active)
+
+
+class WarningTests(unittest.TestCase):
+    def test_BATTERY_LOW_stub_inactive(self) -> None:
         active = evaluate(_ctx(telemetry=TelemetrySnapshot()))
         self.assertNotIn(FaultCode.BATTERY_LOW, active)
 
-    def test_battery_low_active(self) -> None:
+    def test_BATTERY_LOW_active(self) -> None:
         active = evaluate(
             _ctx(telemetry=TelemetrySnapshot(battery_pct=15.0))
         )
         self.assertIn(FaultCode.BATTERY_LOW, active)
 
-    def test_usb_not_present_when_logging_enabled(self) -> None:
+    def test_USB_NOT_PRESENT_when_logging_enabled(self) -> None:
         active = evaluate(
             _ctx(
                 telemetry=TelemetrySnapshot(
@@ -189,7 +287,7 @@ class SafetyRulesTests(unittest.TestCase):
         self.assertIn(FaultCode.USB_NOT_PRESENT, active)
         self.assertNotIn(FaultCode.USB_STORAGE_LOW, active)
 
-    def test_usb_not_present_skipped_after_eject(self) -> None:
+    def test_USB_NOT_PRESENT_skipped_after_eject(self) -> None:
         active = evaluate(
             _ctx(
                 telemetry=TelemetrySnapshot(
@@ -201,26 +299,26 @@ class SafetyRulesTests(unittest.TestCase):
         )
         self.assertNotIn(FaultCode.USB_NOT_PRESENT, active)
 
-    def test_usb_not_present_skipped_when_disabled(self) -> None:
+    def test_USB_NOT_PRESENT_skipped_when_disabled(self) -> None:
         active = evaluate(
             _ctx(telemetry=TelemetrySnapshot(usb_logging_enabled=False, usb_present=False))
         )
         self.assertNotIn(FaultCode.USB_NOT_PRESENT, active)
 
-    def test_sd_storage_low(self) -> None:
+    def test_SD_STORAGE_LOW_active(self) -> None:
         active = evaluate(
             _ctx(telemetry=TelemetrySnapshot(local_free_bytes=500 * 1024 * 1024))
         )
         self.assertIn(FaultCode.SD_STORAGE_LOW, active)
         self.assertNotIn(FaultCode.USB_STORAGE_LOW, active)
 
-    def test_sd_storage_ok_above_1gb(self) -> None:
+    def test_SD_STORAGE_LOW_ok_above_1gb(self) -> None:
         active = evaluate(
             _ctx(telemetry=TelemetrySnapshot(local_free_bytes=2 * 1024 * 1024 * 1024))
         )
         self.assertNotIn(FaultCode.SD_STORAGE_LOW, active)
 
-    def test_usb_storage_low_only_when_present(self) -> None:
+    def test_USB_STORAGE_LOW_only_when_present(self) -> None:
         low = 100 * 1024 * 1024
         active_missing = evaluate(
             _ctx(
@@ -243,98 +341,6 @@ class SafetyRulesTests(unittest.TestCase):
         )
         self.assertIn(FaultCode.USB_STORAGE_LOW, active_present)
         self.assertNotIn(FaultCode.USB_NOT_PRESENT, active_present)
-
-    def test_heat_ex_too_cold(self) -> None:
-        config = {
-            "alarms": {
-                "heat_ex_label": "Heat Ex",
-                "heat_ex_min_c": -10.0,
-            }
-        }
-        active = evaluate(_ctx(temperatures={"Heat Ex": -10.5}, config=config))
-        self.assertIn(FaultCode.HEAT_EX_TOO_COLD, active)
-
-    def test_leak_detected_when_sensor_low(self) -> None:
-        active = evaluate(
-            _ctx(
-                state=State.PUMPING,
-                sensor_states={"Leak Sensor": False},
-            )
-        )
-        self.assertIn(FaultCode.LEAK_DETECTED, active)
-
-    def test_leak_clear_when_sensor_high(self) -> None:
-        active = evaluate(
-            _ctx(
-                state=State.PUMPING,
-                sensor_states={"Leak Sensor": True},
-            )
-        )
-        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
-
-    def test_leak_detected_in_cooling(self) -> None:
-        active = evaluate(
-            _ctx(
-                state=State.COOLING,
-                sensor_states={"Leak Sensor": False},
-            )
-        )
-        self.assertIn(FaultCode.LEAK_DETECTED, active)
-
-    def test_leak_not_checked_during_init(self) -> None:
-        active = evaluate(
-            _ctx(
-                state=State.INIT,
-                sensor_states={"Leak Sensor": False},
-            )
-        )
-        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
-
-    def test_leak_debounce_ignores_brief_flicker(self) -> None:
-        tracker = LeakDebounceTracker(hold_s=0.5)
-        # Signal drops low but not yet for the full hold time.
-        active = evaluate(
-            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.0)
-        )
-        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
-        active = evaluate(
-            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.3)
-        )
-        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
-        # A high reading clears the pending leak (flicker rejected).
-        active = evaluate(
-            _ctx(sensor_states={"Leak Sensor": True}, leak_tracker=tracker, now=0.4)
-        )
-        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
-        active = evaluate(
-            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.6)
-        )
-        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
-
-    def test_leak_debounce_fires_after_hold(self) -> None:
-        tracker = LeakDebounceTracker(hold_s=0.5)
-        active = evaluate(
-            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.0)
-        )
-        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
-        # Stayed low continuously past the hold time.
-        active = evaluate(
-            _ctx(sensor_states={"Leak Sensor": False}, leak_tracker=tracker, now=0.5)
-        )
-        self.assertIn(FaultCode.LEAK_DETECTED, active)
-
-    def test_leak_ignored_when_sensor_absent(self) -> None:
-        active = evaluate(
-            _ctx(
-                state=State.PUMPING,
-                sensor_states={
-                    "Cartridge In Place": True,
-                    "Level Low": True,
-                    "Level Critical": True,
-                },
-            )
-        )
-        self.assertNotIn(FaultCode.LEAK_DETECTED, active)
 
 
 if __name__ == "__main__":
