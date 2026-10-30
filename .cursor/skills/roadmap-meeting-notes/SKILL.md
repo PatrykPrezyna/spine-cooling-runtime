@@ -3,63 +3,63 @@ name: roadmap-meeting-notes
 description: >-
   Turn Cool Spine meeting notes into GANTT roadmap tasks. Use when the user
   pastes meeting notes, minutes, or action items and wants roadmap tasks,
-  sprint tasks, or GANTT bars, including tasks marked Current Sprint with the
-  green sprint cell colored.
+  sprint tasks, or GANTT bars in tools/GANTT/roadmap.yaml.
 ---
 
 # Roadmap meeting notes
 
-Workbook: `tools/GANTT/Cool_Spine_GANTT.xlsx`
+Schedule: `tools/GANTT/roadmap.yaml`
 
-Editor: `tools/GANTT/roadmap_agent.py`
+People edit it in the browser with `python tools/GANTT/server.py`. Agents edit that same file through `roadmap_io`. The Excel file is an export: `python tools/GANTT/export_xlsx.py` writes `tools/GANTT/Cool_Spine_Roadmap_YYYY-MM-DD.xlsx` for the day it runs. Do not edit the workbook by hand.
 
-Run both from the repo root. Pass `--file tools/GANTT/Cool_Spine_GANTT.xlsx` on every command.
-
-Column B is the sprint filter (`Current Sprint`, `Next Sprint`, and the other allowed values). The green cells are a separate bar: one cell per 2-week sprint, from the start sprint through the end sprint. A task can be filtered as Current Sprint and still have a bar that runs into later sprints.
+Sprints are `timeline.sprint_days` long and begin at `timeline.start`. A bar stores sprint start dates. `start` and `end` are both the first day of a sprint, and a one-sprint task uses the same date twice. Omit both when there is no bar. Status is `done`, `in_progress`, or `future`.
 
 ## Before any edit
 
-Run:
-
-```bash
-python tools/GANTT/roadmap_agent.py --file tools/GANTT/Cool_Spine_GANTT.xlsx current-sprint
-python tools/GANTT/roadmap_agent.py --file tools/GANTT/Cool_Spine_GANTT.xlsx epics
-```
-
-`current-sprint` names the sprint that contains today. Use those dates. Do not invent sprint boundaries. `current` and `next` in later commands mean that column and the following one.
+Read `tools/GANTT/roadmap.yaml`. The sprint that contains today is `current`. The following sprint is `next`. Take those dates from the file. Do not invent sprint boundaries.
 
 ## Propose, then wait
 
-The first reply is only the proposed list. Do not edit the workbook in that turn.
+The first reply is only the proposed list. Do not edit the file in that turn.
 
-Use the epic names exactly as `epics` prints them. Put each task in the section the notes belong to. Place a follow-on directly under the task it continues (`--after`). Otherwise add it at the end of the epic (`--epic`). The opening block has `"epic": null`; insert those with `--after` and the `after` value from that section. Do not create a new epic unless the user asks.
+Use epic names exactly as they appear in the file. Put each task in the epic the notes belong to. Place a follow-on directly under the task it continues. Otherwise add it at the end of that epic. Do not create an epic unless the user asks. The Milestones epic stays last. Milestones belong there. Do not add tasks to it.
 
-Sprint filter is **Current Sprint** unless the user said otherwise. Choose the start sprint and end sprint from the notes. One sprint is the default when the notes do not give a longer window: the sprint that contains today.
+Status is **in_progress** unless the user said the work is later or already finished. One sprint is the default when the notes do not give a longer window: the sprint that contains today.
 
-Fix obvious typos in task names. Keep names short, in the same style as the tasks already in that section.
+Fix obvious typos in task names. Keep names short, in the same style as the tasks already in that epic.
 
-Reply with this table and nothing written to the file. The Epic column is the workbook epic name, copied exactly from `epics`. When that value is null, write Opening block.
+Reply with this table and nothing written to the file.
 
-| Task | Epic | Start sprint | End sprint |
-|---|---|---|---|
-| Design new probes for the animal study | Probes | 22 Oct – 4 Nov 2026 | 22 Oct – 4 Nov 2026 |
+| Task | Epic | Status | Start sprint | End sprint |
+|---|---|---|---|---|
+| Design new probes for the animal study | Probes | in_progress | 22 Oct – 4 Nov 2026 | 22 Oct – 4 Nov 2026 |
 
-State above the table that the sprint filter will be Current Sprint. Start sprint and end sprint are the first and last colored fortnights. When they are the same sprint, both columns show that fortnight.
+Start sprint and end sprint are the first and last fortnights on the bar. When they are the same sprint, both columns show that fortnight.
 
 Stop there. Write only after the user accepts the list. A correction is a new list: show the revised table and wait again. Apply on the same turn when the user accepts and corrects in one reply ("yes, and end the second task one sprint later").
 
 ## Write
 
-For each accepted row, one command:
+From the repo root, one task at a time. `add_task` takes the epic id, such as `probes` for Probes, and appends the task. `start` and `end` are sprint start dates (`YYYY-MM-DD`), not the last day of a sprint.
 
-```bash
-python tools/GANTT/roadmap_agent.py --file tools/GANTT/Cool_Spine_GANTT.xlsx add-task \
-  --task "Design new probes for the animal study" --epic "Probes" \
-  --status "Current Sprint" --start 2026-10-22 --end 2026-11-04
+```python
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "tools/GANTT")
+from roadmap_io import add_task, load_roadmap, save_roadmap, update_task
+
+path = Path("tools/GANTT/roadmap.yaml")
+data = load_roadmap(path)
+item_id = add_task(data, "probes", "Design new probes for the animal study")
+update_task(data, item_id, {
+    "status": "in_progress",
+    "start": "2026-10-22",
+    "end": "2026-10-22",
+})
+save_roadmap(path, data)
 ```
 
-`--start` and `--end` are `YYYY-MM-DD`, `current`, or `next`. Pass the first sprint's start date and the last sprint's end date from `current-sprint`. The command colors every overlapping column with the sheet's theme green and leaves the row above unchanged.
+To place a follow-on under an existing task, move the new item to sit immediately after that item's id before `save_roadmap`. Leave every other row where it is.
 
-If the save fails because the workbook is open, ask the user to close Excel and stop.
-
-Then run `list --sprint "Current Sprint"` and check each new task's `sprint_status`, `period_start`, and `period_end` against the accepted table before telling the user it is done.
+Then load the file again and check each new task's name, status, start, and end against the accepted table before telling the user it is done.

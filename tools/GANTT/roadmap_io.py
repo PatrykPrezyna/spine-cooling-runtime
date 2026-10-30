@@ -148,6 +148,8 @@ def view_roadmap(data: dict, today: date | None = None) -> dict:
 
 
 def add_task(data: dict, epic_id: str, name: str = "New task") -> str:
+    if epic_id == "milestones":
+        raise RoadmapError("Tasks cannot be added to Milestones")
     epic = _find_epic(data, epic_id)
     if epic is None:
         raise RoadmapError("Epic not found", 404)
@@ -170,8 +172,11 @@ def update_task(data: dict, item_id: str, fields: dict) -> None:
     item = _find_item(data, item_id)
     if item is None:
         raise RoadmapError("Task not found", 404)
+    if item["kind"] == "milestone":
+        _update_milestone(data, item, fields)
+        return
     if item["kind"] != "task":
-        raise RoadmapError("Milestones cannot be edited")
+        raise RoadmapError("Item cannot be edited")
     unknown = set(fields) - {"name", "status", "start", "end"}
     if unknown:
         raise RoadmapError("Unknown fields: " + ", ".join(sorted(unknown)))
@@ -204,6 +209,39 @@ def update_task(data: dict, item_id: str, fields: dict) -> None:
             item["end"] = end_day
         else:
             raise RoadmapError("Start and end must both be sprint dates, or both null")
+
+
+def _update_milestone(data: dict, item: dict, fields: dict) -> None:
+    unknown = set(fields) - {"name", "date"}
+    if unknown:
+        raise RoadmapError("Unknown fields: " + ", ".join(sorted(unknown)))
+    if "name" in fields:
+        if not isinstance(fields["name"], str):
+            raise RoadmapError("Name must be a string")
+        clean = fields["name"].strip()
+        if not clean:
+            raise RoadmapError("Name is empty")
+        if len(clean) > 500:
+            raise RoadmapError("Name is too long")
+        item["name"] = clean
+    if "date" not in fields:
+        return
+    value = fields["date"]
+    if value is None:
+        item.pop("date", None)
+        return
+    if not isinstance(value, str):
+        raise RoadmapError("Date must be YYYY-MM-DD, or null")
+    try:
+        day = date.fromisoformat(value)
+    except ValueError as exc:
+        raise RoadmapError("Date must be YYYY-MM-DD") from exc
+    step = data["timeline"]["sprint_days"]
+    first = data["timeline"]["start"]
+    last = sprint_starts(data)[-1] + timedelta(days=step - 1)
+    if not first <= day <= last:
+        raise RoadmapError("Date is outside the timeline")
+    item["date"] = day
 
 
 def sprint_starts(data: dict) -> list[date]:

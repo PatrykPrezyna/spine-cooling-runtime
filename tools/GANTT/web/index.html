@@ -18,22 +18,52 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 24px;
+      flex-wrap: wrap;
+      gap: 12px 24px;
       padding: 12px 16px;
       background: #fff;
       border-bottom: 1px solid #e3e8ee;
     }
     h1 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
     .sub { margin: 2px 0 0; color: #5c6b7a; }
-    .legend { display: flex; align-items: center; gap: 12px; color: #5c6b7a; white-space: nowrap; }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      color: #5c6b7a;
+    }
+    .filter-label { font-size: 12px; }
+    .sep { width: 1px; height: 18px; background: #d5dbe3; }
     .swatch { width: 28px; height: 10px; border-radius: 6px; background: #6fa86a; display: inline-block; }
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }
-    .pill {
+    button.pill {
+      border: 0;
       border-radius: 999px;
-      padding: 2px 8px;
+      padding: 3px 8px;
+      font: inherit;
       font-size: 11px;
       font-weight: 700;
+      cursor: pointer;
     }
+    button.pill[aria-pressed="false"] {
+      background: transparent;
+      color: #8b97a3;
+      box-shadow: inset 0 0 0 1px #d5dbe3;
+    }
+    button.cmd {
+      font: inherit;
+      cursor: pointer;
+      border: 1px solid #d5dbe3;
+      background: #fff;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 650;
+      color: #1c2430;
+    }
+    button.cmd:hover { border-color: #1a4478; color: #1a4478; }
     .pill.done { background: #e7f2ea; color: #1e5a38; }
     .pill.in_progress { background: #e6effa; color: #1a4478; }
     .pill.future { background: #eef0f3; color: #4b5563; }
@@ -112,13 +142,24 @@
     tr.task:hover td.name-col { background: #f7faf8; }
     tr.task td.sprint { cursor: pointer; }
     tr.task td.sprint:hover { background: #f2f6f3; }
+    tr.milestone td.sprint { cursor: pointer; }
+    tr.milestone td.current { background: #f3f7fc; }
+    tr.milestone td.sprint:hover, tr.milestone td.preview { background: #fff4e8; }
     tr.task td.preview { background: #e3f2d9; }
     tr.task td.anchor { box-shadow: inset 0 0 0 2px #1a4478; }
     .mark { display: block; height: 10px; }
-    tr.task td.in-bar .mark { background: #6fa86a; }
-    tr.task td.single .mark { margin: 0 4px; border-radius: 6px; }
-    tr.task td.bar-start .mark { margin-left: 4px; border-radius: 6px 0 0 6px; }
-    tr.task td.bar-end .mark { margin-right: 4px; border-radius: 0 6px 6px 0; }
+    tr.task td.in-bar .mark, tr.epic td.in-bar .mark { background: #6fa86a; }
+    tr.task td.single .mark, tr.epic td.single .mark { margin: 0 4px; border-radius: 6px; }
+    tr.task td.bar-start .mark, tr.epic td.bar-start .mark { margin-left: 4px; border-radius: 6px 0 0 6px; }
+    tr.task td.bar-end .mark, tr.epic td.bar-end .mark { margin-right: 4px; border-radius: 0 6px 6px 0; }
+    tr.epic td.sprint { position: relative; }
+    tr.epic td.sprint .gem {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      z-index: 1;
+      margin: -4.5px 0 0 -4.5px;
+    }
     .name-inner { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px 0 10px; }
     .label {
       flex: 1;
@@ -127,7 +168,42 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    tr.epic .label { font-weight: 700; }
+    tr.epic .label { font-weight: 700; cursor: pointer; }
+    button.fold {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      margin-left: -4px;
+      padding: 0;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      cursor: pointer;
+    }
+    button.fold:hover { background: #d5deea; }
+    .chevron {
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid #3d4d5e;
+    }
+    tr.epic.folded .chevron {
+      border-top: 4px solid transparent;
+      border-bottom: 4px solid transparent;
+      border-left: 5px solid #3d4d5e;
+      border-right: 0;
+    }
+    .count {
+      flex: 0 0 auto;
+      font-size: 11px;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+      color: #5c6b7a;
+    }
     button.name, button.add, button.clear {
       font: inherit;
       cursor: pointer;
@@ -208,13 +284,18 @@
   <header>
     <div>
       <h1 id="title">Roadmap</h1>
-      <p class="sub" id="hint">Click a sprint, then another, to set how long a task runs.</p>
+      <p class="sub" id="hint">Click a sprint, then another, to set how long a task runs. Click a sprint to move a milestone.</p>
     </div>
-    <div class="legend">
+    <div class="toolbar">
+      <button type="button" id="fold-all" class="cmd">Fold all</button>
+      <button type="button" id="unfold-all" class="cmd">Unfold all</button>
+      <span class="sep" aria-hidden="true"></span>
+      <span class="filter-label">Show</span>
+      <button type="button" class="pill done" data-status="done" aria-pressed="true" title="Show only done tasks. Click another status to add it.">Done</button>
+      <button type="button" class="pill in_progress" data-status="in_progress" aria-pressed="true" title="Show only in-progress tasks. Click another status to add it.">In progress</button>
+      <button type="button" class="pill future" data-status="future" aria-pressed="true" title="Show only future tasks. Click another status to add it.">Future</button>
+      <span class="sep" aria-hidden="true"></span>
       <span class="legend-item"><span class="swatch"></span> Duration</span>
-      <span class="pill done">Done</span>
-      <span class="pill in_progress">In progress</span>
-      <span class="pill future">Future</span>
       <span class="legend-item"><span class="gem"></span> Milestone</span>
     </div>
   </header>
@@ -233,7 +314,13 @@
       ["in_progress", "In progress"],
       ["future", "Future"]
     ];
-    const state = { roadmap: null, anchor: null, scrolled: false };
+    const state = {
+      roadmap: null,
+      anchor: null,
+      scrolled: false,
+      folded: new Set(),
+      statuses: new Set()
+    };
 
     const titleEl = document.getElementById("title");
     const hintEl = document.getElementById("hint");
@@ -255,7 +342,7 @@
     function setHint() {
       hintEl.textContent = state.anchor
         ? "Click the last sprint. Click the same cell again for one sprint."
-        : "Click a sprint, then another, to set how long a task runs.";
+        : "Click a sprint, then another, to set how long a task runs. Click a sprint to move a milestone.";
     }
 
     async function api(method, url, body) {
@@ -334,40 +421,142 @@
       headEl.append(yearRow, sprintRow);
     }
 
+    function statusVisible(status) {
+      return state.statuses.size === 0 || state.statuses.has(status);
+    }
+
+    function taskShown(item) {
+      return item.kind === "task" && statusVisible(item.status);
+    }
+
     function buildBody(data) {
       const fragment = document.createDocumentFragment();
+      const milestones = [];
       for (const epic of data.epics) {
-        fragment.append(epicRow(epic, data));
         for (const item of epic.items) {
-          fragment.append(item.kind === "milestone" ? milestoneRow(item, data) : taskRow(item, data));
+          if (item.kind === "milestone") milestones.push(item);
+        }
+        if (epic.id === "milestones") continue;
+        const folded = state.folded.has(epic.id);
+        fragment.append(epicRow(epic, data, folded));
+        if (folded) continue;
+        for (const item of epic.items) {
+          if (item.kind !== "milestone" && taskShown(item)) fragment.append(taskRow(item, data));
         }
       }
+      if (milestones.length) fragment.append(milestoneSection(milestones, data));
       bodyEl.replaceChildren(fragment);
     }
 
-    function epicRow(epic, data) {
+    function coveredSpan(epic) {
+      let start = null;
+      let end = null;
+      let count = 0;
+      for (const item of epic.items) {
+        if (!taskShown(item) || !item.start || !item.end) continue;
+        count += 1;
+        if (start === null || item.start < start) start = item.start;
+        if (end === null || item.end > end) end = item.end;
+      }
+      if (!start) return null;
+      return { start, end, label: count === 1 ? "1 task" : count + " tasks" };
+    }
+
+    function epicRow(epic, data, folded) {
       const row = document.createElement("tr");
-      row.className = "epic";
-      row.append(nameCell(epicName(epic)));
-      for (const sprint of data.sprints) row.append(plainCell(sprint, data));
+      row.className = "epic" + (folded ? " folded" : "");
+      row.append(nameCell(epicName(epic, folded)));
+      const span = folded ? coveredSpan(epic) : null;
+      for (const sprint of data.sprints) {
+        const edges = span ? barEdges(span.start, span.end, sprint.id) : "";
+        const cell = document.createElement("td");
+        cell.className = "sprint" + (edges ? " " + edges : "") + (sprint.id === data.today_sprint ? " current" : "");
+        if (edges) {
+          const mark = document.createElement("span");
+          mark.className = "mark";
+          cell.title = span.label;
+          cell.append(mark);
+        }
+        row.append(cell);
+      }
       return row;
     }
 
-    function epicName(epic) {
+    function epicName(epic, folded) {
       const wrap = document.createElement("div");
       wrap.className = "name-inner";
+      const fold = document.createElement("button");
+      fold.type = "button";
+      fold.className = "fold";
+      fold.setAttribute("aria-expanded", folded ? "false" : "true");
+      fold.setAttribute("aria-label", (folded ? "Unfold " : "Fold ") + epic.name);
+      const chevron = document.createElement("span");
+      chevron.className = "chevron";
+      chevron.setAttribute("aria-hidden", "true");
+      fold.append(chevron);
+      fold.addEventListener("click", () => toggleEpic(epic.id));
       const label = document.createElement("span");
       label.className = "label";
       label.textContent = epic.name;
       label.title = epic.name;
+      label.addEventListener("click", () => toggleEpic(epic.id));
+      wrap.append(fold, label);
+      const tasks = epic.items.filter((item) => item.kind === "task");
+      const shown = tasks.filter((item) => statusVisible(item.status)).length;
+      if (tasks.length && (folded || shown !== tasks.length)) {
+        const count = document.createElement("span");
+        count.className = "count";
+        count.textContent = shown === tasks.length ? String(tasks.length) : shown + "/" + tasks.length;
+        count.title = shown + " of " + tasks.length + " tasks shown";
+        wrap.append(count);
+      }
       const add = document.createElement("button");
       add.type = "button";
       add.className = "add";
       add.textContent = "Add task";
       add.setAttribute("aria-label", "Add task to " + epic.name);
       add.addEventListener("click", () => addTask(epic.id));
-      wrap.append(label, add);
+      wrap.append(add);
       return wrap;
+    }
+
+    function toggleEpic(id) {
+      if (state.folded.has(id)) state.folded.delete(id);
+      else state.folded.add(id);
+      preserveRender();
+    }
+
+    function preserveRender() {
+      if (!state.roadmap) return;
+      const top = scrollerEl.scrollTop;
+      const left = scrollerEl.scrollLeft;
+      renderBody();
+      scrollerEl.scrollTop = top;
+      scrollerEl.scrollLeft = left;
+    }
+
+    function syncFilterButtons() {
+      for (const [value] of STATUSES) {
+        const button = document.querySelector('button.pill[data-status="' + value + '"]');
+        if (button) button.setAttribute("aria-pressed", String(statusVisible(value)));
+      }
+    }
+
+    function applyStatusFilter(status) {
+      if (state.statuses.size === 0) state.statuses.add(status);
+      else if (state.statuses.has(status)) state.statuses.delete(status);
+      else {
+        state.statuses.add(status);
+        if (state.statuses.size === STATUSES.length) state.statuses.clear();
+      }
+      syncFilterButtons();
+    }
+
+    function ensureStatusShown(status) {
+      if (statusVisible(status)) return;
+      state.statuses.add(status);
+      if (state.statuses.size === STATUSES.length) state.statuses.clear();
+      syncFilterButtons();
     }
 
     function taskRow(task, data) {
@@ -475,6 +664,71 @@
       input.addEventListener("blur", () => finish(true));
     }
 
+    function milestoneSection(items, data) {
+      const folded = state.folded.has("milestones");
+      const fragment = document.createDocumentFragment();
+      const row = document.createElement("tr");
+      row.className = "epic" + (folded ? " folded" : "");
+      row.append(nameCell(milestoneHead(items, folded)));
+      const gems = new Map();
+      if (folded) {
+        for (const item of items) {
+          if (!item.date) continue;
+          const sprintId = sprintForDate(data.sprints, item.date);
+          if (!sprintId) continue;
+          const names = gems.get(sprintId) || [];
+          names.push(item.name);
+          gems.set(sprintId, names);
+        }
+      }
+      for (const sprint of data.sprints) {
+        const cell = document.createElement("td");
+        cell.className = "sprint" + (sprint.id === data.today_sprint ? " current" : "");
+        const names = gems.get(sprint.id);
+        if (names) {
+          const gem = document.createElement("span");
+          gem.className = "gem";
+          gem.title = names.join(", ");
+          cell.append(gem);
+        }
+        row.append(cell);
+      }
+      fragment.append(row);
+      if (!folded) {
+        for (const item of items) fragment.append(milestoneRow(item, data));
+      }
+      return fragment;
+    }
+
+    function milestoneHead(items, folded) {
+      const wrap = document.createElement("div");
+      wrap.className = "name-inner";
+      const fold = document.createElement("button");
+      fold.type = "button";
+      fold.className = "fold";
+      fold.setAttribute("aria-expanded", folded ? "false" : "true");
+      fold.setAttribute("aria-label", (folded ? "Unfold " : "Fold ") + "Milestones");
+      const chevron = document.createElement("span");
+      chevron.className = "chevron";
+      chevron.setAttribute("aria-hidden", "true");
+      fold.append(chevron);
+      fold.addEventListener("click", () => toggleEpic("milestones"));
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = "Milestones";
+      label.title = "Milestones";
+      label.addEventListener("click", () => toggleEpic("milestones"));
+      wrap.append(fold, label);
+      if (folded) {
+        const count = document.createElement("span");
+        count.className = "count";
+        count.textContent = String(items.length);
+        count.title = items.length === 1 ? "1 milestone" : items.length + " milestones";
+        wrap.append(count);
+      }
+      return wrap;
+    }
+
     function milestoneRow(item, data) {
       const row = document.createElement("tr");
       row.className = "milestone";
@@ -487,12 +741,24 @@
       const label = document.createElement("span");
       label.className = "label";
       label.textContent = item.name;
-      label.title = item.name;
+      label.title = item.date ? item.name : "Click a sprint to place " + item.name;
       wrap.append(tag, label);
+      if (item.date) {
+        const clear = document.createElement("button");
+        clear.type = "button";
+        clear.className = "clear";
+        clear.textContent = "Clear";
+        clear.setAttribute("aria-label", "Clear date for " + item.name);
+        clear.addEventListener("click", () => savePatch(item.id, { date: null }));
+        wrap.append(clear);
+      }
       row.append(nameCell(wrap));
       const placed = sprintForDate(data.sprints, item.date);
       for (const sprint of data.sprints) {
         const cell = plainCell(sprint, data);
+        cell.dataset.item = item.id;
+        cell.dataset.sprint = sprint.id;
+        cell.title = sprintLabel(sprint.id) + " – " + sprintLabel(sprint.last_day);
         if (placed === sprint.id) {
           const gem = document.createElement("span");
           gem.className = "gem";
@@ -584,6 +850,8 @@
       }
       const epic = state.roadmap.epics.find((item) => item.id === epicId);
       const created = epic.items[epic.items.length - 1];
+      state.folded.delete(epicId);
+      ensureStatusShown(created.status);
       renderBody();
       scrollerEl.scrollTop = top;
       scrollerEl.scrollLeft = left;
@@ -603,6 +871,14 @@
       const itemId = cell.dataset.item;
       const sprintId = cell.dataset.sprint;
       if (!itemId || document.body.classList.contains("saving")) return;
+      const item = findItem(itemId);
+      if (item && item.kind === "milestone") {
+        if (sprintForDate(state.roadmap.sprints, item.date) === sprintId) return;
+        state.anchor = null;
+        setHint();
+        savePatch(itemId, { date: sprintId });
+        return;
+      }
       if (!state.anchor || state.anchor.itemId !== itemId) {
         state.anchor = { itemId, sprintId };
         renderBody();
@@ -621,7 +897,13 @@
 
     function preview(cell) {
       bodyEl.querySelectorAll("td.preview").forEach((item) => item.classList.remove("preview"));
-      if (!cell || !state.anchor || cell.dataset.item !== state.anchor.itemId) return;
+      if (!cell || !cell.dataset.item) return;
+      const item = findItem(cell.dataset.item);
+      if (item && item.kind === "milestone") {
+        cell.classList.add("preview");
+        return;
+      }
+      if (!state.anchor || cell.dataset.item !== state.anchor.itemId) return;
       const sprintId = cell.dataset.sprint;
       const start = state.anchor.sprintId < sprintId ? state.anchor.sprintId : sprintId;
       const end = state.anchor.sprintId < sprintId ? sprintId : state.anchor.sprintId;
@@ -643,6 +925,21 @@
         state.anchor = null;
         renderBody();
       }
+    });
+    document.getElementById("fold-all").addEventListener("click", () => {
+      if (!state.roadmap) return;
+      for (const epic of state.roadmap.epics) state.folded.add(epic.id);
+      preserveRender();
+    });
+    document.getElementById("unfold-all").addEventListener("click", () => {
+      state.folded.clear();
+      preserveRender();
+    });
+    document.querySelectorAll("button.pill").forEach((button) => {
+      button.addEventListener("click", () => {
+        applyStatusFilter(button.dataset.status);
+        preserveRender();
+      });
     });
 
     async function init() {

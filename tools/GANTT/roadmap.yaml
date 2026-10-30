@@ -165,8 +165,6 @@ epics:
         kind: task
         name: Revision of cooling system design to support cartridge design
         status: done
-        start: "2026-03-26"
-        end: "2026-03-26"
       - id: preliminary-discussion-with-aspen
         kind: task
         name: Preliminary discussion with Aspen
@@ -208,8 +206,8 @@ epics:
         kind: task
         name: Termistors study
         status: in_progress
-        start: "2026-11-05"
-        end: "2026-11-05"
+        start: "2026-10-22"
+        end: "2026-10-22"
   - id: cartrige
     name: Cartrige
     items:
@@ -569,10 +567,6 @@ epics:
         kind: task
         name: Conduct tranfer
         status: future
-      - id: cadaver-test
-        kind: milestone
-        name: Cadaver Test
-        date: "2026-12-17"
       - id: create-protokoll
         kind: task
         name: Create protokoll
@@ -597,9 +591,6 @@ epics:
         status: future
         start: "2026-11-05"
         end: "2026-12-03"
-      - id: non-glp-animal-study
-        kind: milestone
-        name: Non GLP Animal Study
       - id: glp-animla-study
         kind: task
         name: GLP Animla Study
@@ -610,3 +601,14 @@ epics:
         status: future
         start: "2027-01-14"
         end: "2027-01-28"
+  - id: milestones
+    name: Milestones
+    items:
+      - id: cadaver-test
+        kind: milestone
+        name: Cadaver Test
+        date: "2026-12-17"
+      - id: non-glp-animal-study
+        kind: milestone
+        name: Non GLP Animal Study
+        date: "2027-03-11"

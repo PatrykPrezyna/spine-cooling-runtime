@@ -32,6 +32,9 @@ epics:
         kind: task
         name: Freeze the design
         status: future
+  - id: milestones
+    name: Milestones
+    items:
       - id: animal-study
         kind: milestone
         name: Animal study

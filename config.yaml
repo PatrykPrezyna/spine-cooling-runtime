@@ -4,6 +4,50 @@ ui:
   window_height: 450
   update_interval_ms: 100
   fullscreen: true
+actuators:
+  control_temp_label: Tip
+  stepper_motor:
+    driver: TB6600
+    steps_per_revolution: 200
+    microstepping: 16
+    default_speed_rpm: 20
+    pumping_speed_rpm: 50
+    pumping_slow_speed_rpm: 10
+    max_speed_rpm: 390
+    min_pump_speed_rpm: 10
+    min_speed_rpm: 1
+    ramp_start_fraction: 0.5
+    continuous_direction: -1
+    enable_on_startup: false
+    disable_on_idle: true
+    en_active_high: false
+    pins:
+      en_fault: 24
+      step: 5
+      dir: 25
+  pump_control:
+    max_flow_ml_per_min: 60.0
+    min_flow_ml_per_min: 10.0
+    full_speed_error_c: 0.5
+    kp: 180.0
+    ki: 40.0
+    kd: 5.0
+    integral_limit: 2.0
+  compressor:
+    relay_pin: 16
+    heat_ex_labels:
+    - Plate 1
+    off_below_temp_c: -0.5
+    on_above_temp_c: 1.3
+    min_off_before_on_s: 60
+  cooling_power:
+    water_density_kg_per_l: 1.0
+    water_cp_j_per_kg_k: 4184.0
+    catheter_in_label: Catheter In
+    catheter_out_label: Catheter Out
+    cartridge_in_label: Cartrige In
+    cartridge_out_label: Cartrige Out
+  acustic_signal_gpio_pin: 16
 sensors:
   digital_sensors:
     sample_rate_hz: 1.0
@@ -78,50 +122,6 @@ sensors:
       bar_lo: -0.792897
       mv_hi: 96.9
       bar_hi: 5.171068
-actuators:
-  control_temp_label: Tip
-  stepper_motor:
-    driver: TB6600
-    steps_per_revolution: 200
-    microstepping: 16
-    default_speed_rpm: 20
-    pumping_speed_rpm: 50
-    pumping_slow_speed_rpm: 10
-    max_speed_rpm: 390
-    min_pump_speed_rpm: 10
-    min_speed_rpm: 1
-    ramp_start_fraction: 0.5
-    continuous_direction: -1
-    enable_on_startup: false
-    disable_on_idle: true
-    en_active_high: false
-    pins:
-      en_fault: 24
-      step: 5
-      dir: 25
-  pump_control:
-    max_flow_ml_per_min: 60.0
-    min_flow_ml_per_min: 10.0
-    full_speed_error_c: 0.5
-    kp: 180.0
-    ki: 40.0
-    kd: 5.0
-    integral_limit: 2.0
-  compressor:
-    relay_pin: 16
-    heat_ex_labels:
-    - Plate 1
-    off_below_temp_c: -0.5
-    on_above_temp_c: 1.3
-    min_off_before_on_s: 60
-  cooling_power:
-    water_density_kg_per_l: 1.0
-    water_cp_j_per_kg_k: 4184.0
-    catheter_in_label: Catheter In
-    catheter_out_label: Catheter Out
-    cartridge_in_label: Cartrige In
-    cartridge_out_label: Cartrige Out
-  acustic_signal_gpio_pin: 16
 logging:
   directory: logs
   sensors_filename_format: '%Y%m%d_%H%M%S_sensors.csv'
