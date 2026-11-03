@@ -1,9 +1,9 @@
 version: 1
-title: Cool Spine
+title: Cool Spine Roadmap
 timeline:
   start: "2026-01-01"
   sprint_days: 14
-  sprint_count: 47
+  sprint_count: 53
 epics:
   - id: preperation
     name: Preperation
@@ -171,12 +171,6 @@ epics:
         status: done
         start: "2026-03-26"
         end: "2026-03-26"
-      - id: propane-r290-check-with-aspen-supplier-if-the-gas-we-are-using-may-be-used-in-the-operating-room-and-if-they-have-any-experience-with-it-in-medical-devices
-        kind: task
-        name: Propane R290, Check with Aspen (supplier) if the gas we are using may be used in the operating room, and if they have any experience with it in medical devices
-        status: in_progress
-        start: "2026-10-22"
-        end: "2026-10-22"
       - id: catheter-test-to-failure
         kind: task
         name: Catheter test to failure
@@ -196,12 +190,16 @@ epics:
         status: done
       - id: cool-plates-and-cartrige-design
         kind: task
-        name: Cool plates and cartrige design
+        name: Banchmark catheder test (suvie) - repeat
         status: future
+        start: "2026-10-22"
+        end: "2026-10-22"
       - id: banchmark-catheder-test-body-phantom-0c-40w-at-y-mlmin
         kind: task
         name: "Banchmark catheder test (body phantom) 0C -> 40W at y ml/min"
         status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
       - id: termistors-study
         kind: task
         name: Termistors study
@@ -227,30 +225,12 @@ epics:
         kind: task
         name: "Test with cool plate system ?"
         status: done
-      - id: cooling-system
-        kind: task
-        name: Cooling System
-        status: future
       - id: current-coldplate-2-1-testing-27w
         kind: task
-        name: "Current coldplate (-2-1) testing -> -27W"
+        name: "Current coldplate (-2-1) testing -> -27W -> System failed, see"
         status: future
-      - id: tuning-of-the-current-system
-        kind: task
-        name: Tuning of the current system
-        status: in_progress
         start: "2026-10-22"
         end: "2026-10-22"
-      - id: contingency-plan-if-we-need-bigger-coldplate-10weeks-10k
-        kind: task
-        name: "CONTINGENCY PLAN (if we need: bigger coldplate, 10weeks - 10K ?)"
-        status: future
-        start: "2026-11-05"
-        end: "2026-11-05"
-      - id: contingency-2-think-about-peltier
-        kind: task
-        name: CONTINGENCY 2 (think about peltier ...)
-        status: future
       - id: oder-second-cartrige-from-r-and-d
         kind: task
         name: "order second cartrige from \"R&D\""
@@ -273,6 +253,33 @@ epics:
         kind: task
         name: Manufacture final cartrige from selected material
         status: future
+        start: "2027-02-11"
+        end: "2027-02-11"
+  - id: cooling-system
+    name: Cooling System
+    items:
+      - id: propane-r290-check-with-aspen-supplier-if-the-gas-we-are-using-may-be-used-in-the-operating-room-and-if-they-have-any-experience-with-it-in-medical-devices
+        kind: task
+        name: Propane R290, Check with Aspen (supplier) if the gas we are using may be used in the operating room, and if they have any experience with it in medical devices
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: tuning-of-the-current-system
+        kind: task
+        name: Tuning of the current system
+        status: done
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: contingency-plan-if-we-need-bigger-coldplate-10weeks-10k
+        kind: task
+        name: "CONTINGENCY PLAN (if we need: bigger coldplate, 10weeks - 10K ?)"
+        status: in_progress
+        start: "2026-10-22"
+        end: "2026-10-22"
+      - id: contingency-2-think-about-peltier
+        kind: task
+        name: CONTINGENCY 2 (think about peltier ...)
+        status: future
   - id: tubing
     name: Tubing
     items:
@@ -293,7 +300,7 @@ epics:
       - id: test-and-verify
         kind: task
         name: "Test & Verify"
-        status: in_progress
+        status: future
         start: "2026-10-22"
         end: "2026-10-22"
       - id: masterflex-qualified-sesrs
@@ -368,14 +375,20 @@ epics:
         kind: task
         name: Design
         status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
       - id: manufacture
         kind: task
         name: Manufacture
         status: future
+        start: "2026-11-19"
+        end: "2026-11-19"
       - id: test-and-integrate
         kind: task
         name: "Test & Integrate"
         status: future
+        start: "2026-12-03"
+        end: "2026-12-03"
       - id: design-new-probes-for-the-animal-study
         kind: task
         name: Design new probes for the animal study
@@ -436,7 +449,7 @@ epics:
         name: "Integrate & Test"
         status: in_progress
         start: "2026-10-22"
-        end: "2026-10-22"
+        end: "2026-11-05"
       - id: revise
         kind: task
         name: Revise
@@ -449,27 +462,27 @@ epics:
       - id: integrate-the-battery
         kind: task
         name: Integrate the Battery
-        status: in_progress
-        start: "2026-10-22"
-        end: "2026-10-22"
+        status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
       - id: implement-ui-and-error-cases
         kind: task
         name: Implement UI and Error cases
-        status: in_progress
-        start: "2026-10-22"
-        end: "2026-10-22"
+        status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
       - id: test
         kind: task
         name: Test
-        status: in_progress
-        start: "2026-10-22"
-        end: "2026-10-22"
+        status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
       - id: simulate-30min-operation
         kind: task
         name: Simulate 30min operation
         status: future
-        start: "2026-11-05"
-        end: "2026-11-05"
+        start: "2026-11-19"
+        end: "2026-11-19"
       - id: test-whether-usb-c-input-is-an-option
         kind: task
         name: Test whether USB-C input is an option
@@ -500,20 +513,20 @@ epics:
         kind: task
         name: Make contact with the Ohaio people
         status: in_progress
-        start: "2026-10-22"
-        end: "2026-10-22"
+        start: "2026-11-05"
+        end: "2026-11-05"
       - id: desing-the-study-protocol-especially-probe-placement
         kind: task
         name: Desing the Study protocol - especially probe placement
         status: future
+        start: "2026-11-05"
+        end: "2026-11-19"
       - id: freeze-the-softwarehardware-version-and-conduct-final-verification
         kind: task
-        name: Freeze the software/hardware version and conduct final verification
+        name: First Version Freeze (v0.1.0) and conduct final verification
         status: future
-      - id: software
-        kind: task
-        name: Software
-        status: future
+        start: "2026-12-03"
+        end: "2026-12-17"
       - id: move-the-repos-to-mit-hosted-github
         kind: task
         name: Move the repos to mit hosted Github
@@ -523,9 +536,9 @@ epics:
       - id: review-the-falut-codes-and-connect-to-the-error-code-excel
         kind: task
         name: Review the falut codes and connect to the error code excel
-        status: in_progress
-        start: "2026-10-22"
-        end: "2026-10-22"
+        status: future
+        start: "2026-11-05"
+        end: "2026-11-05"
       - id: reverse-enginginerg-of-the-early-criolife-prototype
         kind: task
         name: Reverse Enginginerg of the early criolife prototype
@@ -608,7 +621,19 @@ epics:
         kind: milestone
         name: Cadaver Test
         date: "2026-12-17"
+      - id: version-freeze-v0-1-0
+        kind: milestone
+        name: Version Freeze v0.1.0
+        date: "2027-02-25"
       - id: non-glp-animal-study
         kind: milestone
         name: Non GLP Animal Study
-        date: "2027-03-11"
+        date: "2027-03-25"
+      - id: version-freeze-v0-2-0
+        kind: milestone
+        name: Version Freeze v0.2.0
+        date: "2027-12-02"
+      - id: glp-animal-study
+        kind: milestone
+        name: GLP Animal Study
+        date: "2027-12-30"

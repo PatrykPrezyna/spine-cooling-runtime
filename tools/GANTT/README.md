@@ -10,6 +10,10 @@ Open the address it prints. A task bar is a run of sprints: `start` and `end` ar
 
 Fold an epic to hide its tasks and show one bar covering them. Fold all and Unfold all do that for every epic. Done, In progress, and Future filter every epic: click one to show only that status, then click others to add them. A folded bar follows the same filter.
 
+Drag the grip beside a task name to change its order or move it into another epic.
+
+Current sprint is the button above each sprint date. Click one to show tasks whose duration includes that sprint, including tasks that start earlier or end later. Click the same button again to show every task.
+
 Milestones are listed under the last epic. Click a sprint on a milestone to move it. Clear removes its date.
 
 Rebuild the Excel GANTT from that file:

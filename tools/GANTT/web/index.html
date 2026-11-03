@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Roadmap</title>
+  <title>Cool Spine Roadmap</title>
   <style>
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
@@ -25,7 +25,6 @@
       border-bottom: 1px solid #e3e8ee;
     }
     h1 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
-    .sub { margin: 2px 0 0; color: #5c6b7a; }
     .toolbar {
       display: flex;
       align-items: center;
@@ -82,7 +81,27 @@
       z-index: 4;
     }
     thead tr:first-child th.year { top: 0; height: 26px; }
-    thead tr:last-child th { top: 26px; height: 40px; }
+    thead tr.quarters th {
+      top: 26px;
+      height: 22px;
+      padding: 0;
+      font-size: 11px;
+      font-weight: 650;
+      color: #3d4d5e;
+      text-align: left;
+      border-bottom: 1px solid #e3e8ee;
+    }
+    thead tr.quarters th.quarter { border-right: 1px solid #eef1f4; }
+    thead tr.filters th {
+      top: 48px;
+      height: 28px;
+      padding: 0 3px;
+      vertical-align: middle;
+      border-bottom: 1px solid #e3e8ee;
+    }
+    thead tr.filters th.name-col { padding-left: 12px; font-weight: 650; }
+    thead tr.filters th.name-col.on { color: #1a4478; }
+    thead tr:last-child th { top: 76px; height: 40px; }
     th.name-col { top: 0; }
     th.name-col, td.name-col {
       position: sticky;
@@ -95,6 +114,22 @@
       box-shadow: 4px 0 8px rgba(20, 30, 40, 0.04);
     }
     th.name-col { z-index: 6; text-align: left; padding-left: 12px; font-size: 12px; color: #5c6b7a; }
+    button.sprint-filter {
+      display: block;
+      width: 100%;
+      height: 16px;
+      padding: 0;
+      border: 1px solid #d5dbe3;
+      border-radius: 999px;
+      background: #fff;
+      cursor: pointer;
+    }
+    button.sprint-filter:hover { border-color: #1a4478; }
+    button.sprint-filter[aria-pressed="true"] {
+      background: #1a4478;
+      border-color: #1a4478;
+    }
+    th.sprint.picked { box-shadow: inset 0 -3px 0 #1a4478; }
     th.year {
       text-align: left;
       padding: 0;
@@ -104,13 +139,14 @@
       border-bottom: 1px solid #e3e8ee;
       z-index: 4;
     }
-    .year-label {
+    .year-label, .quarter-label {
       position: sticky;
       left: 392px;
       display: inline-block;
-      padding: 4px 12px 4px 8px;
       background: #fff;
     }
+    .year-label { padding: 4px 12px 4px 8px; }
+    .quarter-label { padding: 2px 10px 2px 8px; }
     th.sprint {
       width: 36px;
       min-width: 36px;
@@ -161,6 +197,49 @@
       margin: -4.5px 0 0 -4.5px;
     }
     .name-inner { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px 0 10px; }
+    button.grip {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 22px;
+      margin-left: -6px;
+      padding: 0;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: #8b97a3;
+      cursor: grab;
+      touch-action: none;
+    }
+    button.grip:hover { background: #e6ebf0; color: #3d4d5e; }
+    .grip-dots {
+      width: 8px;
+      height: 12px;
+      background: radial-gradient(circle, currentColor 1.15px, transparent 1.25px) 0 0 / 4px 4px;
+    }
+    body.dragging { cursor: grabbing; user-select: none; }
+    body.dragging button.grip { cursor: grabbing; }
+    tr.dragging td { opacity: 0.45; }
+    tr.drop-before td.name-col { box-shadow: inset 0 3px 0 #1a4478, 4px 0 8px rgba(20, 30, 40, 0.04); }
+    tr.drop-after td.name-col { box-shadow: inset 0 -3px 0 #1a4478, 4px 0 8px rgba(20, 30, 40, 0.04); }
+    .drag-ghost {
+      position: fixed;
+      z-index: 20;
+      max-width: 280px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: #1a4478;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 650;
+      pointer-events: none;
+      box-shadow: 0 6px 16px rgba(20, 30, 40, 0.18);
+    }
     .label {
       flex: 1;
       min-width: 0;
@@ -283,8 +362,7 @@
 <body>
   <header>
     <div>
-      <h1 id="title">Roadmap</h1>
-      <p class="sub" id="hint">Click a sprint, then another, to set how long a task runs. Click a sprint to move a milestone.</p>
+      <h1 id="title">Cool Spine Roadmap</h1>
     </div>
     <div class="toolbar">
       <button type="button" id="fold-all" class="cmd">Fold all</button>
@@ -319,11 +397,11 @@
       anchor: null,
       scrolled: false,
       folded: new Set(),
-      statuses: new Set()
+      statuses: new Set(),
+      sprintId: null
     };
 
     const titleEl = document.getElementById("title");
-    const hintEl = document.getElementById("hint");
     const errorEl = document.getElementById("error");
     const headEl = document.getElementById("head");
     const bodyEl = document.getElementById("body");
@@ -337,12 +415,6 @@
     function clearError() {
       errorEl.hidden = true;
       errorEl.textContent = "";
-    }
-
-    function setHint() {
-      hintEl.textContent = state.anchor
-        ? "Click the last sprint. Click the same cell again for one sprint."
-        : "Click a sprint, then another, to set how long a task runs. Click a sprint to move a milestone.";
     }
 
     async function api(method, url, body) {
@@ -374,6 +446,11 @@
       return MONTHS[Number(month) - 1] + " " + Number(day);
     }
 
+    function quarterKey(iso) {
+      const quarter = Math.floor((Number(iso.slice(5, 7)) - 1) / 3) + 1;
+      return iso.slice(0, 4) + "-Q" + quarter;
+    }
+
     function barEdges(start, end, sprintId) {
       if (!start || !end || sprintId < start || sprintId > end) return "";
       if (start === end) return "in-bar single";
@@ -382,12 +459,19 @@
       return "in-bar";
     }
 
+    function sprintFlags(sprint, data) {
+      return (sprint.id === data.today_sprint ? " current" : "") + (sprint.id === state.sprintId ? " picked" : "");
+    }
+
+    function coversSprint(item, sprintId) {
+      return !!item.start && !!item.end && item.start <= sprintId && sprintId <= item.end;
+    }
+
     function buildHead(data) {
       headEl.replaceChildren();
       const yearRow = document.createElement("tr");
       const corner = document.createElement("th");
       corner.className = "name-col";
-      corner.rowSpan = 2;
       corner.textContent = "Task";
       yearRow.append(corner);
       let previousYear = "";
@@ -405,10 +489,59 @@
           previousYear = year;
         }
       }
-      const sprintRow = document.createElement("tr");
+      const quarterRow = document.createElement("tr");
+      quarterRow.className = "quarters";
+      const quarterCorner = document.createElement("th");
+      quarterCorner.className = "name-col";
+      quarterRow.append(quarterCorner);
+      let previousQuarter = "";
+      for (const sprint of data.sprints) {
+        const key = quarterKey(sprint.id);
+        if (key !== previousQuarter) {
+          const cell = document.createElement("th");
+          cell.className = "quarter";
+          cell.colSpan = data.sprints.filter((item) => quarterKey(item.id) === key).length;
+          cell.title = key.slice(5) + " " + key.slice(0, 4);
+          const label = document.createElement("span");
+          label.className = "quarter-label";
+          label.textContent = key.slice(5);
+          cell.append(label);
+          quarterRow.append(cell);
+          previousQuarter = key;
+        }
+      }
+      const filterRow = document.createElement("tr");
+      filterRow.className = "filters";
+      const filterLabel = document.createElement("th");
+      filterLabel.className = "name-col";
+      filterLabel.id = "sprint-filter-label";
+      filterLabel.textContent = "Current sprint";
+      filterRow.append(filterLabel);
       for (const sprint of data.sprints) {
         const cell = document.createElement("th");
-        cell.className = "sprint" + (sprint.id === data.today_sprint ? " current" : "");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "sprint-filter";
+        button.dataset.sprint = sprint.id;
+        const range = sprintLabel(sprint.id) + " – " + sprintLabel(sprint.last_day) + ", " + sprint.id.slice(0, 4);
+        button.title = "Current sprint: show tasks with duration in " + range + ". Click again to show every task.";
+        button.setAttribute("aria-label", "Current sprint, " + range);
+        button.addEventListener("click", () => {
+          state.sprintId = state.sprintId === sprint.id ? null : sprint.id;
+          state.anchor = null;
+          preserveRender();
+        });
+        cell.append(button);
+        filterRow.append(cell);
+      }
+      const sprintRow = document.createElement("tr");
+      const dateCorner = document.createElement("th");
+      dateCorner.className = "name-col";
+      sprintRow.append(dateCorner);
+      for (const sprint of data.sprints) {
+        const cell = document.createElement("th");
+        cell.className = "sprint" + sprintFlags(sprint, data);
+        cell.dataset.sprint = sprint.id;
         cell.title = sprintLabel(sprint.id) + " – " + sprintLabel(sprint.last_day) + ", " + sprint.id.slice(0, 4);
         const day = document.createElement("span");
         day.className = "day";
@@ -418,7 +551,7 @@
         cell.append(day, month);
         sprintRow.append(cell);
       }
-      headEl.append(yearRow, sprintRow);
+      headEl.append(yearRow, quarterRow, filterRow, sprintRow);
     }
 
     function statusVisible(status) {
@@ -426,7 +559,14 @@
     }
 
     function taskShown(item) {
-      return item.kind === "task" && statusVisible(item.status);
+      if (item.kind !== "task" || !statusVisible(item.status)) return false;
+      if (!state.sprintId) return true;
+      return coversSprint(item, state.sprintId);
+    }
+
+    function milestoneShown(item, sprints) {
+      if (!state.sprintId) return true;
+      return sprintForDate(sprints, item.date) === state.sprintId;
     }
 
     function buildBody(data) {
@@ -437,14 +577,17 @@
           if (item.kind === "milestone") milestones.push(item);
         }
         if (epic.id === "milestones") continue;
+        const shown = epic.items.some((item) => taskShown(item));
+        if (state.sprintId && !shown) continue;
         const folded = state.folded.has(epic.id);
         fragment.append(epicRow(epic, data, folded));
         if (folded) continue;
         for (const item of epic.items) {
-          if (item.kind !== "milestone" && taskShown(item)) fragment.append(taskRow(item, data));
+          if (item.kind !== "milestone" && taskShown(item)) fragment.append(taskRow(item, data, epic.id));
         }
       }
-      if (milestones.length) fragment.append(milestoneSection(milestones, data));
+      const visibleMilestones = milestones.filter((item) => milestoneShown(item, data.sprints));
+      if (visibleMilestones.length) fragment.append(milestoneSection(visibleMilestones, data));
       bodyEl.replaceChildren(fragment);
     }
 
@@ -465,12 +608,13 @@
     function epicRow(epic, data, folded) {
       const row = document.createElement("tr");
       row.className = "epic" + (folded ? " folded" : "");
+      row.dataset.epic = epic.id;
       row.append(nameCell(epicName(epic, folded)));
       const span = folded ? coveredSpan(epic) : null;
       for (const sprint of data.sprints) {
         const edges = span ? barEdges(span.start, span.end, sprint.id) : "";
         const cell = document.createElement("td");
-        cell.className = "sprint" + (edges ? " " + edges : "") + (sprint.id === data.today_sprint ? " current" : "");
+        cell.className = "sprint" + (edges ? " " + edges : "") + sprintFlags(sprint, data);
         if (edges) {
           const mark = document.createElement("span");
           mark.className = "mark";
@@ -502,7 +646,7 @@
       label.addEventListener("click", () => toggleEpic(epic.id));
       wrap.append(fold, label);
       const tasks = epic.items.filter((item) => item.kind === "task");
-      const shown = tasks.filter((item) => statusVisible(item.status)).length;
+      const shown = tasks.filter((item) => taskShown(item)).length;
       if (tasks.length && (folded || shown !== tasks.length)) {
         const count = document.createElement("span");
         count.className = "count";
@@ -559,15 +703,15 @@
       syncFilterButtons();
     }
 
-    function taskRow(task, data) {
+    function taskRow(task, data, epicId) {
       const row = document.createElement("tr");
       row.className = "task";
       row.dataset.id = task.id;
+      row.dataset.epic = epicId;
       row.append(nameCell(taskName(task)));
       for (const sprint of data.sprints) {
         const cell = document.createElement("td");
-        cell.className = "sprint " + barEdges(task.start, task.end, sprint.id);
-        if (sprint.id === data.today_sprint) cell.classList.add("current");
+        cell.className = "sprint " + barEdges(task.start, task.end, sprint.id) + sprintFlags(sprint, data);
         if (state.anchor && state.anchor.itemId === task.id && state.anchor.sprintId === sprint.id) {
           cell.classList.add("anchor");
         }
@@ -585,6 +729,20 @@
     function taskName(task) {
       const wrap = document.createElement("div");
       wrap.className = "name-inner";
+      const grip = document.createElement("button");
+      grip.type = "button";
+      grip.className = "grip";
+      grip.title = "Drag to reorder or move to another epic";
+      grip.setAttribute("aria-label", "Drag " + task.name);
+      const dots = document.createElement("span");
+      dots.className = "grip-dots";
+      dots.setAttribute("aria-hidden", "true");
+      grip.append(dots);
+      grip.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        onGripDown(event, task.id);
+      });
       const select = document.createElement("select");
       select.className = "status";
       select.dataset.status = task.status;
@@ -608,20 +766,7 @@
       button.title = task.name;
       button.setAttribute("aria-label", "Rename " + task.name);
       button.addEventListener("click", () => beginEdit(button));
-      wrap.append(select, button);
-      if (task.start && task.end) {
-        const clear = document.createElement("button");
-        clear.type = "button";
-        clear.className = "clear";
-        clear.textContent = "Clear";
-        clear.setAttribute("aria-label", "Clear duration");
-        clear.addEventListener("click", () => {
-          state.anchor = null;
-          setHint();
-          savePatch(task.id, { start: null, end: null });
-        });
-        wrap.append(clear);
-      }
+      wrap.append(grip, select, button);
       return wrap;
     }
 
@@ -683,7 +828,7 @@
       }
       for (const sprint of data.sprints) {
         const cell = document.createElement("td");
-        cell.className = "sprint" + (sprint.id === data.today_sprint ? " current" : "");
+        cell.className = "sprint" + sprintFlags(sprint, data);
         const names = gems.get(sprint.id);
         if (names) {
           const gem = document.createElement("span");
@@ -779,7 +924,7 @@
 
     function plainCell(sprint, data) {
       const cell = document.createElement("td");
-      cell.className = "sprint" + (sprint.id === data.today_sprint ? " current" : "");
+      cell.className = "sprint" + sprintFlags(sprint, data);
       return cell;
     }
 
@@ -791,9 +936,22 @@
       return null;
     }
 
+    function syncSprintButtons() {
+      for (const button of headEl.querySelectorAll("button.sprint-filter")) {
+        button.setAttribute("aria-pressed", String(button.dataset.sprint === state.sprintId));
+      }
+      for (const cell of headEl.querySelectorAll("th.sprint")) {
+        cell.classList.toggle("picked", cell.dataset.sprint === state.sprintId);
+      }
+      const label = document.getElementById("sprint-filter-label");
+      if (!label) return;
+      label.textContent = state.sprintId ? "Current sprint: " + sprintLabel(state.sprintId) : "Current sprint";
+      label.classList.toggle("on", !!state.sprintId);
+    }
+
     function renderBody() {
       buildBody(state.roadmap);
-      setHint();
+      syncSprintButtons();
     }
 
     function render() {
@@ -867,6 +1025,207 @@
       if (button) beginEdit(button);
     }
 
+    const drag = {
+      pointer: null,
+      id: null,
+      handle: null,
+      startX: 0,
+      startY: 0,
+      lastY: null,
+      active: false,
+      ghost: null,
+      target: null,
+      scrollTimer: null
+    };
+
+    function onGripDown(event, taskId) {
+      if (document.body.classList.contains("saving") || drag.pointer !== null) return;
+      drag.pointer = event.pointerId;
+      drag.id = taskId;
+      drag.handle = event.currentTarget;
+      drag.startX = event.clientX;
+      drag.startY = event.clientY;
+      drag.active = false;
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* the pointer is already gone */ }
+      document.addEventListener("pointermove", onGripMove);
+      document.addEventListener("pointerup", onGripUp);
+      document.addEventListener("pointercancel", onGripUp);
+    }
+
+    function onGripMove(event) {
+      if (event.pointerId !== drag.pointer) return;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (!drag.active) {
+        if (dx * dx + dy * dy < 25) return;
+        beginDrag(event);
+      }
+      event.preventDefault();
+      drag.lastY = event.clientY;
+      placeGhost(event.clientX, event.clientY);
+      autoScroll(event.clientY);
+      showDrop(dropAt(event.clientY));
+    }
+
+    function beginDrag(event) {
+      drag.active = true;
+      state.anchor = null;
+      document.body.classList.add("dragging");
+      const row = taskRowEl(drag.id);
+      if (row) row.classList.add("dragging");
+      const ghost = document.createElement("div");
+      ghost.className = "drag-ghost";
+      const task = findItem(drag.id);
+      ghost.textContent = task ? task.name : "Task";
+      document.body.append(ghost);
+      drag.ghost = ghost;
+      placeGhost(event.clientX, event.clientY);
+      drag.scrollTimer = setInterval(() => {
+        if (drag.lastY == null) return;
+        autoScroll(drag.lastY);
+        showDrop(dropAt(drag.lastY));
+      }, 32);
+    }
+
+    function placeGhost(x, y) {
+      if (!drag.ghost) return;
+      drag.ghost.style.left = (x + 14) + "px";
+      drag.ghost.style.top = (y + 14) + "px";
+    }
+
+    function autoScroll(y) {
+      const frame = scrollerEl.getBoundingClientRect();
+      if (y < frame.top + 36) scrollerEl.scrollTop -= 14;
+      else if (y > frame.bottom - 28) scrollerEl.scrollTop += 14;
+    }
+
+    function taskRowEl(id) {
+      return bodyEl.querySelector('tr.task[data-id="' + CSS.escape(id) + '"]');
+    }
+
+    function clearDrop() {
+      bodyEl.querySelectorAll("tr.drop-before, tr.drop-after").forEach((row) => {
+        row.classList.remove("drop-before", "drop-after");
+      });
+    }
+
+    function showDrop(target) {
+      clearDrop();
+      drag.target = target;
+      if (!target) return;
+      target.row.classList.add(target.place === "before" ? "drop-before" : "drop-after");
+    }
+
+    function dropRows() {
+      return [...bodyEl.querySelectorAll("tr.epic[data-epic], tr.task[data-epic]")]
+        .filter((row) => row.dataset.epic !== "milestones");
+    }
+
+    function startOfEpic(row) {
+      const epic = state.roadmap.epics.find((item) => item.id === row.dataset.epic);
+      const first = epic.items.find((item) => item.kind === "task" && item.id !== drag.id);
+      return { row, place: "before", epic: epic.id, before: first ? first.id : null };
+    }
+
+    function endOfEpic(row) {
+      return { row, place: "after", epic: row.dataset.epic, before: null };
+    }
+
+    function beforeTask(row) {
+      return { row, place: "before", epic: row.dataset.epic, before: row.dataset.id };
+    }
+
+    function afterTask(row) {
+      const epic = state.roadmap.epics.find((item) => item.id === row.dataset.epic);
+      const tasks = epic.items.filter((item) => item.kind === "task");
+      const index = tasks.findIndex((item) => item.id === row.dataset.id);
+      let before = null;
+      for (let cursor = index + 1; cursor < tasks.length; cursor += 1) {
+        if (tasks[cursor].id !== drag.id) {
+          before = tasks[cursor].id;
+          break;
+        }
+      }
+      return { row, place: "after", epic: epic.id, before };
+    }
+
+    function dropAt(y) {
+      const rows = dropRows();
+      if (!rows.length) return null;
+      for (const row of rows) {
+        const box = row.getBoundingClientRect();
+        if (y >= box.bottom) continue;
+        const mid = box.top + box.height / 2;
+        if (row.classList.contains("epic")) {
+          if (row.classList.contains("folded") && y >= mid) return endOfEpic(row);
+          return startOfEpic(row);
+        }
+        return y < mid ? beforeTask(row) : afterTask(row);
+      }
+      const last = rows[rows.length - 1];
+      return last.classList.contains("task") ? afterTask(last) : endOfEpic(last);
+    }
+
+    function samePlace(id, target) {
+      if (!target || target.before === id) return true;
+      const epic = state.roadmap.epics.find((item) => item.items.some((task) => task.id === id));
+      if (!epic || epic.id !== target.epic) return false;
+      const tasks = epic.items.filter((item) => item.kind === "task");
+      const index = tasks.findIndex((item) => item.id === id);
+      if (target.before == null) return index === tasks.length - 1;
+      return tasks[index + 1] && tasks[index + 1].id === target.before;
+    }
+
+    function endDrag() {
+      document.removeEventListener("pointermove", onGripMove);
+      document.removeEventListener("pointerup", onGripUp);
+      document.removeEventListener("pointercancel", onGripUp);
+      if (drag.scrollTimer) clearInterval(drag.scrollTimer);
+      if (drag.ghost) drag.ghost.remove();
+      clearDrop();
+      document.body.classList.remove("dragging");
+      const row = drag.id ? taskRowEl(drag.id) : null;
+      if (row) row.classList.remove("dragging");
+      drag.pointer = null;
+      drag.id = null;
+      drag.handle = null;
+      drag.active = false;
+      drag.ghost = null;
+      drag.target = null;
+      drag.scrollTimer = null;
+      drag.lastY = null;
+    }
+
+    function onGripUp(event) {
+      if (event.pointerId !== drag.pointer) return;
+      const active = drag.active;
+      const id = drag.id;
+      const target = drag.target;
+      endDrag();
+      if (!active || !id || !target || samePlace(id, target)) return;
+      state.anchor = null;
+      state.folded.delete(target.epic);
+      saveMove(id, { epic: target.epic, before: target.before });
+    }
+
+    async function saveMove(id, body) {
+      const top = scrollerEl.scrollTop;
+      const left = scrollerEl.scrollLeft;
+      document.body.classList.add("saving");
+      try {
+        state.roadmap = await api("POST", "/api/items/" + encodeURIComponent(id) + "/move", body);
+        clearError();
+      } catch (error) {
+        showError(error.message);
+        try { state.roadmap = await api("GET", "/api/roadmap"); } catch { /* keep the last good copy */ }
+      } finally {
+        document.body.classList.remove("saving");
+        renderBody();
+        scrollerEl.scrollTop = top;
+        scrollerEl.scrollLeft = left;
+      }
+    }
+
     function onSprintClick(cell) {
       const itemId = cell.dataset.item;
       const sprintId = cell.dataset.sprint;
@@ -875,7 +1234,6 @@
       if (item && item.kind === "milestone") {
         if (sprintForDate(state.roadmap.sprints, item.date) === sprintId) return;
         state.anchor = null;
-        setHint();
         savePatch(itemId, { date: sprintId });
         return;
       }
@@ -921,6 +1279,10 @@
     });
     bodyEl.addEventListener("mouseleave", () => preview(null));
     document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && drag.active) {
+        endDrag();
+        return;
+      }
       if (event.key === "Escape" && state.anchor && document.activeElement.tagName !== "INPUT") {
         state.anchor = null;
         renderBody();

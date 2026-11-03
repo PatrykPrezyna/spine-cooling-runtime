@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from roadmap_io import RoadmapError, add_task, load_roadmap, save_roadmap, update_task, view_roadmap
+from roadmap_io import RoadmapError, add_task, load_roadmap, move_task, save_roadmap, update_task, view_roadmap
 
 HERE = Path(__file__).resolve().parent
 HTML_PATH = HERE / "web" / "index.html"
@@ -68,6 +68,21 @@ def handler_factory(roadmap_path: Path, today: date | None = None):
             self._send_json(404, {"error": "Not found"})
 
         def do_POST(self):
+            path = urlparse(self.path).path
+            move = re.fullmatch(r"/api/items/([^/]+)/move", path)
+            if move:
+                try:
+                    fields = self._read_json()
+                except RoadmapError as exc:
+                    self._send_json(exc.status, {"error": str(exc)})
+                    return
+                if "epic" not in fields:
+                    self._send_json(400, {"error": "Epic is missing"})
+                    return
+                item_id = unquote(move.group(1))
+                before_id = fields["before"] if "before" in fields else None
+                self._mutate(lambda data: move_task(data, item_id, fields["epic"], before_id))
+                return
             if not self._drain():
                 return
             match = re.fullmatch(r"/api/epics/([^/]+)/tasks", urlparse(self.path).path)

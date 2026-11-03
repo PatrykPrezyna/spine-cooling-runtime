@@ -168,6 +168,62 @@ def add_task(data: dict, epic_id: str, name: str = "New task") -> str:
     return item_id
 
 
+def move_task(data: dict, item_id: str, epic_id, before_id=None) -> None:
+    """Move a task into epic_id, inserting it before before_id, or at the end."""
+    if not isinstance(epic_id, str) or not epic_id.strip():
+        raise RoadmapError("Epic is missing")
+    if epic_id == "milestones":
+        raise RoadmapError("Tasks cannot be moved to Milestones")
+    destination = _find_epic(data, epic_id)
+    if destination is None:
+        raise RoadmapError("Epic not found", 404)
+    if before_id is not None and (not isinstance(before_id, str) or not before_id.strip()):
+        raise RoadmapError("Drop target is invalid")
+    source = None
+    item = None
+    for epic in data["epics"]:
+        for candidate in epic["items"]:
+            if candidate["id"] == item_id:
+                source = epic
+                item = candidate
+                break
+        if item is not None:
+            break
+    if item is None:
+        raise RoadmapError("Task not found", 404)
+    if item["kind"] != "task":
+        raise RoadmapError("Only a task can be moved")
+    if before_id == item_id:
+        return
+    if before_id is not None:
+        before_epic = None
+        before_item = None
+        for epic in data["epics"]:
+            for candidate in epic["items"]:
+                if candidate["id"] == before_id:
+                    before_epic = epic
+                    before_item = candidate
+                    break
+            if before_item is not None:
+                break
+        if (
+            before_item is None
+            or before_item["kind"] != "task"
+            or before_epic is None
+            or before_epic["id"] != epic_id
+        ):
+            raise RoadmapError("Drop target was not found", 404)
+    source["items"].remove(item)
+    if before_id is None:
+        destination["items"].append(item)
+        return
+    for index, candidate in enumerate(destination["items"]):
+        if candidate["id"] == before_id:
+            destination["items"].insert(index, item)
+            return
+    raise RoadmapError("Drop target was not found", 404)
+
+
 def update_task(data: dict, item_id: str, fields: dict) -> None:
     item = _find_item(data, item_id)
     if item is None:
