@@ -14,7 +14,7 @@ if str(SRC_DIR) not in sys.path:
 
 from state_machine import TRANSITIONS, State, StateMachine  # noqa: E402
 
-SVG_PATH = PROJECT_ROOT / "docs" / "state-machine.svg"
+SVG_PATH = PROJECT_ROOT / "documentation" / "state-machine.svg"
 
 
 def _picture() -> ET.Element:

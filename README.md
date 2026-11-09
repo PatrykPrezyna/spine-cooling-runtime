@@ -11,7 +11,7 @@ src/                   application code (table below)
 tests/                 automatic tests
 examples/              Pi bench scripts for one subsystem (see examples/README.md)
 tools/                 log viewer, plots, operator-guide builder
-docs/                  guides, verification, faults, state diagram
+documentation/         guides, verification, faults, state diagram
 specification-design_inputs/  architecture drawing
 data/calibration/      thermistor resistance tables loaded at runtime
 ```
@@ -65,16 +65,16 @@ data/calibration/      thermistor resistance tables loaded at runtime
 | `usb_log_mirror.py` | Copy new log bytes onto a USB stick |
 | `sensor_injection.py`, `sensor_override_ui.py` | Manual sensor values with `--test-ui` |
 
-### `docs/`
+### `documentation/`
 
 | File | Who it is for |
 |------|----------------|
-| `docs/operator-guide/Spine_Cooling_Operator_Guide.html` (PDF and screenshots in the same folder) | People running the device |
-| `docs/state-machine.svg` | Operating states, generated from the code |
-| `docs/fault-list.html` | Errors and warnings, generated from the code |
-| `docs/verification/Verification_Protocol.html` | Verification steps |
-| `docs/fault-messages-and-reactions.pptx` and `.xlsx` | Fault text and the reaction to each fault |
-| `docs/GANTT.md` | Prototype schedule |
+| `documentation/operator-guide/Spine_Cooling_Operator_Guide.html` (PDF and screenshots in the same folder) | People running the device |
+| `documentation/state-machine.svg` | Operating states, generated from the code |
+| `documentation/fault-list.html` | Errors and warnings, generated from the code |
+| `documentation/verification/Verification_Protocol.html` | Verification steps |
+| `documentation/fault-messages-and-reactions.pptx` and `.xlsx` | Fault text and the reaction to each fault |
+| `documentation/GANTT.md` | Prototype schedule |
 
 Regenerate the guide from the current UI with `python tools/generate_operator_pdf.py`.
 

@@ -327,12 +327,12 @@ def svg() -> str:
     return "\n".join(body)
 
 
-SVG_PATH = ROOT / "docs" / "state-machine.svg"
+SVG_PATH = ROOT / "documentation" / "state-machine.svg"
 _STALE = (
     SPEC_DIR / "state-machine.md",
     SPEC_DIR / "state-machine.svg",
     SPEC_DIR / "state-machine.html",
-    ROOT / "docs" / "state-machine.md",
+    ROOT / "documentation" / "state-machine.md",
 )
 
 

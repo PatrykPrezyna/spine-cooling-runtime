@@ -1,6 +1,6 @@
 """Pure safety rule evaluation for the spine cooling runtime.
 
-``RULES`` is every check. ``docs/fault-list.html`` is generated from this
+``RULES`` is every check. ``documentation/fault-list.html`` is generated from this
 table and the fault catalog.
 """
 

@@ -23,7 +23,7 @@ from safety_rules import (  # noqa: E402
 )
 from state_machine import State  # noqa: E402
 
-HTML_PATH = PROJECT_ROOT / "docs" / "fault-list.html"
+HTML_PATH = PROJECT_ROOT / "documentation" / "fault-list.html"
 _GENERATED = re.compile(
     r"Generated from src/safety_rules.py and src/fault_catalog.py\. "
     r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}), version ([0-9A-Za-z._-]+)\."

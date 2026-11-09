@@ -15,7 +15,7 @@ this machine only owns workflow states.
 Button handlers call ``start_pumping()``, ``stop_pumping()``,
 and ``acknowledge_error()``.
 
-``TRANSITIONS`` lists every legal move. ``docs/state-machine.svg`` is
+``TRANSITIONS`` lists every legal move. ``documentation/state-machine.svg`` is
 generated from that table.
 """
 

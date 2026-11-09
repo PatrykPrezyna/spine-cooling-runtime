@@ -20,7 +20,7 @@ if str(SRC) not in sys.path:
 from fault_catalog import FAULTS, FaultCode, Severity, get_fault  # noqa: E402
 from safety_rules import RULES, listed_faults  # noqa: E402
 
-HTML_PATH = ROOT / "docs" / "fault-list.html"
+HTML_PATH = ROOT / "documentation" / "fault-list.html"
 
 
 def _version() -> str:

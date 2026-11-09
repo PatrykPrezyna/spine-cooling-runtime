@@ -1,6 +1,6 @@
 """Static fault definitions for the spine cooling runtime.
 
-``docs/fault-list.html`` is generated from this catalog and the safety rules.
+``documentation/fault-list.html`` is generated from this catalog and the safety rules.
 """
 
 from dataclasses import dataclass
