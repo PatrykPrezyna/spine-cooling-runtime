@@ -74,7 +74,7 @@ data/calibration/      thermistor resistance tables loaded at runtime
 | `documentation/fault-list.html` | Errors and warnings, generated from the code |
 | `documentation/verification/Verification_Protocol.html` | Verification steps |
 | `documentation/fault-messages-and-reactions.pptx` and `.xlsx` | Fault text and the reaction to each fault |
-| `documentation/GANTT.md` | Prototype schedule |
+| cool-spine-roadmap | Prototype schedule, in its own private repository at `C:\sources\cool-spine-roadmap`. View-only site: https://patrykprezyna.github.io/cool-spine-roadmap-site/ |
 
 Regenerate the guide from the current UI with `python tools/generate_operator_pdf.py`.
 
