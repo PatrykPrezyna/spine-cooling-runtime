@@ -3,20 +3,22 @@ name: roadmap-meeting-notes
 description: >-
   Turn Cool Spine meeting notes into GANTT roadmap tasks. Use when the user
   pastes meeting notes, minutes, or action items and wants roadmap tasks,
-  sprint tasks, or GANTT bars in tools/GANTT/roadmap.yaml.
+  sprint tasks, or GANTT bars in C:\sources\cool-spine-roadmap\roadmap.yaml.
 ---
 
 # Roadmap meeting notes
 
-Schedule: `tools/GANTT/roadmap.yaml`
+Schedule: `C:\sources\cool-spine-roadmap\roadmap.yaml`
 
-People edit it in the browser with `python tools/GANTT/server.py`. Agents edit that same file through `roadmap_io`. The Excel file is an export: `python tools/GANTT/export_xlsx.py` writes `tools/GANTT/Cool_Spine_Roadmap_YYYY-MM-DD.xlsx` for the day it runs. Do not edit the workbook by hand.
+That folder is its own private git repository: https://github.com/PatrykPrezyna/cool-spine-roadmap. It is not part of spine-cooling-runtime. The view-only site is https://patrykprezyna.github.io/cool-spine-roadmap-site/. Publish it with `python publish_site.py` from the roadmap folder after the schedule changes. People edit the schedule in the browser with `python server.py` there. Agents edit `roadmap.yaml` through `roadmap_io`. The Excel file is an export: `python export_xlsx.py` writes `Cool_Spine_Roadmap_YYYY-MM-DD.xlsx` for the day it runs. Do not edit the workbook by hand.
+
+The GitHub Pages site is a view-only encrypted copy. Do not edit the schedule there, and do not put the site password in this file.
 
 Sprints are `timeline.sprint_days` long and begin at `timeline.start`. A bar stores sprint start dates. `start` and `end` are both the first day of a sprint, and a one-sprint task uses the same date twice. Omit both when there is no bar. Status is `done`, `in_progress`, or `future`.
 
 ## Before any edit
 
-Read `tools/GANTT/roadmap.yaml`. The sprint that contains today is `current`. The following sprint is `next`. Take those dates from the file. Do not invent sprint boundaries.
+Read `C:\sources\cool-spine-roadmap\roadmap.yaml`. The sprint that contains today is `current`. The following sprint is `next`. Take those dates from the file. Do not invent sprint boundaries.
 
 ## Propose, then wait
 
@@ -40,16 +42,17 @@ Stop there. Write only after the user accepts the list. A correction is a new li
 
 ## Write
 
-From the repo root, one task at a time. `add_task` takes the epic id, such as `probes` for Probes, and appends the task. `start` and `end` are sprint start dates (`YYYY-MM-DD`), not the last day of a sprint.
+From the roadmap folder, one task at a time. `add_task` takes the epic id, such as `probes` for Probes, and appends the task. `start` and `end` are sprint start dates (`YYYY-MM-DD`), not the last day of a sprint.
 
 ```python
 import sys
 from pathlib import Path
 
-sys.path.insert(0, "tools/GANTT")
+root = Path(r"C:\sources\cool-spine-roadmap")
+sys.path.insert(0, str(root))
 from roadmap_io import add_task, load_roadmap, save_roadmap, update_task
 
-path = Path("tools/GANTT/roadmap.yaml")
+path = root / "roadmap.yaml"
 data = load_roadmap(path)
 item_id = add_task(data, "probes", "Design new probes for the animal study")
 update_task(data, item_id, {
