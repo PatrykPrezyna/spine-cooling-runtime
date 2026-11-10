@@ -13,7 +13,7 @@ td li { margin: 0 0 2px; }
 <div class="sheet">
 <header>
 <h1>Errors and warnings</h1>
-<p>Generated from src/safety_rules.py and src/fault_catalog.py. 2026-10-27 13:07:54, version 0.0.1.</p>
+<p>Generated from src/safety_rules.py and src/fault_catalog.py. 2026-11-10 11:01:48, version 0.0.1.</p>
 </header>
 <table>
 <thead>
@@ -108,6 +108,24 @@ td li { margin: 0 0 2px; }
 <td data-field="when">A battery reading is present and below the low-battery threshold.</td>
 <td><ul data-field="causes"><li>Supply voltage or reported battery charge is below the warning threshold.</li><li>The power source is disconnected or a battery is aging.</li></ul></td>
 <td><ul data-field="steps"><li>Connect mains power or replace/charge the battery.</li><li>Confirm the power lead is fully seated.</li><li>Continue only if the warning clears; otherwise stop the session.</li></ul></td>
+</tr>
+<tr data-code="RUNNING_ON_BATTERY" data-severity="message" data-ack="false">
+<td data-field="code">RUNNING_ON_BATTERY</td>
+<td data-field="message">Running on battery</td>
+<td data-field="class"><span class="badge warn">Message</span></td>
+<td data-field="acknowledge">Not required</td>
+<td data-field="when">The Battery Mode input is on and the shutdown countdown has not finished.</td>
+<td><ul data-field="causes"><li>The UPS Battery Mode input is on, so mains power is gone.</li><li>The runtime countdown has not finished yet.</li></ul></td>
+<td><ul data-field="steps"><li>Restore mains power before the countdown reaches zero.</li><li>The banner shows the time left (30 minutes at the start).</li><li>At zero the UPS is told to shut down and removes power about 3 minutes later.</li></ul></td>
+</tr>
+<tr data-code="SHUTDOWN_PROCEDURE_STARTED" data-severity="message" data-ack="false">
+<td data-field="code">SHUTDOWN_PROCEDURE_STARTED</td>
+<td data-field="message">Shutdown procedure started</td>
+<td data-field="class"><span class="badge warn">Message</span></td>
+<td data-field="acknowledge">Not required</td>
+<td data-field="when">The battery-mode countdown has finished, so the UPS Remote output is commanded on.</td>
+<td><ul data-field="causes"><li>Battery mode stayed on until the runtime countdown reached zero.</li><li>The Remote output is on, which tells the UPS to switch off after its own delay.</li></ul></td>
+<td><ul data-field="steps"><li>Save the session. Mains power will not stop a shutdown that has already started.</li><li>The UPS removes power about 3 minutes after Remote is commanded.</li></ul></td>
 </tr>
 <tr data-code="USB_NOT_PRESENT" data-severity="message" data-ack="false">
 <td data-field="code">USB_NOT_PRESENT</td>

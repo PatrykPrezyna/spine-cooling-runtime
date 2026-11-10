@@ -34,6 +34,7 @@ def _ctx(
     telemetry: TelemetrySnapshot | None = None,
     config: dict | None = None,
     leak_tracker: LeakDebounceTracker | None = None,
+    battery_tracker: object | None = None,
     now: float = 0.0,
 ) -> RuleContext:
     return RuleContext(
@@ -52,6 +53,7 @@ def _ctx(
         config=config or {"alarms": {"csf_label": "CSF", "csf_low_temp_c": 28.0}},
         cooling_tracker=None,
         leak_tracker=leak_tracker,
+        battery_tracker=battery_tracker,
         now=now,
     )
 
@@ -274,6 +276,40 @@ class WarningTests(unittest.TestCase):
             _ctx(telemetry=TelemetrySnapshot(battery_pct=15.0))
         )
         self.assertIn(FaultCode.BATTERY_LOW, active)
+
+    def test_RUNNING_ON_BATTERY_while_input_is_on(self) -> None:
+        active = evaluate(
+            _ctx(
+                sensor_states={
+                    "Cartridge In Place": True,
+                    "Level Low": True,
+                    "Level Critical": True,
+                    "Battery Mode": True,
+                }
+            )
+        )
+        self.assertIn(FaultCode.RUNNING_ON_BATTERY, active)
+        self.assertNotIn(FaultCode.SHUTDOWN_PROCEDURE_STARTED, active)
+
+    def test_SHUTDOWN_PROCEDURE_STARTED_replaces_the_countdown(self) -> None:
+        from battery_runtime import BatteryRuntimeTracker
+
+        tracker = BatteryRuntimeTracker(runtime_s=1800)
+        tracker.update(on_battery=True, now=0.0)
+        tracker.update(on_battery=True, now=1800.0)
+        active = evaluate(
+            _ctx(
+                sensor_states={
+                    "Cartridge In Place": True,
+                    "Level Low": True,
+                    "Level Critical": True,
+                    "Battery Mode": True,
+                },
+                battery_tracker=tracker,
+            )
+        )
+        self.assertIn(FaultCode.SHUTDOWN_PROCEDURE_STARTED, active)
+        self.assertNotIn(FaultCode.RUNNING_ON_BATTERY, active)
 
     def test_USB_NOT_PRESENT_when_logging_enabled(self) -> None:
         active = evaluate(

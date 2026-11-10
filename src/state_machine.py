@@ -60,8 +60,10 @@ TRANSITIONS: tuple[Transition, ...] = (
     Transition(State.READY, State.COOLING, "sensors OK", "All conditions met"),
     Transition(State.READY, State.ERROR, "stop fault"),
     Transition(State.COOLING, State.PUMPING, "start pumping", "User started pumping"),
+    Transition(State.COOLING, State.READY, "shutdown", "Shutdown procedure started"),
     Transition(State.COOLING, State.ERROR, "stop fault"),
     Transition(State.PUMPING, State.COOLING, "stop pumping", "User stopped pumping"),
+    Transition(State.PUMPING, State.READY, "shutdown", "Shutdown procedure started"),
     Transition(State.PUMPING, State.ERROR, "stop fault"),
     Transition(State.ERROR, State.READY, "acknowledge", "Error acknowledged"),
 )
@@ -95,6 +97,7 @@ class StateMachine:
         self.on_state_change: Optional[Callable[[State, State, str], None]] = None
         self._ready_hold_after_startup_s = max(0.0, float(ready_hold_after_startup_s))
         self._startup_ready_hold_until: Optional[datetime] = None
+        self._shutdown_hold = False
         print(f"State Machine initialized in {self.current_state.value} state")
 
     # --- things main.py and the UI call ---------------------------------
@@ -139,6 +142,18 @@ class StateMachine:
             return False
         return self._change_state(State.COOLING, log_reason(State.PUMPING, State.COOLING))
 
+    def begin_shutdown(self) -> bool:
+        """Leave cooling and pumping. A latched error stays latched.
+
+        Ready does not start cooling again while this hold is set.
+        """
+        self._shutdown_hold = True
+        if self.current_state == State.PUMPING:
+            return self._change_state(State.READY, log_reason(State.PUMPING, State.READY))
+        if self.current_state == State.COOLING:
+            return self._change_state(State.READY, log_reason(State.COOLING, State.READY))
+        return False
+
     def apply_fault(self, code: FaultCode, message_override: Optional[str] = None) -> bool:
         """Enter ERROR from a catalog fault (STOP severity)."""
         if self.current_state == State.ERROR:
@@ -170,6 +185,8 @@ class StateMachine:
         pump speed is controlled outside this machine.
         """
         del body_temp, set_temp
+        if self._shutdown_hold:
+            return
         cartridge = sensor_states.get("Cartridge In Place", False)
         level_low = sensor_states.get("Level Low", False)
         level_critical = sensor_states.get("Level Critical", False)

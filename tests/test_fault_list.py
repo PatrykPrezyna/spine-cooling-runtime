@@ -61,6 +61,10 @@ class _AlwaysIneffective:
         return True
 
 
+class _ShutdownStarted:
+    shutdown_started = True
+
+
 def _sensors(**changes: bool) -> dict[str, bool]:
     sensors = {
         "Cartridge In Place": True,
@@ -82,6 +86,7 @@ def _context(
     pump_running: bool = True,
     compressor_on: bool = False,
     cooling_tracker: object | None = None,
+    battery_tracker: object | None = None,
 ) -> RuleContext:
     return RuleContext(
         current_state=state,
@@ -95,6 +100,7 @@ def _context(
         config={"alarms": dict(_ALARMS)},
         cooling_tracker=cooling_tracker,
         leak_tracker=None,
+        battery_tracker=battery_tracker,
         now=0.0,
     )
 
@@ -121,6 +127,10 @@ def _trip(code: FaultCode) -> RuleContext:
         )
     if code is FaultCode.BATTERY_LOW:
         return _context(telemetry=TelemetrySnapshot(battery_pct=19.9))
+    if code is FaultCode.RUNNING_ON_BATTERY:
+        return _context(sensors=_sensors(**{"Battery Mode": True}))
+    if code is FaultCode.SHUTDOWN_PROCEDURE_STARTED:
+        return _context(battery_tracker=_ShutdownStarted())
     if code is FaultCode.USB_NOT_PRESENT:
         return _context(
             telemetry=TelemetrySnapshot(usb_logging_enabled=True, usb_present=False)
@@ -278,6 +288,12 @@ class WarningTests(_TripCase, unittest.TestCase):
 
     def test_USB_STORAGE_LOW_trips_on_its_own(self) -> None:
         self._trips_on_its_own(FaultCode.USB_STORAGE_LOW)
+
+    def test_RUNNING_ON_BATTERY_trips_on_its_own(self) -> None:
+        self._trips_on_its_own(FaultCode.RUNNING_ON_BATTERY)
+
+    def test_SHUTDOWN_PROCEDURE_STARTED_trips_on_its_own(self) -> None:
+        self._trips_on_its_own(FaultCode.SHUTDOWN_PROCEDURE_STARTED)
 
 
 if __name__ == "__main__":

@@ -75,6 +75,8 @@ def classify(item: Transition) -> str:
     """How the figure draws this transition. Every legal move has a route."""
     special = {
         (State.PUMPING, State.COOLING): "stop-pumping",
+        (State.COOLING, State.READY): "shutdown",
+        (State.PUMPING, State.READY): "shutdown",
         (State.ERROR, State.READY): "acknowledge",
         (State.INIT, State.ERROR): "init-failed",
     }
@@ -254,6 +256,24 @@ def _stop_pumping(_item: Transition) -> list[str]:
     ]
 
 
+def _shutdown(item: Transition) -> list[str]:
+    """Return to Ready under the main row, clear of the stop-fault bus."""
+    lane = 168.0 if item.source == State.COOLING else 190.0
+    start_x = _box(item.source)[0] + 28
+    end_x = _cx(State.READY) + (24 if item.source == State.COOLING else -24)
+    start = _side(item.source, "bottom", start_x)
+    end = _side(State.READY, "bottom", end_x)
+    return [
+        _path(
+            [start, (start[0], lane), (end[0], lane), end],
+            _INK,
+            "arrow",
+            item=item,
+        ),
+        _label((start[0] + end[0]) / 2, lane - 12, "shutdown", _INK),
+    ]
+
+
 def _acknowledge(_item: Transition) -> list[str]:
     x = _cx(State.ERROR) - 20
     top = _side(State.READY, "bottom")[1]
@@ -277,6 +297,7 @@ def _init_failed(_item: Transition) -> list[str]:
 
 _ROUTE = {
     "stop-pumping": _stop_pumping,
+    "shutdown": _shutdown,
     "acknowledge": _acknowledge,
     "init-failed": _init_failed,
 }

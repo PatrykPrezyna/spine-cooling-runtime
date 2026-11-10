@@ -33,6 +33,7 @@ try:
 except Exception:  # pragma: no cover - non-RPi environments
     GPIO = None  # type: ignore
 
+from battery_runtime import BatteryRuntimeTracker, running_on_battery_text
 from compressor_control import average_temperature_c, heat_ex_labels_from_config
 from config_sections import (
     actuator_device,
@@ -216,6 +217,10 @@ class CoolingRuntime(QObject):
         )
         self.compressor_on: bool = False
         self.compressor_relay_pin: int = int(compressor_cfg.get('relay_pin', 16))
+        ups_cfg = actuator_device(self.config, "ups")
+        self.ups_remote_pin: int = int(ups_cfg.get("remote_pin", 6))
+        self.ups_remote_high: bool = False
+        self._ups_remote_ready: bool = False
         # MOSFET gate: HIGH = compressor on. Idle is LOW (off).
         self.compressor_relay_high: bool = False
         self.compressor_control_enabled: bool = False
@@ -242,8 +247,13 @@ class CoolingRuntime(QObject):
         # Skip a tick if the worker hasn't finished the previous one yet.
         self._tick_in_progress: bool = False
         self._cooling_tracker = CoolingEffectivenessTracker()
+        alarms_cfg = self.config.get("alarms", {}) or {}
+        self._battery_mode_label = str(alarms_cfg.get("battery_mode_label", "Battery Mode"))
+        self._battery_tracker = BatteryRuntimeTracker(
+            runtime_s=float(alarms_cfg.get("battery_runtime_s", 1800))
+        )
         leak_debounce_s = float(
-            self.config.get("alarms", {}).get("leak_debounce_s", 0.5)
+            alarms_cfg.get("leak_debounce_s", 0.5)
         )
         self._leak_tracker = LeakDebounceTracker(hold_s=leak_debounce_s)
 
@@ -306,6 +316,7 @@ class CoolingRuntime(QObject):
 
             if not self.simulation:
                 self._initialize_compressor_relay()
+                self._initialize_ups_remote()
 
             # Keep the driver energised while service jog controls are used.
             self.stepper_driver.disable_on_idle = False
@@ -378,6 +389,39 @@ class CoolingRuntime(QObject):
         except Exception as exc:
             print(f"Failed to set compressor relay GPIO{self.compressor_relay_pin}: {exc}")
 
+    def _initialize_ups_remote(self) -> None:
+        """Configure the UPS Remote output (active-high: HIGH starts UPS shutdown)."""
+        if GPIO is None:
+            print("UPS remote unavailable: RPi.GPIO not installed")
+            return
+        try:
+            GPIO.setwarnings(False)
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(self.ups_remote_pin, GPIO.OUT, initial=GPIO.LOW)
+            self.ups_remote_high = False
+            self._ups_remote_ready = True
+            print(f"UPS remote initialized on GPIO{self.ups_remote_pin}")
+        except Exception as exc:
+            print(f"Failed to initialize UPS remote GPIO{self.ups_remote_pin}: {exc}")
+
+    def _set_ups_remote(self, high: bool) -> None:
+        """Drive UPS Remote. HIGH tells the UPS to start its shutdown delay."""
+        high = bool(high)
+        if high == self.ups_remote_high:
+            return
+        self.ups_remote_high = high
+        if high:
+            print("UPS remote on: shutdown procedure commanded")
+        if GPIO is None or not self._ups_remote_ready:
+            return
+        try:
+            GPIO.output(
+                self.ups_remote_pin,
+                GPIO.HIGH if self.ups_remote_high else GPIO.LOW,
+            )
+        except Exception as exc:
+            print(f"Failed to set UPS remote GPIO{self.ups_remote_pin}: {exc}")
+
     def _set_compressor_running(self, on: bool) -> None:
         """Drive compressor MOSFET (active-high)."""
         self.compressor_on = bool(on)
@@ -445,6 +489,8 @@ class CoolingRuntime(QObject):
             self.stepper_driver.stop_continuous()
             self.stepper_driver.cleanup()
         self._set_compressor_running(False)
+        if not self._battery_tracker.shutdown_started:
+            self._set_ups_remote(False)
         self.compressor_control_enabled = False
         self.compressor_latched_on = False
         self.thermistor_reader = None
@@ -555,6 +601,11 @@ class CoolingRuntime(QObject):
             csf_temp=float(csf_temp) if csf_temp is not None else None,
             now=now,
         )
+        self._battery_tracker.update(
+            on_battery=bool(sensor_states.get(self._battery_mode_label)),
+            now=now,
+        )
+        self._set_ups_remote(self._battery_tracker.remote_on)
         return RuleContext(
             current_state=self.state_machine.get_current_state(),
             seconds_in_state=self.state_machine.get_time_in_state(),
@@ -567,6 +618,7 @@ class CoolingRuntime(QObject):
             config=self.config,
             cooling_tracker=self._cooling_tracker,
             leak_tracker=self._leak_tracker,
+            battery_tracker=self._battery_tracker,
             now=now,
         )
 
@@ -587,21 +639,64 @@ class CoolingRuntime(QObject):
         active = evaluate(ctx)
 
         stop_codes = [c for c in active if get_fault(c).severity == Severity.STOP]
+        message_codes = [c for c in active if get_fault(c).severity == Severity.MESSAGE]
         if stop_codes:
             primary = min(stop_codes, key=stop_priority)
-            self._sync_warning_log([])
+            # Keep the battery countdown visible while a stop fault is latched.
+            message_codes = [
+                code
+                for code in message_codes
+                if code
+                in (
+                    FaultCode.RUNNING_ON_BATTERY,
+                    FaultCode.SHUTDOWN_PROCEDURE_STARTED,
+                )
+            ]
+            self._sync_warning_log(message_codes)
             self.state_machine.apply_fault(primary)
             self._stop_service_pid_run()
             if self.ui:
-                self.ui.update_warnings([])
+                self.ui.update_warnings(self._warning_texts(message_codes))
             return False
 
-        message_codes = [c for c in active if get_fault(c).severity == Severity.MESSAGE]
         self._sync_warning_log(message_codes)
         if self.ui:
-            self.ui.update_warnings([get_fault(c).message for c in message_codes])
+            self.ui.update_warnings(self._warning_texts(message_codes))
 
         return True
+
+    def _enforce_battery_shutdown(self) -> None:
+        """Stop cooling and pumping once the UPS shutdown command is sent.
+
+        Leaving Cooling or Pumping turns the compressor and the workflow pump
+        off. The hold keeps Ready from starting cooling again, and the guards
+        below refuse a manual restart.
+        """
+        if not self._battery_tracker.shutdown_started:
+            return
+        if self.state_machine is not None:
+            self.state_machine.begin_shutdown()
+        self._stop_service_pid_run()
+        if self.stepper_motor_running or self.stepper_continuous_forward:
+            self.on_stepper_jog_stop()
+        if (
+            self.compressor_on
+            or self.compressor_control_enabled
+            or self.compressor_latched_on
+        ):
+            self.compressor_control_enabled = False
+            self.compressor_latched_on = False
+            self._set_compressor_running(False)
+
+    def _warning_texts(self, message_codes: list[FaultCode]) -> list[str]:
+        """Operator banner lines. The battery warning includes the countdown."""
+        lines: list[str] = []
+        for code in message_codes:
+            if code is FaultCode.RUNNING_ON_BATTERY:
+                lines.append(running_on_battery_text(self._battery_tracker.remaining_s))
+            else:
+                lines.append(get_fault(code).message)
+        return lines
 
     def _can_acknowledge_error(
         self,
@@ -816,7 +911,8 @@ class CoolingRuntime(QObject):
                 run_workflow = self._evaluate_and_dispatch_safety(
                     sensor_states, temperatures, pressures
                 )
-                if run_workflow:
+                self._enforce_battery_shutdown()
+                if run_workflow and not self._battery_tracker.shutdown_started:
                     self.state_machine.update(
                         sensor_states, body_temp=body_temp, set_temp=set_temp
                     )
@@ -904,6 +1000,8 @@ class CoolingRuntime(QObject):
         return False
 
     def on_start_pumping(self):
+        if self._battery_tracker.shutdown_started:
+            return
         if not self.pump_start_allowed():
             return
         if self.state_machine:
@@ -944,6 +1042,8 @@ class CoolingRuntime(QObject):
 
     def on_compressor_control_toggle(self, enabled: bool) -> None:
         """Enable/disable Plate 1 temperature control from the service page."""
+        if enabled and self._battery_tracker.shutdown_started:
+            return
         self.compressor_control_enabled = bool(enabled)
         if self.compressor_control_enabled:
             temp_c = self._heat_ex_temperature_c(self._last_temperatures)
@@ -980,6 +1080,8 @@ class CoolingRuntime(QObject):
 
     def on_stepper_jog_start(self, direction: int):
         """Start jog while a jog button is held."""
+        if self._battery_tracker.shutdown_started:
+            return
         if not self.pump_start_allowed():
             return
         self.stepper_continuous_forward = False
@@ -1004,6 +1106,8 @@ class CoolingRuntime(QObject):
 
     def on_service_pid_run_toggle(self, enabled: bool) -> None:
         """Start or stop a service-page PID run (same controller as Start Pumping)."""
+        if enabled and self._battery_tracker.shutdown_started:
+            return
         if enabled and not self.pump_start_allowed():
             return
         self.service_pid_run = bool(enabled)
@@ -1036,6 +1140,8 @@ class CoolingRuntime(QObject):
 
     def on_stepper_continuous_toggle(self, enabled: bool):
         """Toggle continuous movement ON/OFF (direction: ``stepper_continuous_direction`` / config)."""
+        if enabled and self._battery_tracker.shutdown_started:
+            return
         if enabled and not self.pump_start_allowed():
             return
         if not enabled:

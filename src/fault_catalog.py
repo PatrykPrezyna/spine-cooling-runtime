@@ -19,6 +19,8 @@ class FaultCode(Enum):
     PUMP_NOT_CLOSED = "PUMP_NOT_CLOSED"
     CSF_LOW_TEMP = "CSF_LOW_TEMP"
     BATTERY_LOW = "BATTERY_LOW"
+    RUNNING_ON_BATTERY = "RUNNING_ON_BATTERY"
+    SHUTDOWN_PROCEDURE_STARTED = "SHUTDOWN_PROCEDURE_STARTED"
     USB_NOT_PRESENT = "USB_NOT_PRESENT"
     SD_STORAGE_LOW = "SD_STORAGE_LOW"
     USB_STORAGE_LOW = "USB_STORAGE_LOW"
@@ -144,6 +146,33 @@ FAULTS: dict[FaultCode, FaultDef] = {
             "Connect mains power or replace/charge the battery.",
             "Confirm the power lead is fully seated.",
             "Continue only if the warning clears; otherwise stop the session.",
+        ),
+    ),
+    FaultCode.RUNNING_ON_BATTERY: _fault(
+        FaultCode.RUNNING_ON_BATTERY,
+        "Running on battery",
+        Severity.MESSAGE,
+        False,
+        (
+            "The UPS Battery Mode input is on, so mains power is gone.",
+            "The runtime countdown has not finished yet.",
+        ),
+        (
+            "Restore mains power before the countdown reaches zero.",
+        ),
+    ),
+    FaultCode.SHUTDOWN_PROCEDURE_STARTED: _fault(
+        FaultCode.SHUTDOWN_PROCEDURE_STARTED,
+        "Shutdown procedure started",
+        Severity.MESSAGE,
+        False,
+        (
+            "Battery mode stayed on until the runtime countdown reached zero.",
+            "The devide is shuting down now - no cooling.",
+        ),
+        (
+            "Save the session. Mains power will not stop a shutdown that has already started.",
+            "The UPS removes power about 3 minutes after Remote is commanded.",
         ),
     ),
     FaultCode.USB_NOT_PRESENT: _fault(

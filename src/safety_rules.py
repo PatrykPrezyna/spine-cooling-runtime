@@ -11,6 +11,7 @@ from fault_catalog import FaultCode, Severity, get_fault, stop_priority
 from state_machine import State
 
 if TYPE_CHECKING:
+    from battery_runtime import BatteryRuntimeTracker
     from cooling_tracker import CoolingEffectivenessTracker
     from leak_debounce import LeakDebounceTracker
 
@@ -41,6 +42,7 @@ class RuleContext:
     config: dict
     cooling_tracker: Optional["CoolingEffectivenessTracker"] = None
     leak_tracker: Optional["LeakDebounceTracker"] = None
+    battery_tracker: Optional["BatteryRuntimeTracker"] = None
     now: float = 0.0
 
 
@@ -170,6 +172,25 @@ def _check_battery_low(ctx: RuleContext) -> bool:
     return float(pct) < threshold
 
 
+def _battery_mode_label(ctx: RuleContext) -> str:
+    return str(_alarms(ctx).get("battery_mode_label", "Battery Mode"))
+
+
+def _shutdown_started(ctx: RuleContext) -> bool:
+    tracker = ctx.battery_tracker
+    return tracker is not None and tracker.shutdown_started
+
+
+def _check_running_on_battery(ctx: RuleContext) -> bool:
+    if _shutdown_started(ctx):
+        return False
+    return bool(ctx.sensor_states.get(_battery_mode_label(ctx)))
+
+
+def _check_shutdown_procedure_started(ctx: RuleContext) -> bool:
+    return _shutdown_started(ctx)
+
+
 def _storage_min_free_bytes(ctx: RuleContext) -> int:
     alarms = _alarms(ctx)
     if alarms.get("storage_min_free_bytes") is not None:
@@ -252,6 +273,16 @@ RULES: tuple[FaultRule, ...] = (
         FaultCode.BATTERY_LOW,
         "A battery reading is present and below the low-battery threshold.",
         _check_battery_low,
+    ),
+    FaultRule(
+        FaultCode.RUNNING_ON_BATTERY,
+        "The Battery Mode input is on and the shutdown countdown has not finished.",
+        _check_running_on_battery,
+    ),
+    FaultRule(
+        FaultCode.SHUTDOWN_PROCEDURE_STARTED,
+        "The battery-mode countdown has finished, so the UPS Remote output is commanded on.",
+        _check_shutdown_procedure_started,
     ),
     FaultRule(
         FaultCode.USB_NOT_PRESENT,

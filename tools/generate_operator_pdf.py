@@ -472,6 +472,8 @@ def _build_pdf(shots: list[tuple[str, str, Path]], dest_path: Path | None = None
         FaultCode.PUMP_NOT_CLOSED: "<b>Pumping</b>, or the pump is already running, and the pump head is open.",
         FaultCode.CSF_LOW_TEMP: "<b>Cooling</b> or <b>Pumping</b>, and CSF (Tip) is below the low-temperature limit (default 28 °C).",
         FaultCode.BATTERY_LOW: "Reported battery below 20% (warning only).",
+        FaultCode.RUNNING_ON_BATTERY: "UPS Battery Mode input is on. Banner counts down from 30 minutes (warning only).",
+        FaultCode.SHUTDOWN_PROCEDURE_STARTED: "Battery-mode countdown reached zero. UPS Remote output is on (warning only).",
         FaultCode.USB_NOT_PRESENT: "USB logging is on and no SPINELOGS stick is mounted (warning only).",
         FaultCode.SD_STORAGE_LOW: "Local logs disk (SD card) has less than 1 GB free (warning only).",
         FaultCode.USB_STORAGE_LOW: "USB stick has less than 1 GB free (warning only).",

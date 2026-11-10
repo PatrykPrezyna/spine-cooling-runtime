@@ -96,6 +96,39 @@ class StateMachineTests(unittest.TestCase):
             sm.update(_ALL_SENSORS_OK)
             self.assertEqual(sm.get_current_state(), State.COOLING)
 
+    def test_shutdown_leaves_cooling_and_pumping(self) -> None:
+        sm = StateMachine(ready_hold_after_startup_s=0)
+        sm.handle_init_complete(True)
+        sm.update(_ALL_SENSORS_OK)
+        sm.start_pumping()
+
+        self.assertTrue(sm.begin_shutdown())
+        self.assertEqual(sm.get_current_state(), State.READY)
+        sm.update(_ALL_SENSORS_OK)
+        self.assertEqual(sm.get_current_state(), State.READY)
+
+        sm.update(_ALL_SENSORS_OK)
+        sm.begin_shutdown()
+        sm.update(_ALL_SENSORS_OK)
+        self.assertEqual(sm.get_current_state(), State.READY)
+
+    def test_shutdown_from_cooling_and_error(self) -> None:
+        sm = StateMachine(ready_hold_after_startup_s=0)
+        sm.handle_init_complete(True)
+        sm.update(_ALL_SENSORS_OK)
+        self.assertTrue(sm.begin_shutdown())
+        self.assertEqual(sm.get_current_state(), State.READY)
+
+        sm = StateMachine(ready_hold_after_startup_s=0)
+        sm.handle_init_complete(True)
+        sm.update(_ALL_SENSORS_OK)
+        sm.apply_fault(FaultCode.LEAK_DETECTED)
+        self.assertFalse(sm.begin_shutdown())
+        self.assertEqual(sm.get_current_state(), State.ERROR)
+        sm.acknowledge_error()
+        sm.update(_ALL_SENSORS_OK)
+        self.assertEqual(sm.get_current_state(), State.READY)
+
 
 if __name__ == "__main__":
     unittest.main()
