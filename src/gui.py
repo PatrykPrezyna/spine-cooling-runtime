@@ -4510,6 +4510,8 @@ class AppWindow(QMainWindow):
             return "Place the catheter and start cooling"
         if state_name == "Pumping":
             return "Cooling is taking place"
+        if state_name == "Shutdown":
+            return "Shutting down"
         return None
 
     def update_state_display(
@@ -4533,6 +4535,8 @@ class AppWindow(QMainWindow):
 
         if state_name == "Error":
             state_bg, state_border, state_text = "#f8e5db", "#d06a45", "#7e3f26"
+        elif state_name == "Shutdown":
+            state_bg, state_border, state_text = "#fff7ed", "#d97706", "#9a3412"
         elif state_name in ("Init", "Ready"):
             state_bg, state_border, state_text = "#e9eef2", "#d6dde3", "#2f3b47"
         else:

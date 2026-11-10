@@ -103,31 +103,31 @@ class StateMachineTests(unittest.TestCase):
         sm.start_pumping()
 
         self.assertTrue(sm.begin_shutdown())
-        self.assertEqual(sm.get_current_state(), State.READY)
+        self.assertEqual(sm.get_current_state(), State.SHUTDOWN)
         sm.update(_ALL_SENSORS_OK)
-        self.assertEqual(sm.get_current_state(), State.READY)
+        self.assertEqual(sm.get_current_state(), State.SHUTDOWN)
+        self.assertFalse(sm.begin_shutdown())
+        self.assertFalse(sm.apply_fault(FaultCode.LEAK_DETECTED))
+        self.assertEqual(sm.get_current_state(), State.SHUTDOWN)
 
-        sm.update(_ALL_SENSORS_OK)
-        sm.begin_shutdown()
-        sm.update(_ALL_SENSORS_OK)
-        self.assertEqual(sm.get_current_state(), State.READY)
-
-    def test_shutdown_from_cooling_and_error(self) -> None:
+    def test_shutdown_from_cooling_ready_and_error(self) -> None:
         sm = StateMachine(ready_hold_after_startup_s=0)
         sm.handle_init_complete(True)
         sm.update(_ALL_SENSORS_OK)
         self.assertTrue(sm.begin_shutdown())
-        self.assertEqual(sm.get_current_state(), State.READY)
+        self.assertEqual(sm.get_current_state(), State.SHUTDOWN)
+
+        sm = StateMachine(ready_hold_after_startup_s=0)
+        sm.handle_init_complete(True)
+        self.assertTrue(sm.begin_shutdown())
+        self.assertEqual(sm.get_current_state(), State.SHUTDOWN)
 
         sm = StateMachine(ready_hold_after_startup_s=0)
         sm.handle_init_complete(True)
         sm.update(_ALL_SENSORS_OK)
         sm.apply_fault(FaultCode.LEAK_DETECTED)
-        self.assertFalse(sm.begin_shutdown())
-        self.assertEqual(sm.get_current_state(), State.ERROR)
-        sm.acknowledge_error()
-        sm.update(_ALL_SENSORS_OK)
-        self.assertEqual(sm.get_current_state(), State.READY)
+        self.assertTrue(sm.begin_shutdown())
+        self.assertEqual(sm.get_current_state(), State.SHUTDOWN)
 
 
 if __name__ == "__main__":

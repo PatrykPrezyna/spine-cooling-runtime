@@ -51,7 +51,8 @@ actuators:
     catheter_out_label: Catheter Out
     cartridge_in_label: Cartrige In
     cartridge_out_label: Cartrige Out
-  acustic_signal_gpio_pin: 16
+  # BCM GPIO13, header pin 33. Free: not I2C, SPI, pump, compressor, UPS, or a switch.
+  acustic_signal_gpio_pin: 13
 sensors:
   digital_sensors:
     sample_rate_hz: 1.0
@@ -174,6 +175,8 @@ alarms:
   cooling_ineffective_csf_delta_c: 0.2
   battery_low_pct: 20
   battery_mode_label: Battery Mode
+  # Seconds on battery before Shutdown. 1800 is 30 minutes.
+  # Lower this to test the shutdown path, then put 1800 back.
   battery_runtime_s: 1800
   storage_min_free_gb: 1
 simulation:

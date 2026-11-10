@@ -25,14 +25,15 @@ from state_machine import (  # noqa: E402
 SPEC_DIR = ROOT / "specification-design_inputs"
 
 # Box geometry for the figure. Arrows are derived from TRANSITIONS.
-_ROW_Y = 86
+_ROW_Y = 108
 _BOX_H = 46
 _BOXES: dict[State, tuple[float, float, float, float]] = {
     State.INIT: (52, _ROW_Y, 132, _BOX_H),
     State.READY: (260, _ROW_Y, 136, _BOX_H),
     State.COOLING: (512, _ROW_Y, 150, _BOX_H),
     State.PUMPING: (778, _ROW_Y, 150, _BOX_H),
-    State.ERROR: (260, 300, 136, _BOX_H),
+    State.SHUTDOWN: (1020, _ROW_Y, 150, _BOX_H),
+    State.ERROR: (260, 360, 136, _BOX_H),
 }
 _MAIN_ROW = (
     State.INIT,
@@ -40,9 +41,9 @@ _MAIN_ROW = (
     State.COOLING,
     State.PUMPING,
 )
-_WIDTH = 968
-_HEIGHT = 370
-_BUS_Y = 214
+_WIDTH = 1200
+_HEIGHT = 440
+_BUS_Y = 260
 
 _INK = "#1e1e1e"
 _FAULT = "#9a4038"
@@ -75,8 +76,11 @@ def classify(item: Transition) -> str:
     """How the figure draws this transition. Every legal move has a route."""
     special = {
         (State.PUMPING, State.COOLING): "stop-pumping",
-        (State.COOLING, State.READY): "shutdown",
-        (State.PUMPING, State.READY): "shutdown",
+        (State.INIT, State.SHUTDOWN): "shutdown",
+        (State.READY, State.SHUTDOWN): "shutdown",
+        (State.COOLING, State.SHUTDOWN): "shutdown",
+        (State.PUMPING, State.SHUTDOWN): "shutdown",
+        (State.ERROR, State.SHUTDOWN): "shutdown",
         (State.ERROR, State.READY): "acknowledge",
         (State.INIT, State.ERROR): "init-failed",
     }
@@ -244,7 +248,7 @@ def _routes() -> list[str]:
 
 
 def _stop_pumping(_item: Transition) -> list[str]:
-    lane = 56
+    lane = _ROW_Y - 36
     start = _side(State.PUMPING, "top")
     end_x = _box(State.COOLING)[0] + _box(State.COOLING)[2] * 0.35
     end = _side(State.COOLING, "top", end_x)
@@ -257,21 +261,42 @@ def _stop_pumping(_item: Transition) -> list[str]:
 
 
 def _shutdown(item: Transition) -> list[str]:
-    """Return to Ready under the main row, clear of the stop-fault bus."""
-    lane = 168.0 if item.source == State.COOLING else 190.0
-    start_x = _box(item.source)[0] + 28
-    end_x = _cx(State.READY) + (24 if item.source == State.COOLING else -24)
-    start = _side(item.source, "bottom", start_x)
-    end = _side(State.READY, "bottom", end_x)
-    return [
+    """Into the terminal Shutdown box.
+
+    Pumping enters from the left. Error comes up from below. The others share
+    a rail above the row.
+    """
+    if item.source == State.PUMPING:
+        y = _mid_y(State.PUMPING)
+        start = _side(State.PUMPING, "right")
+        end = _side(State.SHUTDOWN, "left")
+        return [
+            _path([(start[0], y), (end[0], y)], _INK, "arrow", item=item),
+            _label((start[0] + end[0]) / 2, y - 14, "shutdown", _INK),
+        ]
+    if item.source == State.ERROR:
+        start = _side(State.ERROR, "right")
+        end = _side(State.SHUTDOWN, "bottom")
+        return [
+            _path([start, (end[0], start[1]), end], _INK, "arrow", item=item),
+            _label((start[0] + end[0]) / 2, start[1] - 14, "shutdown", _INK),
+        ]
+    lane = 36.0
+    start = _side(item.source, "top")
+    if item.source == State.COOLING:
+        start = _side(State.COOLING, "top", _box(State.COOLING)[0] + 28)
+    end = _side(State.SHUTDOWN, "top")
+    parts = [
         _path(
             [start, (start[0], lane), (end[0], lane), end],
             _INK,
             "arrow",
             item=item,
-        ),
-        _label((start[0] + end[0]) / 2, lane - 12, "shutdown", _INK),
+        )
     ]
+    if item.source == State.READY:
+        parts.append(_label((start[0] + end[0]) / 2, lane - 12, "shutdown", _INK))
+    return parts
 
 
 def _acknowledge(_item: Transition) -> list[str]:
@@ -308,6 +333,8 @@ def _states() -> list[str]:
     for state, (x, y, width, height) in _BOXES.items():
         if state == State.ERROR:
             fill, stroke, ink = "#fff4f2", _FAULT, _FAULT
+        elif state == State.SHUTDOWN:
+            fill, stroke, ink = "#fff7ed", "#c2410c", "#9a3412"
         else:
             fill, stroke, ink = "#ffffff", _INK, _INK
         parts.append(

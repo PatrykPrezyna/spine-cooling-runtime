@@ -11,6 +11,7 @@ thread is not delayed by Python's  Global Interpreter Lock.
 """
 
 import argparse
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -25,7 +26,7 @@ if __name__ == "__main__" and "--version" in sys.argv[1:]:
     raise SystemExit(0)
 
 import yaml
-from PyQt6.QtCore import QObject, Qt, QThread, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import QApplication
 
 try:
@@ -55,6 +56,7 @@ from sensor_injection import SensorInjectionController, select_temperatures
 from sensor_override_ui import SensorOverrideWindow
 from session_recorder import SessionRecorder
 from state_machine import State, StateMachine
+from system_shutdown import raspberry_pi_halt_command
 
 
 class _BackgroundIOWorker(QObject):
@@ -252,6 +254,7 @@ class CoolingRuntime(QObject):
         self._battery_tracker = BatteryRuntimeTracker(
             runtime_s=float(alarms_cfg.get("battery_runtime_s", 1800))
         )
+        self._system_shutdown_requested = False
         leak_debounce_s = float(
             alarms_cfg.get("leak_debounce_s", 0.5)
         )
@@ -688,6 +691,43 @@ class CoolingRuntime(QObject):
             self.compressor_latched_on = False
             self._set_compressor_running(False)
 
+    def _schedule_system_shutdown(self) -> None:
+        """Leave the event loop so logs flush, then halt the Pi."""
+        if self._system_shutdown_requested:
+            return
+        self._system_shutdown_requested = True
+        print("Shutdown state: stopping the program")
+        QTimer.singleShot(0, self._quit_for_shutdown)
+
+    def _quit_for_shutdown(self) -> None:
+        app = QApplication.instance()
+        if self.ui is not None:
+            self.ui.close()
+        if app is not None:
+            app.quit()
+
+    def _shutdown_devices(self) -> None:
+        """Graceful power-off after the runtime has stopped.
+
+        The Raspberry Pi halts here. Other devices can be stopped in this
+        function before that call. UPS Remote is already held on.
+        """
+        self._halt_raspberry_pi()
+
+    def _halt_raspberry_pi(self) -> None:
+        if self.simulation:
+            print("Raspberry Pi shutdown skipped in simulation")
+            return
+        command = raspberry_pi_halt_command()
+        if command is None:
+            print("Raspberry Pi shutdown skipped: not running on Linux")
+            return
+        print("Raspberry Pi shutdown initiated")
+        try:
+            subprocess.Popen(command, start_new_session=True)
+        except Exception as exc:
+            print(f"Failed to initiate Raspberry Pi shutdown: {exc}")
+
     def _warning_texts(self, message_codes: list[FaultCode]) -> list[str]:
         """Operator banner lines. The battery warning includes the countdown."""
         lines: list[str] = []
@@ -775,6 +815,8 @@ class CoolingRuntime(QObject):
             self.pump_flow_controller.reset()
         self._apply_state_driven_stepper_control(new_state)
         self._apply_state_driven_compressor_control(new_state)
+        if new_state == State.SHUTDOWN:
+            self._schedule_system_shutdown()
         if self.ui:
             self._update_stepper_ui_status()
 
@@ -1207,6 +1249,8 @@ class CoolingRuntime(QObject):
 
             exit_code = app.exec()
             self.cleanup()
+            if self._system_shutdown_requested:
+                self._shutdown_devices()
             return exit_code
 
         except Exception as e:
