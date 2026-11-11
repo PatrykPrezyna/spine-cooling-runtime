@@ -77,7 +77,7 @@ sensors:
       gpio_pin: 26
       active_high: true
       pull_up: true
-    # UPS status inputs (BCM). Active-high, pull-down, so an open wire reads off.
+    # UPS status inputs (BCM). Active-low, pull-down: a low pin reads on.
     # Only Battery Mode drives a warning. DC OK, Alarm, and Ready are shown on Status.
     #   DC OK        GPIO4   header pin 7
     #   Alarm        GPIO27  header pin 13
@@ -86,19 +86,19 @@ sensors:
     # Remote shutdown output is actuators.ups.remote_pin (GPIO6, header pin 31).
     - name: DC OK
       gpio_pin: 4
-      active_high: true
+      active_high: false
       pull_up: false
     - name: Alarm
       gpio_pin: 27
-      active_high: true
+      active_high: false
       pull_up: false
     - name: Battery Mode
       gpio_pin: 17
-      active_high: true
+      active_high: false
       pull_up: false
     - name: Ready
       gpio_pin: 18
-      active_high: true
+      active_high: false
       pull_up: false
   thermistors:
     labels:
