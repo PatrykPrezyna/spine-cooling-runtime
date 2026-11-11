@@ -47,6 +47,7 @@ from graph_history import (
 )
 from pump_flow_control import flow_ml_per_min_to_rpm_exact, rpm_to_flow_ml_per_min
 from battery_runtime import clamp_battery_runtime_minutes
+from sensor_injection import split_temperature_pages
 from version import __version__
 
 from PyQt6.QtCore import QTimer, Qt, QEvent, QRectF, QPointF, QSize, pyqtSignal
@@ -2821,9 +2822,13 @@ class Service2Tab(QWidget):
         pressure_sensor_names: Optional[list[str]] = None,
         digital_sensor_names: Optional[list[str]] = None,
         battery_runtime_minutes: int = 30,
+        status_temperature_names: Optional[list[str]] = None,
     ):
         super().__init__()
         self.sensor_names = list(sensor_names)
+        self.status_temperature_names = list(
+            status_temperature_names or ["Coolplate 2", "Room Temp"]
+        )
         self.digital_sensor_names = list(
             digital_sensor_names
             if digital_sensor_names is not None
@@ -2832,7 +2837,10 @@ class Service2Tab(QWidget):
         self.battery_runtime_minutes = clamp_battery_runtime_minutes(battery_runtime_minutes)
         self.sensor_states: dict = {}
         self.temp_values = {name: float("nan") for name in self.sensor_names}
+        for name in self.status_temperature_names:
+            self.temp_values.setdefault(name, float("nan"))
         self.digital_labels: dict[str, QLabel] = {}
+        self.status_temp_labels: dict[str, QLabel] = {}
         self.output_labels: dict[str, QLabel] = {}
         self.on_battery_minutes_change: Optional[Callable[[int], None]] = None
         self._create_widgets()
@@ -2904,6 +2912,14 @@ class Service2Tab(QWidget):
             self.output_chips[name] = chip
             self.output_labels[name] = value
 
+        self.temperatures_group = QGroupBox("Temperatures")
+        self.temperatures_group.setStyleSheet(ServiceTab._group_box_style("#0e6a76", "12px", margin_top=6))
+        self.status_temp_chips: dict[str, QFrame] = {}
+        for name in self.status_temperature_names:
+            chip, value = self._chip(name)
+            self.status_temp_chips[name] = chip
+            self.status_temp_labels[name] = value
+
     def _setup_layout(self):
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(8, 6, 8, 6)
@@ -2920,6 +2936,14 @@ class Service2Tab(QWidget):
         battery_row.addWidget(self.battery_minutes_up)
         self.battery_group.setLayout(battery_row)
         main_layout.addWidget(self.battery_group)
+
+        temperatures = QHBoxLayout()
+        temperatures.setContentsMargins(8, 4, 8, 6)
+        temperatures.setSpacing(6)
+        for name in self.status_temperature_names:
+            temperatures.addWidget(self.status_temp_chips[name], 1)
+        self.temperatures_group.setLayout(temperatures)
+        main_layout.addWidget(self.temperatures_group)
 
         inputs = QGridLayout()
         inputs.setContentsMargins(8, 4, 8, 6)
@@ -3020,12 +3044,18 @@ class Service2Tab(QWidget):
     def update_temperatures(self, temps: Optional[dict] = None):
         """Cache logical temperatures for the main and advanced graphs."""
         temps = temps or {}
-        for name in self.sensor_names:
+        for name in list(self.sensor_names) + list(self.status_temperature_names):
             value = temps.get(name, float("nan"))
             try:
                 self.temp_values[name] = float(value)
             except (TypeError, ValueError):
                 self.temp_values[name] = float("nan")
+        for name, label in self.status_temp_labels.items():
+            value = self.temp_values.get(name, float("nan"))
+            if not math.isfinite(value):
+                self._paint_value(label, "—", self._IDLE)
+            else:
+                self._paint_value(label, f"{value:.1f} °C", "#0e6a76")
 
     def update_pressures(self, pressures: Optional[dict] = None):
         """Kept for API compatibility; pressures are not shown on this tab."""
@@ -3541,9 +3571,13 @@ class TemperatureGraphTab(QWidget):
         right_column_width: int = _GRAPH_NAV_COLUMN_W,
         show_compressor_toggle: bool = False,
         compressor_min_off_s: float = MIN_OFF_BEFORE_ON_S,
+        pages: Optional[list[list[str]]] = None,
     ):
         super().__init__()
         self.series_names = list(series_names)
+        self._pages = [list(page) for page in pages] if pages else [list(self.series_names)]
+        self._page_index = 0
+        self._page_buttons: list[QPushButton] = []
         self._show_compressor_toggle = bool(show_compressor_toggle)
         self.graph_widget = graph_widget or MultiTemperatureGraphWidget(
             self.series_names,
@@ -3638,6 +3672,46 @@ class TemperatureGraphTab(QWidget):
             )
             self.compressor_checkbox.setChecked(True)
             self.graph_widget.set_compressor_visible(True)
+        self._create_page_buttons()
+
+    def _create_page_buttons(self) -> None:
+        if len(self._pages) < 2:
+            return
+        titles = ("Tip", "Animal")
+        for index, page in enumerate(self._pages):
+            title = titles[index] if index < len(titles) else f"Page {index + 1}"
+            if not page:
+                continue
+            button = QPushButton(title)
+            button.setCheckable(True)
+            button.clicked.connect(
+                lambda _checked=False, page_index=index: self._show_temperature_page(page_index)
+            )
+            self._page_buttons.append(button)
+
+    def _show_temperature_page(self, index: int) -> None:
+        if not self._pages:
+            return
+        index = max(0, min(index, len(self._pages) - 1))
+        self._page_index = index
+        visible = set(self._pages[index])
+        on_style = (
+            "QPushButton { background: #0e6a76; color: white; font-size: 12px;"
+            " font-weight: 700; border: none; border-radius: 8px; min-height: 28px; }"
+        )
+        off_style = (
+            "QPushButton { background: #e5ebf0; color: #40505d; font-size: 12px;"
+            " font-weight: 700; border: none; border-radius: 8px; min-height: 28px; }"
+        )
+        for button_index, button in enumerate(self._page_buttons):
+            selected = button_index == index
+            button.setChecked(selected)
+            button.setStyleSheet(on_style if selected else off_style)
+        for name, checkbox in self.checkboxes.items():
+            checkbox.setVisible(name in visible)
+            self.graph_widget.set_series_visible(
+                name, name in visible and checkbox.isChecked()
+            )
 
     def _make_series_checkbox(self, name: str, series_color: str) -> QCheckBox:
         checkbox = QCheckBox(name)
@@ -3688,6 +3762,14 @@ class TemperatureGraphTab(QWidget):
         time_layout.addWidget(self.graph_nav_right_button)
         right_column.addLayout(time_layout)
 
+        if self._page_buttons:
+            page_row = QHBoxLayout()
+            page_row.setContentsMargins(0, 0, 0, 0)
+            page_row.setSpacing(4)
+            for button in self._page_buttons:
+                page_row.addWidget(button, 1)
+            right_column.addLayout(page_row)
+
         extra = self._right_column_extra_widget()
         if extra is not None:
             right_column.addWidget(extra)
@@ -3708,6 +3790,7 @@ class TemperatureGraphTab(QWidget):
         main_layout.addWidget(self.graph_widget, 1)
         main_layout.addWidget(right_container, 0)
         self.setLayout(main_layout)
+        self._show_temperature_page(0)
         self._update_nav_states()
 
     def _right_column_extra_widget(self) -> Optional[QWidget]:
@@ -4251,10 +4334,16 @@ class AppWindow(QMainWindow):
         self.main_graph_widget.setMinimumHeight(280)
         self.main_graph_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
-        # Temperature graph tab (names from sensors.thermistors.labels)
+        # Temperature graph: Tip through Coolplate 1, then animal and reserve.
+        # Coolplate 2 and Room Temp are on the Status page.
+        temp_page_1, temp_page_2, status_temps = split_temperature_pages(
+            self.temperature_sensor_names
+        )
+        self._status_temperature_names = status_temps
         compressor_cfg = actuator_device(self.config, "compressor")
         self.temperature_graph_tab = TemperatureGraphTab(
-            self.temperature_sensor_names,
+            temp_page_1 + temp_page_2,
+            pages=[temp_page_1, temp_page_2],
             show_compressor_toggle=True,
             compressor_min_off_s=float(
                 compressor_cfg.get("min_off_before_on_s", MIN_OFF_BEFORE_ON_S)
@@ -4288,6 +4377,7 @@ class AppWindow(QMainWindow):
             self.temperature_sensor_names,
             digital_sensor_names=digital_sensor_names,
             battery_runtime_minutes=battery_minutes,
+            status_temperature_names=self._status_temperature_names,
         )
         self.service2_tab.on_battery_minutes_change = self._on_battery_minutes_changed
         self.pressure_service_tab = PressureServiceTab(

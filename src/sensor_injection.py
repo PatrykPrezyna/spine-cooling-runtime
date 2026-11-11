@@ -28,6 +28,28 @@ def thermistor_labels_from_config(config: dict) -> list[str]:
     return names
 
 
+def split_temperature_pages(names: list[str]) -> tuple[list[str], list[str], list[str]]:
+    """Split UI temperatures into the two graph pages and the Status page.
+
+    Page 1 runs from Tip through Coolplate 1. Page 2 is the animal and reserve
+    probes. Coolplate 2 and Room Temp are shown on Status, not on the graphs.
+    """
+    page1: list[str] = []
+    page2: list[str] = []
+    status: list[str] = []
+    for name in names:
+        key = " ".join(str(name).lower().split())
+        if key in {"coolplate 2", "plate 2", "room temp"}:
+            status.append(str(name))
+        elif key.startswith("animal") or key.startswith("reserve"):
+            page2.append(str(name))
+        else:
+            page1.append(str(name))
+    if not any(name.lower() == "room temp" for name in status):
+        status.append("Room Temp")
+    return page1, page2, status
+
+
 def temperature_labels_from_config(config: dict) -> list[str]:
     """Return ordered temperature labels for control, UI, and CSV.
 

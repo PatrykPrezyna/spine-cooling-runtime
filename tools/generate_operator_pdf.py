@@ -35,8 +35,8 @@ TEMPS = {
     "Catheter In": 21.4,
     "Catheter Out": 24.8,
     "Cartrige In": 25.1,
-    "Plate 2": 4.2,
-    "Plate 1": 4.4,
+    "Coolplate 2": 4.2,
+    "Coolplate 1": 4.4,
     "Animal 1": 36.3,
     "Animal 2": 37.0,
     "Animal 3": 37.0,
@@ -109,7 +109,7 @@ def _seed_graphs(ui: AppWindow) -> None:
             if name in temp_names:
                 values[name] = base + 0.4 * math.sin(frac * 6 + hash(name) % 7)
         values["Animal 1"] = 36.8 - 3.2 * frac
-        values["Plate 1"] = 12.0 - 8.0 * frac
+        values["Coolplate 1"] = 12.0 - 8.0 * frac
         return (ts, values)
 
     _seed_deque(graph._history, n, temp_point)
@@ -154,7 +154,7 @@ def _seed_graphs(ui: AppWindow) -> None:
     ui.service_tab.update_outputs(
         compressor_on=True,
         compressor_control_enabled=True,
-        heat_ex_temp_c=TEMPS["Plate 1"],
+        heat_ex_temp_c=TEMPS["Coolplate 1"],
         refresh_heat_ex=True,
         stepper_speed_rpm=102,
     )

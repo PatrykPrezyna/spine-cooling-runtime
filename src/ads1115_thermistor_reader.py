@@ -8,8 +8,18 @@ Hardware is fixed (not config):
 - 8–11: i2c-6 0x48
 - gain 1 (±4.096 V), 128 SPS, single-shot
 
+PCB silkscreen TH1–TH16, in the same order as the UI:
+Tip, Cartrige Out, Catheter In, Catheter Out, Cartrige In,
+Coolplate 1, Coolplate 2, Room Temp, Animal 1–4, Reserve 1–4.
+AIN0 is the first pin of each group of four.
+
+- TH1–TH4   Tip, Cartrige Out, Catheter In, Catheter Out — i2c-6 0x4B AIN0–AIN3
+- TH5–TH8   Cartrige In, Coolplate 1, Coolplate 2, Room Temp — i2c-6 0x0B AIN0–AIN3
+- TH9–TH12  Animal 1, Animal 2, Animal 3, Animal 4 — i2c-1 0x48 AIN0–AIN3
+- TH13–TH16 Reserve 1, Reserve 2, Reserve 3, Reserve 4 — i2c-1 0x49 AIN0–AIN3
+
 Conversion is fixed: 2.5 V / 100 kΩ divider. MA300TA103C by default;
-channel 0 (Tip) uses AB6N2; channels 5–6 (Plate 2 / Plate 1) use
+channel 0 (Tip) uses AB6N2; channels 5–6 (Coolplate 2 / Coolplate 1) use
 NTCASCWE3103F ``Rnom``.
 
 Only ``sensors.thermistors.labels`` is read from config (channel → name).

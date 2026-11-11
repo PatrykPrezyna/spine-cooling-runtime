@@ -108,7 +108,7 @@ class ConfigLayoutTests(unittest.TestCase):
         bundle = build_hardware(self.config, simulation=True)
         temps = bundle.thermistor_reader.read_temperatures()
         self.assertAlmostEqual(temps["Tip"], 36.5)
-        self.assertAlmostEqual(temps["Plate 1"], 22.0)
+        self.assertAlmostEqual(temps["Coolplate 1"], 22.0)
         pressures = bundle.pressure_reader.read_pressures()
         self.assertAlmostEqual(pressures["Pump In"], 1.72)
         self.assertEqual(bundle.flow_reader.read_flow_ml_per_min(), 30.0)

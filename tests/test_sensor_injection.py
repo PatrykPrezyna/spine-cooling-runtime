@@ -11,7 +11,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from hardware_factory import build_hardware  # noqa: E402
-from sensor_injection import SensorInjectionController  # noqa: E402
+from sensor_injection import SensorInjectionController, split_temperature_pages  # noqa: E402
 
 
 _TEST_CONFIG = {
@@ -114,6 +114,41 @@ class SensorInjectionTests(unittest.TestCase):
         notify(32.0, 1, True)
         temps = wrapped.thermistor_reader.read_temperatures()
         self.assertAlmostEqual(temps["CSF 2"], 30.0)
+
+
+class TemperaturePageSplitTests(unittest.TestCase):
+    def test_tip_through_coolplate_1_then_animals_and_status(self) -> None:
+        page1, page2, status = split_temperature_pages(
+            [
+                "Tip",
+                "Cartrige Out",
+                "Catheter In",
+                "Catheter Out",
+                "Cartrige In",
+                "Coolplate 2",
+                "Coolplate 1",
+                "Animal 1",
+                "Animal 2",
+                "Animal 3",
+                "Animal 4",
+                "Reserve",
+            ]
+        )
+        self.assertEqual(
+            page1,
+            [
+                "Tip",
+                "Cartrige Out",
+                "Catheter In",
+                "Catheter Out",
+                "Cartrige In",
+                "Coolplate 1",
+            ],
+        )
+        self.assertEqual(
+            page2, ["Animal 1", "Animal 2", "Animal 3", "Animal 4", "Reserve"]
+        )
+        self.assertEqual(status, ["Coolplate 2", "Room Temp"])
 
 
 if __name__ == "__main__":
