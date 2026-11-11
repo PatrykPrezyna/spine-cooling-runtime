@@ -112,12 +112,13 @@ sensors:
       2: Catheter In
       3: Catheter Out
       4: Cartrige In
-      5: Coolplate 2
-      6: Coolplate 1
-      7: Animal 1
-      8: Animal 2
-      9: Animal 3
-      10: Animal 4
+      5: Coolplate 1
+      6: Coolplate 2
+      7: Room Temp
+      8: Animal 1
+      9: Animal 2
+      10: Animal 3
+      11: Animal 4
       12: Reserve 1
       13: Reserve 2
       14: Reserve 3
@@ -223,8 +224,9 @@ simulation:
     Catheter In: 22.0
     Catheter Out: 22.0
     Cartrige In: 22.0
-    Coolplate 2: 22.0
     Coolplate 1: 22.0
+    Coolplate 2: 22.0
+    Room Temp: 22.0
     Animal 1: 36.5
     Animal 2: 37.0
     Animal 3: 37.0

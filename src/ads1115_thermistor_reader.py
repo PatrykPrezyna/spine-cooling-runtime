@@ -4,8 +4,8 @@ Hardware is fixed (not config):
 
 - 12 single-ended channels on three chips, plus four reserve channels
 - 0–3:  i2c-6 0x4B  (Tip is AIN0)
-- 4–7:  i2c-1 0x4B
-- 8–11: i2c-6 0x48
+- 4–7:  i2c-6 0x0B  (Cartrige In is AIN0)
+- 8–11: i2c-1 0x48  (Animal 1 is AIN0)
 - 12–15: i2c-1 0x49  (Reserve 1 is AIN0)
 - gain 1 (±4.096 V), 128 SPS, single-shot
 
@@ -20,7 +20,7 @@ AIN0 is the first pin of each group of four.
 - TH13–TH16 Reserve 1, Reserve 2, Reserve 3, Reserve 4 — i2c-1 0x49 AIN0–AIN3
 
 Conversion is fixed: 2.5 V / 100 kΩ divider. MA300TA103C by default;
-channel 0 (Tip) uses AB6N2; channels 5–6 (Coolplate 2 / Coolplate 1) use
+channel 0 (Tip) uses AB6N2; channels 5–6 (Coolplate 1 / Coolplate 2) use
 NTCASCWE3103F ``Rnom``.
 
 Only ``sensors.thermistors.labels`` is read from config (channel → name).
@@ -45,8 +45,8 @@ RtPoint = Tuple[float, float]
 
 _CHIPS: Tuple[ChipKey, ...] = (
     (6, 0x4B),
-    (1, 0x4B),
-    (6, 0x48),
+    (6, 0x0B),
+    (1, 0x48),
     (1, 0x49),
 )
 _CHANNEL_COUNT = 16
