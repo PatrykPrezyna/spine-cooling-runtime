@@ -70,7 +70,7 @@ sensors:
       pull_up: true
     - name: Pump Closed
       gpio_pin: 12
-      active_high: true
+      active_high: false
       pull_up: true
     - name: Leak Sensor
       gpio_pin: 18
