@@ -123,7 +123,7 @@ def _check_heat_ex_min(ctx: RuleContext) -> bool:
 
 
 def _check_leak(ctx: RuleContext) -> bool:
-    # Digital leak sensor (config ``leak_sensor_label``, e.g. GPIO26): the line
+    # Digital leak sensor (config ``leak_sensor_label``, e.g. IO18): the line
     # is held high while dry, and a leak pulls it low. A 0 reading therefore
     # means fluid was detected -> immediate stop. Active in every operational
     # state (skipped during INIT bring-up and while already in ERROR).
