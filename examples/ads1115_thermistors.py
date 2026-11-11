@@ -19,7 +19,7 @@ Coolplate 1, Coolplate 2, Room Temp, Animal 1–4, Reserve 1–4.
 AIN0 is the first pin of each group of four.
 
 - TH1–TH4   Tip, Cartrige Out, Catheter In, Catheter Out — i2c-6 0x4B AIN0–AIN3
-- TH5–TH8   Cartrige In, Coolplate 1, Coolplate 2, Room Temp — i2c-6 0x0B AIN0–AIN3
+- TH5–TH8   Cartrige In, Coolplate 1, Coolplate 2, Room Temp — i2c-6 0x4A AIN0–AIN3
 - TH9–TH12  Animal 1, Animal 2, Animal 3, Animal 4 — i2c-1 0x48 AIN0–AIN3
 - TH13–TH16 Reserve 1, Reserve 2, Reserve 3, Reserve 4 — i2c-1 0x49 AIN0–AIN3
 """
@@ -48,11 +48,11 @@ from thermistor_conversion import (  # noqa: E402  # pyright: ignore[reportMissi
     voltage_to_celsius,
 )
 
-# Thermistor chips, including the cartridge group at i2c-6 0x0B and the
+# Thermistor chips, including the cartridge group at i2c-6 0x4A and the
 # animal group at i2c-1 0x48. Pressure and flow chips are included so a
 # thermistor on the wrong converter still shows up.
 BUSES = (1, 6)
-ADDRESSES = (0x0B, 0x48, 0x49, 0x4A, 0x4B)
+ADDRESSES = (0x48, 0x49, 0x4A, 0x4B)
 CHIPS = tuple((bus_id, address) for bus_id in BUSES for address in ADDRESSES)
 # Bus-1 temperature addresses only; ads1115_thermistor_calibrate.py still imports this.
 I2C_ADDRESSES = (0x4A, 0x4B)

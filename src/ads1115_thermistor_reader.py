@@ -4,7 +4,7 @@ Hardware is fixed (not config):
 
 - 12 single-ended channels on three chips, plus four reserve channels
 - 0–3:  i2c-6 0x4B  (Tip is AIN0)
-- 4–7:  i2c-6 0x0B  (Cartrige In is AIN0)
+- 4–7:  i2c-6 0x4A  (Cartrige In is AIN0)
 - 8–11: i2c-1 0x48  (Animal 1 is AIN0)
 - 12–15: i2c-1 0x49  (Reserve 1 is AIN0)
 - gain 1 (±4.096 V), 128 SPS, single-shot
@@ -15,7 +15,7 @@ Coolplate 1, Coolplate 2, Room Temp, Animal 1–4, Reserve 1–4.
 AIN0 is the first pin of each group of four.
 
 - TH1–TH4   Tip, Cartrige Out, Catheter In, Catheter Out — i2c-6 0x4B AIN0–AIN3
-- TH5–TH8   Cartrige In, Coolplate 1, Coolplate 2, Room Temp — i2c-6 0x0B AIN0–AIN3
+- TH5–TH8   Cartrige In, Coolplate 1, Coolplate 2, Room Temp — i2c-6 0x4A AIN0–AIN3
 - TH9–TH12  Animal 1, Animal 2, Animal 3, Animal 4 — i2c-1 0x48 AIN0–AIN3
 - TH13–TH16 Reserve 1, Reserve 2, Reserve 3, Reserve 4 — i2c-1 0x49 AIN0–AIN3
 
@@ -45,7 +45,7 @@ RtPoint = Tuple[float, float]
 
 _CHIPS: Tuple[ChipKey, ...] = (
     (6, 0x4B),
-    (6, 0x0B),
+    (6, 0x4A),
     (1, 0x48),
     (1, 0x49),
 )
