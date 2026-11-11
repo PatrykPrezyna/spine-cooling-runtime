@@ -153,8 +153,8 @@ _SPINE_BUTTON_GAP = 8
 
 _PAGE_TAB_BAR_STYLE = """
     QTabBar::tab {
-        background: #e5ebf0;
-        color: #40505d;
+        background: #5c6e7e;
+        color: #ffffff;
         padding: 9px 12px;
         margin-right: 4px;
         border-top-left-radius: 10px;
@@ -162,19 +162,19 @@ _PAGE_TAB_BAR_STYLE = """
         font-weight: 600;
     }
     QTabBar::tab:selected {
-        background: #0e6a76;
+        background: #0b4f59;
         color: white;
     }
     QTabBar::tab:hover:!selected {
-        background: #d8e1e8;
+        background: #465868;
     }
 """
 
 _HEADER_ICON_BUTTON_STYLE = """
     QPushButton {
-        background: #f8fafb;
-        color: #51606c;
-        border: 1px solid #d5dce3;
+        background: #ffffff;
+        color: #0a0f14;
+        border: 2px solid #4b5d6c;
         border-radius: 10px;
         font-size: 18px;
         font-weight: 700;
@@ -642,8 +642,8 @@ class MainScreenWidget(QWidget):
     def _draw_background(self, painter: QPainter):
         """Draw gradient background"""
         gradient = QLinearGradient(0, 0, 0, self.height())
-        gradient.setColorAt(0, QColor("#f8fbff"))
-        gradient.setColorAt(1, QColor("#eaf2ff"))
+        gradient.setColorAt(0, QColor("#d5e0ea"))
+        gradient.setColorAt(1, QColor("#c3d0dc"))
         painter.fillRect(self.rect(), gradient)
     
     # Temperature history graph configuration
@@ -689,7 +689,7 @@ class MainScreenWidget(QWidget):
         """Draw the temperature history graph on the left side of the chamber"""
         # Background
         painter.setBrush(QColor("#ffffff"))
-        painter.setPen(QPen(QColor("#cbd5e1"), 3))
+        painter.setPen(QPen(QColor("#4b5d6c"), 3))
         painter.drawRoundedRect(graph_x, graph_y, graph_width, graph_height, 10, 10)
         
         # Plot area. Top padding holds the one-line legend; bottom holds x labels.
@@ -707,7 +707,7 @@ class MainScreenWidget(QWidget):
         visible_entries = [entry for entry in self._temp_history if start_ts <= entry[0] <= end_ts]
         y_min, y_max = self._compute_visible_y_range(visible_entries)
 
-        minor_pen = QPen(QColor("#e2e8f0"), 1)
+        minor_pen = QPen(QColor("#8b9aab"), 1)
         minor_pen.setStyle(Qt.PenStyle.DotLine)
         painter.setPen(minor_pen)
         for i in range(6):
@@ -725,7 +725,7 @@ class MainScreenWidget(QWidget):
             t = y_min + (i / 6.0) * (y_max - y_min)
             ratio = (t - y_min) / max(0.001, (y_max - y_min))
             py = int(plot_bottom - ratio * plot_height)
-            painter.setPen(QPen(QColor("#e2e8f0"), 1))
+            painter.setPen(QPen(QColor("#8b9aab"), 1))
             painter.drawLine(plot_left, py, plot_right, py)
             painter.setPen(QColor("#475569"))
             painter.drawText(
@@ -741,7 +741,7 @@ class MainScreenWidget(QWidget):
             px = int(plot_left + ratio * plot_width)
             ts = start_ts + ratio * window_sec
             label = _format_age_label(now - ts)
-            painter.setPen(QPen(QColor("#e2e8f0"), 1))
+            painter.setPen(QPen(QColor("#8b9aab"), 1))
             painter.drawLine(px, plot_top, px, plot_bottom)
             painter.setPen(QColor("#334155"))
             painter.drawText(
@@ -2802,7 +2802,7 @@ class Service2Tab(QWidget):
     _BAD = "#dc2626"
     _WARN = "#d97706"
     _IDLE = "#64748b"
-    _CHIP_NAME_STYLE = "font-size: 10px; color: #64748b; background: transparent;"
+    _CHIP_NAME_STYLE = "font-size: 10px; color: #0a0f14; background: transparent;"
     _CHIP_VALUE_STYLE = "font-size: 13px; font-weight: 700; background: transparent; color: {color};"
     _SPIN_STYLE = """
         QSpinBox {
@@ -2873,7 +2873,7 @@ class Service2Tab(QWidget):
         frame = QFrame()
         frame.setObjectName("statusChip")
         frame.setStyleSheet(
-            "QFrame#statusChip { background: white; border: 1px solid #d5dee6; border-radius: 6px; }"
+            "QFrame#statusChip { background: white; border: 2px solid #4b5d6c; border-radius: 6px; }"
         )
         frame.setMinimumHeight(36)
         frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -3270,7 +3270,7 @@ class MultiTemperatureGraphWidget(QWidget):
         graph_height = max(180, self.height() - 2 * margin)
 
         painter.setBrush(QColor("#ffffff"))
-        painter.setPen(QPen(QColor("#cbd5e1"), 2))
+        painter.setPen(QPen(QColor("#4b5d6c"), 2))
         painter.drawRoundedRect(graph_x, graph_y, graph_width, graph_height, 10, 10)
 
         has_right_axis = bool(self._right_axis_names)
@@ -3306,7 +3306,7 @@ class MultiTemperatureGraphWidget(QWidget):
         )
 
         # Dotted minor subdivisions between the major horizontal gridlines.
-        minor_pen = QPen(QColor("#e2e8f0"), 1)
+        minor_pen = QPen(QColor("#8b9aab"), 1)
         minor_pen.setStyle(Qt.PenStyle.DotLine)
         painter.setPen(minor_pen)
         for i in range(6):
@@ -3322,7 +3322,7 @@ class MultiTemperatureGraphWidget(QWidget):
         for i, t in enumerate(left_ticks):
             ratio = (t - y_min) / max(0.001, (y_max - y_min))
             py = int(plot_bottom - ratio * plot_height)
-            painter.setPen(QPen(QColor("#e2e8f0"), 1))
+            painter.setPen(QPen(QColor("#8b9aab"), 1))
             painter.drawLine(plot_left, py, plot_right, py)
             painter.setPen(QColor("#475569"))
             left_label = self._y_tick_format.format(t)
@@ -3358,7 +3358,7 @@ class MultiTemperatureGraphWidget(QWidget):
                 )
 
         # Dotted minor subdivisions between the major vertical gridlines.
-        minor_pen = QPen(QColor("#e2e8f0"), 1)
+        minor_pen = QPen(QColor("#8b9aab"), 1)
         minor_pen.setStyle(Qt.PenStyle.DotLine)
         painter.setPen(minor_pen)
         for i in range(10):
@@ -3372,7 +3372,7 @@ class MultiTemperatureGraphWidget(QWidget):
             px = int(plot_left + ratio * plot_width)
             ts = start_ts + ratio * window_sec
             label = _format_age_label(now - ts)
-            painter.setPen(QPen(QColor("#e2e8f0"), 1))
+            painter.setPen(QPen(QColor("#8b9aab"), 1))
             painter.drawLine(px, plot_top, px, plot_bottom)
             painter.setPen(QColor("#334155"))
             painter.drawText(
@@ -3743,12 +3743,12 @@ class TemperatureGraphTab(QWidget):
             QCheckBox {
                 font-size: 12px;
                 font-weight: 700;
-                color: #475569;
+                color: #0a0f14;
                 min-height: 26px;
                 padding: 2px 8px;
-                border: 2px solid #cbd5e1;
+                border: 2px solid #4b5d6c;
                 border-radius: 8px;
-                background-color: #f1f5f9;
+                background-color: #ffffff;
             }
             QCheckBox:checked {
                 color: #ffffff;
@@ -4223,71 +4223,72 @@ class AppWindow(QMainWindow):
             self.setFixedSize(SCREEN_WIDTH, SCREEN_HEIGHT)
         self.setStyleSheet("""
             QMainWindow, QWidget {
-                background: #eef2f5;
-                color: #1b2430;
+                background: #b7c4d0;
+                color: #0a0f14;
                 font-family: "Segoe UI";
                 font-size: 12px;
             }
             QTabWidget::pane {
-                border: 1px solid #d8e0e7;
+                border: 1px solid #4b5d6c;
                 border-radius: 14px;
-                background: #f8fafb;
+                background: #ffffff;
                 top: -1px;
             }
             QTabBar::tab {
-                background: #e5ebf0;
-                color: #40505d;
+                background: #5c6e7e;
+                color: #ffffff;
                 padding: 9px 20px;
                 margin-right: 4px;
                 border-top-left-radius: 10px;
                 border-top-right-radius: 10px;
-                font-weight: 600;
+                font-weight: 700;
             }
             QTabBar::tab:selected {
-                background: #0e6a76;
+                background: #0b4f59;
                 color: white;
             }
             QTabBar::tab:hover:!selected {
-                background: #d8e1e8;
+                background: #465868;
             }
             QGroupBox {
-                font-weight: 600;
+                font-weight: 700;
                 font-size: 12px;
-                border: 1px solid #d7dfe6;
+                border: 2px solid #4b5d6c;
                 border-radius: 14px;
                 margin-top: 12px;
                 padding-top: 12px;
-                background: #f8fafb;
+                background: #ffffff;
+                color: #0a0f14;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 6px;
-                color: #34424f;
+                color: #0a0f14;
             }
             QSlider::groove:horizontal {
                 height: 10px;
-                background: #d8e0e6;
+                background: #8fa0ae;
                 border-radius: 5px;
             }
             QSlider::sub-page:horizontal {
-                background: #0e6a76;
+                background: #0b4f59;
                 border-radius: 5px;
             }
             QSlider::handle:horizontal {
                 background: white;
-                border: 2px solid #0e6a76;
+                border: 2px solid #0b4f59;
                 width: 18px;
                 margin: -5px 0;
                 border-radius: 9px;
             }
             QComboBox {
                 background: white;
-                border: 1px solid #cfd7df;
+                border: 2px solid #4b5d6c;
                 border-radius: 10px;
                 padding: 6px 10px;
-                color: #24313d;
-                font-weight: 600;
+                color: #0a0f14;
+                font-weight: 700;
             }
         """)
         
