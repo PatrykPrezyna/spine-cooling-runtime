@@ -201,7 +201,7 @@ class ThermistorHardwareTests(unittest.TestCase):
 
 class ExtraBusThermistorTests(unittest.TestCase):
     def test_channels_8_to_11_use_same_address_on_bus_6(self) -> None:
-        self.assertEqual(chip_key_for_channel(0), (1, 0x4A))
+        self.assertEqual(chip_key_for_channel(0), (6, 0x4B))
         self.assertEqual(chip_key_for_channel(4), (1, 0x4B))
         self.assertEqual(chip_key_for_channel(8), (6, 0x48))
         self.assertEqual(chip_key_for_channel(11), (6, 0x48))
