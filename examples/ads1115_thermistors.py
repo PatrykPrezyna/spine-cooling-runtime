@@ -1,6 +1,6 @@
 """Standalone readout of thermistors on I2C bus 1 and bus 6.
 
-Bus 1: ADS1115 0x48 (T1-T4), 0x49 (T5-T8); pressure is 0x4A/0x4B
+Bus 1: ADS1115 0x4A (T1-T4), 0x4B (T5-T8); pump pressure is 0x48, catheter pressure is 0x49
 Bus 6: ADS1115 0x48 (T9-T12); 0x49 AIN0 = 4-20 mA flow (220 Ω)
 
 Hit ENTER to stop. Pass a bus number to read only that bus:
@@ -42,13 +42,13 @@ from ads1115_flow_reader import (  # noqa: E402  # pyright: ignore[reportMissing
 
 # (bus, address) — same layout as ads1115_thermistor_reader._CHIPS.
 CHIPS = (
-    (1, 0x48),  # T1-T4
-    (1, 0x49),  # T5-T8
+    (1, 0x4A),  # T1-T4
+    (1, 0x4B),  # T5-T8
     (6, 0x48),  # T9-T12
     (6, 0x49),  # FLOW on AIN0
 )
-# Bus-1 addresses only; ads1115_thermistor_calibrate.py still imports this.
-I2C_ADDRESSES = (0x48, 0x49)
+# Bus-1 temperature addresses only; ads1115_thermistor_calibrate.py still imports this.
+I2C_ADDRESSES = (0x4A, 0x4B)
 GAIN = 1
 FLOW_GAIN = 2 / 3  # 20 mA × 220 Ω = 4.40 V needs ±6.144 V
 FLOW_SHUNT_OHM = 220.0

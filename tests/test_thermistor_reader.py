@@ -201,10 +201,10 @@ class ThermistorHardwareTests(unittest.TestCase):
 
 class ExtraBusThermistorTests(unittest.TestCase):
     def test_channels_8_to_11_use_same_address_on_bus_6(self) -> None:
-        self.assertEqual(chip_key_for_channel(0), (1, 72))
-        self.assertEqual(chip_key_for_channel(4), (1, 73))
-        self.assertEqual(chip_key_for_channel(8), (6, 72))
-        self.assertEqual(chip_key_for_channel(11), (6, 72))
+        self.assertEqual(chip_key_for_channel(0), (1, 0x4A))
+        self.assertEqual(chip_key_for_channel(4), (1, 0x4B))
+        self.assertEqual(chip_key_for_channel(8), (6, 0x48))
+        self.assertEqual(chip_key_for_channel(11), (6, 0x48))
 
     def test_config_yaml_temperature_labels_follow_channels(self) -> None:
         import yaml

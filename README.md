@@ -200,6 +200,14 @@ Set `logging.usb.enabled: false` in `config.yaml` to leave the stick unused.
 
    Then `sudo systemctl enable pigpiod` and `sudo systemctl start pigpiod`. For the current session only: `sudo pigpiod`. Check with `pigs t`.
 5. Follow [Run](#run) above.
+6. Start the UI at boot, with no one logging in or clicking anything. From the repo, as the touchscreen user:
+
+   ```bash
+   bash deploy/install-boot.sh
+   sudo reboot
+   ```
+
+   That turns on desktop auto-login, starts `pigpiod`, and opens the app when the desktop comes up. If the window closes or the program crashes, it opens again. A shutdown from the UI still halts the Pi and does not reopen the window. The boot log is `logs/autostart.log`. Stop it with `bash deploy/install-boot.sh --remove`.
 
 Qt on the Pi image also needs:
 
@@ -207,8 +215,6 @@ Qt on the Pi image also needs:
 sudo apt-get install libxcb-cursor0 libxcb-xinerama0 libxcb-shape0
 sudo apt-get install libqt6gui6 libqt6core6 qt6-qpa-plugins
 ```
-
-Launching the app at boot is still open. Background notes: https://www.instructables.com/Raspberry-Pi-Launch-Python-script-on-startup/
 
 Stepper wiring background: https://www.instructables.com/Raspberry-Pi-Python-and-a-TB6600-Stepper-Motor-Dri/
 

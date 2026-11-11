@@ -1,6 +1,6 @@
 """Standalone differential pressure readout (one sensor).
 
-ADS1115 at address 50, differential input P0-P1.
+ADS1115 at 0x48 on I2C bus 1 (pump), differential input P0-P1.
 Hit ENTER to stop.
 
     python examples/ads1115_pressure.py
@@ -22,7 +22,7 @@ try:
 except Exception:
     from adafruit_ads1x15.ads1115 import Mode  # pyright: ignore[reportMissingImports]
 
-I2C_ADDRESS = 75
+I2C_ADDRESS = 0x48
 GAIN = 16  # ±0.256 V
 SAMPLE_INTERVAL_S = 0.5  # 2 Hz print loop
 

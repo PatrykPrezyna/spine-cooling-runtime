@@ -132,8 +132,8 @@ sensors:
     capture_rate_hz: 100
     data_rate: 860
     i2c_addresses:
-    - 74
-    - 75
+    - 72
+    - 73
     gain: 16
     channels:
     - 0

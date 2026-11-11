@@ -707,27 +707,30 @@ class CoolingRuntime(QObject):
         if app is not None:
             app.quit()
 
-    def _shutdown_devices(self) -> None:
+    def _shutdown_devices(self) -> bool:
         """Graceful power-off after the runtime has stopped.
 
         The Raspberry Pi halts here. Other devices can be stopped in this
         function before that call. UPS Remote is already held on.
+        Returns True when a halt command was started.
         """
-        self._halt_raspberry_pi()
+        return self._halt_raspberry_pi()
 
-    def _halt_raspberry_pi(self) -> None:
+    def _halt_raspberry_pi(self) -> bool:
         if self.simulation:
             print("Raspberry Pi shutdown skipped in simulation")
-            return
+            return False
         command = raspberry_pi_halt_command()
         if command is None:
             print("Raspberry Pi shutdown skipped: not running on Linux")
-            return
+            return False
         print("Raspberry Pi shutdown initiated")
         try:
             subprocess.Popen(command, start_new_session=True)
         except Exception as exc:
             print(f"Failed to initiate Raspberry Pi shutdown: {exc}")
+            return False
+        return True
 
     def _warning_texts(self, message_codes: list[FaultCode]) -> list[str]:
         """Operator banner lines. The battery warning includes the countdown."""
@@ -1289,8 +1292,10 @@ class CoolingRuntime(QObject):
 
             exit_code = app.exec()
             self.cleanup()
-            if self._system_shutdown_requested:
-                self._shutdown_devices()
+            if self._system_shutdown_requested and self._shutdown_devices():
+                # 86 tells the boot launcher not to open the window again
+                # while the Pi is halting.
+                return 86
             return exit_code
 
         except Exception as e:

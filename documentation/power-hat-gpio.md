@@ -40,8 +40,8 @@ Labels are the silkscreen on the power hat. Rows run from the top of the photo t
 |-----|--------|
 | 5V | 5 V |
 | GND | Ground |
-| IO23 | I2C6 clock — flow sensor and thermistors 8–11 |
-| IO22 | I2C6 data — flow sensor and thermistors 8–11 |
+| IO23 | I2C6 clock — thermistors 8–11 (0x48) and flow (0x49) |
+| IO22 | I2C6 data — thermistors 8–11 (0x48) and flow (0x49) |
 | IDSD | Hat ID, unused |
 | IDSC | Hat ID, unused |
 | IO12 | Pump Closed |
@@ -55,8 +55,8 @@ Labels are the silkscreen on the power hat. Rows run from the top of the photo t
 |-----|--------|
 | 5V | 5 V |
 | GND | Ground |
-| SDA | I2C1 data — thermistors 0–7 and pressure |
-| SCL | I2C1 clock — thermistors 0–7 and pressure |
+| SDA | I2C1 data — pump pressure 0x48, catheter pressure 0x49, thermistors 0–7 at 0x4A/0x4B |
+| SCL | I2C1 clock — pump pressure 0x48, catheter pressure 0x49, thermistors 0–7 at 0x4A/0x4B |
 | IO4 | UPS shutdown output |
 | IO27 | Ready |
 | IO21 | Battery Mode |

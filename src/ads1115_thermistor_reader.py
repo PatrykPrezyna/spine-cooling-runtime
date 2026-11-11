@@ -3,8 +3,8 @@
 Hardware is fixed (not config):
 
 - 12 single-ended channels on three chips
-- 0–3:  i2c-1 0x48
-- 4–7:  i2c-1 0x49
+- 0–3:  i2c-1 0x4A
+- 4–7:  i2c-1 0x4B
 - 8–11: i2c-6 0x48
 - gain 1 (±4.096 V), 128 SPS, single-shot
 
@@ -33,8 +33,8 @@ ChipKey = Tuple[int, int]
 RtPoint = Tuple[float, float]
 
 _CHIPS: Tuple[ChipKey, ...] = (
-    (1, 0x48),
-    (1, 0x49),
+    (1, 0x4A),
+    (1, 0x4B),
     (6, 0x48),
 )
 _CHANNEL_COUNT = 12
