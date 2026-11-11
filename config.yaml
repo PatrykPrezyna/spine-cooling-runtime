@@ -41,7 +41,8 @@ actuators:
     on_above_temp_c: 1.3
     min_off_before_on_s: 60
   ups:
-    # HIGH on IO4 commands the UPS Remote input: start shutdown (UPS switches off after about 3 min).
+    # LOW on IO4 commands the UPS Remote input: start shutdown (UPS switches off after about 3 min).
+    # Idle is HIGH.
     remote_pin: 4
   cooling_power:
     water_density_kg_per_l: 1.0

@@ -221,7 +221,7 @@ class CoolingRuntime(QObject):
         self.compressor_relay_pin: int = int(compressor_cfg.get('relay_pin', 19))
         ups_cfg = actuator_device(self.config, "ups")
         self.ups_remote_pin: int = int(ups_cfg.get("remote_pin", 4))
-        self.ups_remote_high: bool = False
+        self.ups_remote_on: bool = False
         self._ups_remote_ready: bool = False
         # MOSFET gate: HIGH = compressor on. Idle is LOW (off).
         self.compressor_relay_high: bool = False
@@ -393,34 +393,34 @@ class CoolingRuntime(QObject):
             print(f"Failed to set compressor relay GPIO{self.compressor_relay_pin}: {exc}")
 
     def _initialize_ups_remote(self) -> None:
-        """Configure the UPS Remote output (active-high: HIGH starts UPS shutdown)."""
+        """Configure the UPS Remote output (active-low: LOW starts UPS shutdown)."""
         if GPIO is None:
             print("UPS remote unavailable: RPi.GPIO not installed")
             return
         try:
             GPIO.setwarnings(False)
             GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self.ups_remote_pin, GPIO.OUT, initial=GPIO.LOW)
-            self.ups_remote_high = False
+            GPIO.setup(self.ups_remote_pin, GPIO.OUT, initial=GPIO.HIGH)
+            self.ups_remote_on = False
             self._ups_remote_ready = True
             print(f"UPS remote initialized on GPIO{self.ups_remote_pin}")
         except Exception as exc:
             print(f"Failed to initialize UPS remote GPIO{self.ups_remote_pin}: {exc}")
 
-    def _set_ups_remote(self, high: bool) -> None:
-        """Drive UPS Remote. HIGH tells the UPS to start its shutdown delay."""
-        high = bool(high)
-        if high == self.ups_remote_high:
+    def _set_ups_remote(self, on: bool) -> None:
+        """Drive UPS Remote. LOW tells the UPS to start its shutdown delay."""
+        on = bool(on)
+        if on == self.ups_remote_on:
             return
-        self.ups_remote_high = high
-        if high:
+        self.ups_remote_on = on
+        if on:
             print("UPS remote on: shutdown procedure commanded")
         if GPIO is None or not self._ups_remote_ready:
             return
         try:
             GPIO.output(
                 self.ups_remote_pin,
-                GPIO.HIGH if self.ups_remote_high else GPIO.LOW,
+                GPIO.LOW if self.ups_remote_on else GPIO.HIGH,
             )
         except Exception as exc:
             print(f"Failed to set UPS remote GPIO{self.ups_remote_pin}: {exc}")

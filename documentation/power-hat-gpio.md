@@ -71,4 +71,4 @@ Levels used by the runtime:
 - Leak Sensor, Level Low, Level Critical, and Cartridge In Place use a pull-up. An open switch reads on. Short the switch wire to ground for off.
 - Pump Closed on IO12 uses a pull-up and is active-low. Short IO12 to ground when the head is latched. An open switch reads off.
 - UPS inputs (DC OK, Alarm, Battery Mode, Ready) are active-low with a pull-down. A low pin reads on.
-- UPS shutdown on IO4 is an output. High commands the UPS to shut down.
+- UPS shutdown on IO4 is an output. Low commands the UPS to shut down. Idle is high.
