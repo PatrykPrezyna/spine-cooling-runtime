@@ -37,11 +37,11 @@ TEMPS = {
     "Cartrige In": 25.1,
     "Plate 2": 4.2,
     "Plate 1": 4.4,
-    "Body Temp": 36.3,
-    "Hot bath1": 37.0,
-    "Plate 2b": 37.0,
-    "Plate 1b": 4.0,
-    "Probe 4": 25.0,
+    "Animal 1": 36.3,
+    "Animal 2": 37.0,
+    "Animal 3": 37.0,
+    "Animal 4": 4.0,
+    "Reserve": 25.0,
 }
 PRESSURES = {
     "Pump In": 1.71,
@@ -95,7 +95,7 @@ def _seed_graphs(ui: AppWindow) -> None:
         return (ts, set_temp, csf, inlet)
 
     _seed_deque(ui.main_graph_widget._temp_history, n, main_point)
-    ui.main_graph_widget.current_csf_temperature = TEMPS["Body Temp"]
+    ui.main_graph_widget.current_csf_temperature = TEMPS["Animal 1"]
     ui.main_graph_widget.current_catheter_in_temperature = TEMPS["Catheter In"]
     ui.main_graph_widget.current_catheter_out_temperature = TEMPS["Catheter Out"]
 
@@ -108,7 +108,7 @@ def _seed_graphs(ui: AppWindow) -> None:
         for name, base in TEMPS.items():
             if name in temp_names:
                 values[name] = base + 0.4 * math.sin(frac * 6 + hash(name) % 7)
-        values["Body Temp"] = 36.8 - 3.2 * frac
+        values["Animal 1"] = 36.8 - 3.2 * frac
         values["Plate 1"] = 12.0 - 8.0 * frac
         return (ts, values)
 

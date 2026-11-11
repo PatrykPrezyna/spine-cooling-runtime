@@ -63,11 +63,11 @@ _DEFAULT_TEMP_NAMES = [
     "Cartrige In",
     "Plate 2",
     "Plate 1",
-    "Body Temp",
-    "Hot bath1",
-    "Plate 2b",
-    "Plate 1b",
-    "Probe 4",
+    "Animal 1",
+    "Animal 2",
+    "Animal 3",
+    "Animal 4",
+    "Reserve",
 ]
 _DEFAULT_PRESSURE_NAMES = ["Pump In", "Pump Out", "Catheter In", "Catheter Out"]
 

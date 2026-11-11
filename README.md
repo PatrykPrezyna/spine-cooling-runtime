@@ -223,9 +223,9 @@ Stepper wiring background: https://www.instructables.com/Raspberry-Pi-Python-and
 If the main app shows no temperatures, check the bus without the UI:
 
 ```bash
-python examples/ads1115_thermistors.py      # bus 1 and bus 6
-python examples/ads1115_thermistors.py 1    # eight channels on /dev/i2c-1
-python examples/ads1115_thermistors.py 6    # four channels on /dev/i2c-6
+python examples/ads1115_thermistors.py      # all 8 ADS1115s, every pin as a thermistor
+python examples/ads1115_thermistors.py 1    # four chips on /dev/i2c-1
+python examples/ads1115_thermistors.py 6    # four chips on /dev/i2c-6
 ```
 
 Live numbers mean that bus and ADS1115 are fine — compare the names with `config.yaml`. No devices, or only one bus, means the connector, overlay, address, or pull-ups. Check with `ls /dev/i2c-1 /dev/i2c-6` and `sudo i2cdetect -y 1` / `sudo i2cdetect -y 6`.

@@ -1,7 +1,9 @@
-"""Standalone readout of thermistors on I2C bus 1 and bus 6.
+"""Scan every ADS1115 on I2C bus 1 and bus 6 as a thermistor.
 
-Bus 1: ADS1115 0x4A (T1-T4), 0x4B (T5-T8); pump pressure is 0x48, catheter pressure is 0x49
-Bus 6: ADS1115 0x48 (T9-T12); 0x49 AIN0 = 4-20 mA flow (220 Ω)
+Eight chips (0x48–0x4B on each bus), four pins each. Every pin is converted
+with the thermistor table so a sensor plugged into a pressure or flow chip
+still shows a temperature. A reading from 20 °C to 40 °C is marked so it
+stands out while you find the right probe.
 
 Hit ENTER to stop. Pass a bus number to read only that bus:
 
@@ -35,28 +37,22 @@ from thermistor_conversion import (  # noqa: E402  # pyright: ignore[reportMissi
     DEFAULT_VREF_V,
     voltage_to_celsius,
 )
-from ads1115_flow_reader import (  # noqa: E402  # pyright: ignore[reportMissingImports]
-    voltage_to_flow_ml_per_min,
-    voltage_to_ma,
-)
 
-# (bus, address) — same layout as ads1115_thermistor_reader._CHIPS.
-CHIPS = (
-    (1, 0x4A),  # T1-T4
-    (1, 0x4B),  # T5-T8
-    (6, 0x48),  # T9-T12
-    (6, 0x49),  # FLOW on AIN0
-)
+# All four ADS1115 addresses on both buses. Pressure and flow chips are
+# included so a thermistor on the wrong converter still shows up.
+BUSES = (1, 6)
+ADDRESSES = (0x48, 0x49, 0x4A, 0x4B)
+CHIPS = tuple((bus_id, address) for bus_id in BUSES for address in ADDRESSES)
 # Bus-1 temperature addresses only; ads1115_thermistor_calibrate.py still imports this.
 I2C_ADDRESSES = (0x4A, 0x4B)
 GAIN = 1
-FLOW_GAIN = 2 / 3  # 20 mA × 220 Ω = 4.40 V needs ±6.144 V
-FLOW_SHUNT_OHM = 220.0
-FLOW_CHIP = (6, 0x49)
-FLOW_PIN_INDEX = 0
 SAMPLE_INTERVAL_S = 0.5
 VREF_V = DEFAULT_VREF_V
 RS_OHM = DEFAULT_RS_OHM
+WARM_LO_C = 20.0
+WARM_HI_C = 40.0
+_MARK_ON = "\033[1;30;103m"
+_MARK_OFF = "\033[0m"
 
 # Re-export for calibrate script / callers that import voltage_to_c.
 voltage_to_c = voltage_to_celsius
@@ -120,32 +116,36 @@ def open_chips(
     return opened, errors
 
 
-def format_chip(bus_id: int, address: int, channels: list[AnalogIn], start: int) -> str:
-    parts = []
-    for i, ch in enumerate(channels):
-        is_flow = (bus_id, address) == FLOW_CHIP and i == FLOW_PIN_INDEX
-        if (bus_id, address) == FLOW_CHIP and not is_flow:
-            continue
+def in_warm_range(temp_c: float) -> bool:
+    return WARM_LO_C <= temp_c <= WARM_HI_C
+
+
+def mark(text: str) -> str:
+    """Yellow highlight on a terminal; asterisks if color is not available."""
+    if sys.stdout.isatty():
+        return f"{_MARK_ON} {text} {_MARK_OFF}"
+    return f"** {text} **"
+
+
+def format_chip(
+    bus_id: int, address: int, channels: list[AnalogIn]
+) -> tuple[str, list[str]]:
+    parts: list[str] = []
+    warm: list[str] = []
+    for pin, ch in enumerate(channels):
+        label = f"AIN{pin}"
         try:
-            if is_flow:
-                ads = getattr(ch, "ads", None)
-                previous_gain = getattr(ads, "gain", None) if ads is not None else None
-                if ads is not None:
-                    ads.gain = FLOW_GAIN
-                v = ch.voltage
-                if ads is not None and previous_gain is not None:
-                    ads.gain = previous_gain
-                ma = voltage_to_ma(v, FLOW_SHUNT_OHM)
-                flow = voltage_to_flow_ml_per_min(v, shunt_ohm=FLOW_SHUNT_OHM)
-                parts.append(f"FLOW={flow:.1f}ml/min({ma:.1f}mA,{v * 1000.0:.0f}mV)")
-            else:
-                label = f"T{start + i}"
-                v = ch.voltage
-                parts.append(f"{label}={voltage_to_c(v):.1f}C({v * 1000.0:.0f}mV)")
+            volts = ch.voltage
+            temp_c = voltage_to_c(volts)
+            text = f"{label}={temp_c:.1f}C({volts * 1000.0:.0f}mV)"
+            if in_warm_range(temp_c):
+                text = mark(text)
+                warm.append(f"i2c-{bus_id} 0x{address:X} {label}={temp_c:.1f}C")
+            parts.append(text)
         except Exception as exc:
-            label = "FLOW" if is_flow else f"T{start + i}"
             parts.append(f"{label}=ERR({exc})")
-    return f"  i2c-{bus_id} 0x{address:X}  " + "  ".join(parts)
+    line = f"  i2c-{bus_id} 0x{address:X}  " + "  ".join(parts)
+    return line, warm
 
 
 def main() -> None:
@@ -158,22 +158,26 @@ def main() -> None:
 
     n_channels = sum(len(channels) for _, _, channels in opened)
     print(
-        f"Reading {n_channels} thermistors "
-        f"(gain={GAIN}, Vref={VREF_V}V, Rs={RS_OHM:.0f}Ω). Hit ENTER to exit."
+        f"Reading {n_channels} pins on {len(opened)} ADS1115s as thermistors "
+        f"(gain={GAIN}, Vref={VREF_V}V, Rs={RS_OHM:.0f}Ω). "
+        f"{WARM_LO_C:.0f}–{WARM_HI_C:.0f}°C is highlighted. Hit ENTER to exit."
     )
     threading.Thread(
         target=key_capture_thread, name="key_capture_thread", daemon=True
     ).start()
 
-    index_of = {chip: 1 + 4 * CHIPS.index(chip) for chip in CHIPS}
-
     while keep_going:
         now = datetime.now().strftime("%H:%M:%S.%f")[:-3]
         lines = [now]
+        warm: list[str] = []
         for bus_id, address, channels in opened:
-            start = index_of[(bus_id, address)]
-            lines.append(format_chip(bus_id, address, channels, start))
+            line, hits = format_chip(bus_id, address, channels)
+            lines.append(line)
+            warm.extend(hits)
+        if warm:
+            lines.append("  " + mark("20–40°C: " + " | ".join(warm)))
         print("\n".join(lines))
+        print()
         time.sleep(SAMPLE_INTERVAL_S)
 
     print()
