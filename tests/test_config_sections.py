@@ -46,7 +46,7 @@ class ConfigLayoutTests(unittest.TestCase):
     def test_grouped_file_resolves_devices(self) -> None:
         self.assertEqual(control_temp_label(self.config), "Tip")
         self.assertEqual(self.config["ui"]["main_view"], "spine")
-        self.assertEqual(actuator_device(self.config, "compressor")["relay_pin"], 16)
+        self.assertEqual(actuator_device(self.config, "compressor")["relay_pin"], 19)
         self.assertEqual(
             actuator_device(self.config, "stepper_motor")["pins"]["step"],
             5,

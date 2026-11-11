@@ -218,7 +218,7 @@ class CoolingRuntime(QObject):
             )
         )
         self.compressor_on: bool = False
-        self.compressor_relay_pin: int = int(compressor_cfg.get('relay_pin', 16))
+        self.compressor_relay_pin: int = int(compressor_cfg.get('relay_pin', 19))
         ups_cfg = actuator_device(self.config, "ups")
         self.ups_remote_pin: int = int(ups_cfg.get("remote_pin", 4))
         self.ups_remote_high: bool = False

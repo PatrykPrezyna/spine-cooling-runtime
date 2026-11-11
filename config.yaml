@@ -34,7 +34,7 @@ actuators:
     kd: 5.0
     integral_limit: 2.0
   compressor:
-    relay_pin: 16
+    relay_pin: 19
     heat_ex_labels:
     - Plate 1
     off_below_temp_c: -0.5
@@ -57,19 +57,19 @@ sensors:
     sample_rate_hz: 1.0
     sensors:
     - name: Level Low
-      gpio_pin: 12
-      active_high: true
-      pull_up: true
-    - name: Level Critical
       gpio_pin: 20
       active_high: true
       pull_up: true
+    - name: Level Critical
+      gpio_pin: 17
+      active_high: true
+      pull_up: true
     - name: Cartridge In Place
-      gpio_pin: 19
+      gpio_pin: 16
       active_high: true
       pull_up: true
     - name: Pump Closed
-      gpio_pin: 17
+      gpio_pin: 12
       active_high: true
       pull_up: true
     - name: Leak Sensor
