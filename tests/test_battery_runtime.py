@@ -12,6 +12,7 @@ if str(SRC_DIR) not in sys.path:
 
 from battery_runtime import (  # noqa: E402
     BatteryRuntimeTracker,
+    clamp_battery_runtime_minutes,
     format_countdown,
     running_on_battery_text,
 )
@@ -55,6 +56,25 @@ class BatteryRuntimeTests(unittest.TestCase):
         self.assertTrue(tracker.remote_on)
         self.assertEqual(tracker.remaining_s, 0.0)
         tracker.update(on_battery=False, now=1900.0)
+        self.assertTrue(tracker.remote_on)
+
+    def test_runtime_minutes_clamp_to_status_page_range(self) -> None:
+        self.assertEqual(clamp_battery_runtime_minutes(0), 1)
+        self.assertEqual(clamp_battery_runtime_minutes(30), 30)
+        self.assertEqual(clamp_battery_runtime_minutes(180), 180)
+        self.assertEqual(clamp_battery_runtime_minutes(500), 180)
+        tracker = BatteryRuntimeTracker(runtime_s=1800)
+        self.assertEqual(tracker.set_runtime_minutes(12), 12)
+        self.assertEqual(tracker.runtime_s, 12 * 60)
+
+    def test_shorter_limit_can_finish_an_active_countdown(self) -> None:
+        tracker = BatteryRuntimeTracker(runtime_s=1800)
+        tracker.update(on_battery=True, now=0.0)
+        tracker.set_runtime_minutes(1)
+        tracker.update(on_battery=True, now=30.0)
+        self.assertFalse(tracker.remote_on)
+        self.assertAlmostEqual(tracker.remaining_s, 30.0)
+        tracker.update(on_battery=True, now=60.0)
         self.assertTrue(tracker.remote_on)
 
 

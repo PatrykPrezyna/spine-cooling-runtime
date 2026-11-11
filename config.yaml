@@ -175,8 +175,8 @@ alarms:
   cooling_ineffective_csf_delta_c: 0.2
   battery_low_pct: 20
   battery_mode_label: Battery Mode
-  # Seconds on battery before Shutdown. 1800 is 30 minutes.
-  # Lower this to test the shutdown path, then put 1800 back.
+  # Seconds on battery before shutdown. The Status page edits this from 1 to 180 minutes.
+  # 1800 is the 30 minute default.
   battery_runtime_s: 1800
   storage_min_free_gb: 1
 simulation:

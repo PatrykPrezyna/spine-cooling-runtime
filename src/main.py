@@ -11,6 +11,7 @@ thread is not delayed by Python's  Global Interpreter Lock.
 """
 
 import argparse
+import re
 import subprocess
 import sys
 import time
@@ -961,12 +962,18 @@ class CoolingRuntime(QObject):
                     self._apply_closed_loop_pump_control(body_temp, set_temp)
 
             if self.ui:
+                pump_on = bool(self.stepper_motor_running)
+                if self.stepper_driver is not None:
+                    pump_on = pump_on or bool(self.stepper_driver.enabled)
                 self.ui.update_sensor_display(
                     sensor_states,
                     temperatures,
                     pressures,
                     measured_flow_ml_per_min=flow_ml_per_min,
                     compressor_on=self.compressor_on,
+                    pump_on=pump_on,
+                    pump_direction=self.stepper_continuous_direction,
+                    ups_shutdown=self._battery_tracker.remote_on,
                 )
                 self._refresh_acknowledge_button(sensor_states, temperatures, pressures)
                 if self.stepper_driver:
@@ -999,6 +1006,9 @@ class CoolingRuntime(QObject):
             pump_speed_rpm=actual_pump_speed_rpm,
             compressor_on=self.compressor_on,
             flow_ml_per_min=commanded_flow_ml_per_min,
+            pump_on=bool(self.stepper_driver.enabled) or self.stepper_motor_running,
+            pump_direction=self.stepper_continuous_direction,
+            ups_shutdown=self._battery_tracker.remote_on,
         )
         self.ui.pressure_service_tab.update_pump_speed(
             pump_speed_rpm=actual_pump_speed_rpm,
@@ -1101,6 +1111,36 @@ class CoolingRuntime(QObject):
     def _logged_pump_set_speed_rpm(self) -> int:
         """Stepper setpoint for CSV: speed when running, else 0."""
         return int(self.stepper_speed_rpm) if self.stepper_motor_running else 0
+
+    def on_battery_runtime_minutes_changed(self, minutes: int) -> None:
+        """Apply the Status-page battery limit and keep it for the next start."""
+        applied = self._battery_tracker.set_runtime_minutes(minutes)
+        alarms = self.config.setdefault("alarms", {})
+        alarms["battery_runtime_s"] = applied * 60
+        self._log_setpoint_if_changed("battery_runtime_min", str(applied))
+        self._save_battery_runtime_seconds(applied * 60)
+
+    def _save_battery_runtime_seconds(self, seconds: int) -> None:
+        """Rewrite only the battery limit so the rest of config.yaml keeps its comments."""
+        path = self.config_path
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"Failed to read config for battery time: {exc}")
+            return
+        updated, count = re.subn(
+            r"(?m)^(\s*battery_runtime_s:\s*)\d+\s*$",
+            rf"\g<1>{int(seconds)}",
+            text,
+            count=1,
+        )
+        if count != 1:
+            self._save_config()
+            return
+        try:
+            path.write_text(updated, encoding="utf-8")
+        except OSError as exc:
+            print(f"Failed to save battery time: {exc}")
 
     def on_compressor_thresholds_changed(self, off_temp_c: float, on_temp_c: float) -> None:
         off_c = round(float(off_temp_c), 1)
@@ -1273,6 +1313,7 @@ class CoolingRuntime(QObject):
         ui.on_compressor_thresholds_change_callback = self.on_compressor_thresholds_changed
         ui.main_graph_widget.on_temperature_change_callback = self.on_set_temperature_changed
         ui.on_usb_eject_callback = self.on_usb_eject
+        ui.on_battery_minutes_change_callback = self.on_battery_runtime_minutes_changed
         ui.service_tab.pump_start_allowed_callback = self.pump_start_allowed
         self._log_current_setpoints()
 

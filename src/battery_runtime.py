@@ -15,16 +15,33 @@ from typing import Optional
 
 
 DEFAULT_BATTERY_RUNTIME_S = 30 * 60
+MIN_BATTERY_RUNTIME_MIN = 1
+MAX_BATTERY_RUNTIME_MIN = 180
+
+
+def clamp_battery_runtime_minutes(minutes: float) -> int:
+    """Whole minutes inside the Status-page range, 1 to 180."""
+    try:
+        value = int(round(float(minutes)))
+    except (TypeError, ValueError):
+        value = DEFAULT_BATTERY_RUNTIME_S // 60
+    return max(MIN_BATTERY_RUNTIME_MIN, min(MAX_BATTERY_RUNTIME_MIN, value))
 
 
 class BatteryRuntimeTracker:
     """Countdown from the moment Battery Mode asserts."""
 
     def __init__(self, runtime_s: float = DEFAULT_BATTERY_RUNTIME_S) -> None:
-        self.runtime_s = max(0.0, float(runtime_s))
+        self.runtime_s = float(clamp_battery_runtime_minutes(float(runtime_s) / 60.0) * 60)
         self._on_since: Optional[float] = None
         self.shutdown_started = False
         self.remaining_s: Optional[float] = None
+
+    def set_runtime_minutes(self, minutes: float) -> int:
+        """Set the countdown length. A shutdown already in progress is left running."""
+        applied = clamp_battery_runtime_minutes(minutes)
+        self.runtime_s = float(applied * 60)
+        return applied
 
     @property
     def remote_on(self) -> bool:

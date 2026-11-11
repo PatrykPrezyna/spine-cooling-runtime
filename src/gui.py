@@ -46,6 +46,7 @@ from graph_history import (
     tick_decimals as _tick_decimals,
 )
 from pump_flow_control import flow_ml_per_min_to_rpm_exact, rpm_to_flow_ml_per_min
+from battery_runtime import clamp_battery_runtime_minutes
 from version import __version__
 
 from PyQt6.QtCore import QTimer, Qt, QEvent, QRectF, QPointF, QSize, pyqtSignal
@@ -2778,17 +2779,48 @@ class ServiceTab(QWidget):
 
 
 class Service2Tab(QWidget):
-    """Status tab showing digital inputs. Also caches temperatures for the graphs."""
-    _LABEL_NEUTRAL_STYLE = "font-size: 12px; padding: 6px; color: #5c6b79;"
-    _LABEL_STRONG_TEMPLATE = "font-size: 12px; padding: 6px; color: {color}; font-weight: 600;"
+    """Status tab: digital inputs, digital outputs, and the battery-time limit.
+
+    Also caches temperatures for the graphs.
+    """
 
     _DEFAULT_DIGITAL_SENSOR_NAMES = ("Level Low", "Level Critical", "Cartridge In Place")
+    # text when the reading is true, text when false, and whether true is the good state.
+    _INPUT_WORDS = {
+        "Level Low": ("OK", "Low", True),
+        "Level Critical": ("OK", "Low", True),
+        "Cartridge In Place": ("In", "Out", True),
+        "Pump Closed": ("Closed", "Open", True),
+        "Leak Sensor": ("Dry", "Leak", True),
+        "DC OK": ("OK", "Off", True),
+        "Alarm": ("Alarm", "Clear", False),
+        "Battery Mode": ("Battery", "Mains", False),
+        "Ready": ("Ready", "Not ready", True),
+    }
+    _GOOD = "#16a34a"
+    _BAD = "#dc2626"
+    _WARN = "#d97706"
+    _IDLE = "#64748b"
+    _CHIP_NAME_STYLE = "font-size: 11px; color: #64748b; background: transparent;"
+    _CHIP_VALUE_STYLE = "font-size: 15px; font-weight: 700; background: transparent; color: {color};"
+    _SPIN_STYLE = """
+        QSpinBox {
+            font-size: 16px;
+            font-weight: 700;
+            color: #0e6a76;
+            background: white;
+            border: 1px solid #c5d0d9;
+            border-radius: 8px;
+            padding: 1px 4px;
+        }
+    """
 
     def __init__(
         self,
         sensor_names: list[str],
         pressure_sensor_names: Optional[list[str]] = None,
         digital_sensor_names: Optional[list[str]] = None,
+        battery_runtime_minutes: int = 30,
     ):
         super().__init__()
         self.sensor_names = list(sensor_names)
@@ -2797,47 +2829,193 @@ class Service2Tab(QWidget):
             if digital_sensor_names is not None
             else self._DEFAULT_DIGITAL_SENSOR_NAMES
         )
+        self.battery_runtime_minutes = clamp_battery_runtime_minutes(battery_runtime_minutes)
         self.sensor_states: dict = {}
         self.temp_values = {name: float("nan") for name in self.sensor_names}
-        self.digital_labels = {}
+        self.digital_labels: dict[str, QLabel] = {}
+        self.output_labels: dict[str, QLabel] = {}
+        self.on_battery_minutes_change: Optional[Callable[[int], None]] = None
         self._create_widgets()
         self._setup_layout()
 
+    def _chip(self, title: str) -> tuple[QFrame, QLabel]:
+        frame = QFrame()
+        frame.setObjectName("statusChip")
+        frame.setStyleSheet(
+            "QFrame#statusChip { background: white; border: 1px solid #d5dee6; border-radius: 8px; }"
+        )
+        frame.setMinimumHeight(52)
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(0)
+        name = QLabel(title)
+        name.setStyleSheet(self._CHIP_NAME_STYLE)
+        value = QLabel("—")
+        value.setStyleSheet(self._CHIP_VALUE_STYLE.format(color=self._IDLE))
+        layout.addWidget(name)
+        layout.addWidget(value)
+        return frame, value
+
+    def _paint_value(self, label: QLabel, text: str, color: str) -> None:
+        label.setText(text)
+        label.setStyleSheet(self._CHIP_VALUE_STYLE.format(color=color))
+
     def _create_widgets(self):
-        self.digital_group = QGroupBox("Digital Status")
-        self.digital_group.setStyleSheet(ServiceTab._group_box_style("#3b82f6", "10px", margin_top=6))
+        self.battery_group = QGroupBox("Battery time")
+        self.battery_group.setStyleSheet(ServiceTab._group_box_style("#d97706", "12px", margin_top=6))
+        self.battery_minutes_spin = QSpinBox()
+        self.battery_minutes_spin.setRange(1, 180)
+        self.battery_minutes_spin.setSingleStep(1)
+        self.battery_minutes_spin.setValue(self.battery_runtime_minutes)
+        self.battery_minutes_spin.setSuffix(" min")
+        self.battery_minutes_spin.setFixedWidth(96)
+        self.battery_minutes_spin.setFixedHeight(36)
+        self.battery_minutes_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.battery_minutes_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        self.battery_minutes_spin.setKeyboardTracking(False)
+        self.battery_minutes_spin.setStyleSheet(self._SPIN_STYLE)
+        self.battery_minutes_spin.setToolTip(
+            "Minutes on battery before the UPS is told to shut down"
+        )
+        self.battery_minutes_spin.valueChanged.connect(self._on_battery_minutes_changed)
+        self.battery_minutes_down = QPushButton("−")
+        self.battery_minutes_up = QPushButton("+")
+        for button, step in (
+            (self.battery_minutes_down, -1),
+            (self.battery_minutes_up, 1),
+        ):
+            button.setFixedSize(36, 36)
+            button.setStyleSheet(ServiceTab._TEMP_STEP_BUTTON_STYLE)
+            button.clicked.connect(lambda _checked=False, delta=step: self.battery_minutes_spin.stepBy(delta))
+
+        self.inputs_group = QGroupBox("Inputs")
+        self.inputs_group.setStyleSheet(ServiceTab._group_box_style("#3b82f6", "12px", margin_top=6))
+        self.input_chips: dict[str, QFrame] = {}
         for name in self.digital_sensor_names:
-            label = QLabel(f"{name}: --")
-            label.setStyleSheet(self._LABEL_NEUTRAL_STYLE)
-            self.digital_labels[name] = label
+            chip, value = self._chip(name)
+            self.input_chips[name] = chip
+            self.digital_labels[name] = value
+
+        self.outputs_group = QGroupBox("Outputs")
+        self.outputs_group.setStyleSheet(ServiceTab._group_box_style("#0e6a76", "12px", margin_top=6))
+        self.output_chips: dict[str, QFrame] = {}
+        for name in ("Compressor", "Pump", "Direction", "UPS shutdown"):
+            chip, value = self._chip(name)
+            self.output_chips[name] = chip
+            self.output_labels[name] = value
 
     def _setup_layout(self):
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(4)
+        main_layout.setContentsMargins(8, 6, 8, 6)
+        main_layout.setSpacing(6)
 
-        digital_layout = QHBoxLayout()
-        for name in self.digital_sensor_names:
-            digital_layout.addWidget(self.digital_labels[name])
-        self.digital_group.setLayout(digital_layout)
-        main_layout.addWidget(self.digital_group)
-        main_layout.addStretch()
+        battery_row = QHBoxLayout()
+        battery_row.setContentsMargins(8, 4, 8, 4)
+        hint = QLabel("On battery before shutdown")
+        hint.setStyleSheet("font-size: 13px; color: #334155;")
+        battery_row.addWidget(hint)
+        battery_row.addStretch(1)
+        battery_row.addWidget(self.battery_minutes_down)
+        battery_row.addWidget(self.battery_minutes_spin)
+        battery_row.addWidget(self.battery_minutes_up)
+        self.battery_group.setLayout(battery_row)
+        main_layout.addWidget(self.battery_group)
+
+        inputs = QGridLayout()
+        inputs.setContentsMargins(8, 4, 8, 6)
+        inputs.setHorizontalSpacing(6)
+        inputs.setVerticalSpacing(6)
+        for index, name in enumerate(self.digital_sensor_names):
+            inputs.addWidget(self.input_chips[name], index // 3, index % 3)
+        self.inputs_group.setLayout(inputs)
+        main_layout.addWidget(self.inputs_group)
+
+        outputs = QHBoxLayout()
+        outputs.setContentsMargins(8, 4, 8, 6)
+        outputs.setSpacing(6)
+        for name in ("Compressor", "Pump", "Direction", "UPS shutdown"):
+            outputs.addWidget(self.output_chips[name], 1)
+        self.outputs_group.setLayout(outputs)
+        main_layout.addWidget(self.outputs_group)
+        main_layout.addStretch(1)
         self.setLayout(main_layout)
 
-    def update_actuators(self, *args, **kwargs):
-        """Kept for API compatibility; actuators are not shown on this tab."""
+    def _on_battery_minutes_changed(self, minutes: int) -> None:
+        self.battery_runtime_minutes = int(minutes)
+        if self.on_battery_minutes_change:
+            self.on_battery_minutes_change(int(minutes))
+
+    def update_actuators(
+        self,
+        pump_speed_rpm: Optional[int] = None,
+        compressor_on: Optional[bool] = None,
+        flow_ml_per_min: Optional[float] = None,
+        pump_on: Optional[bool] = None,
+        pump_direction: Optional[int] = None,
+        ups_shutdown: Optional[bool] = None,
+    ):
+        """Refresh digital outputs. Older callers may pass pump speed and flow."""
+        if pump_on is None and pump_speed_rpm is not None:
+            pump_on = int(pump_speed_rpm) > 0
+        self.update_outputs(
+            compressor_on=compressor_on,
+            pump_on=pump_on,
+            pump_direction=pump_direction,
+            ups_shutdown=ups_shutdown,
+        )
+
+    def update_outputs(
+        self,
+        compressor_on: Optional[bool] = None,
+        pump_on: Optional[bool] = None,
+        pump_direction: Optional[int] = None,
+        ups_shutdown: Optional[bool] = None,
+    ) -> None:
+        if compressor_on is not None:
+            self._paint_value(
+                self.output_labels["Compressor"],
+                "On" if compressor_on else "Off",
+                self._GOOD if compressor_on else self._IDLE,
+            )
+        if pump_on is not None:
+            self._paint_value(
+                self.output_labels["Pump"],
+                "On" if pump_on else "Off",
+                self._GOOD if pump_on else self._IDLE,
+            )
+        if pump_direction is not None:
+            forward = int(pump_direction) >= 0
+            self._paint_value(
+                self.output_labels["Direction"],
+                "Forward" if forward else "Reverse",
+                "#0e6a76",
+            )
+        if ups_shutdown is not None:
+            self._paint_value(
+                self.output_labels["UPS shutdown"],
+                "On" if ups_shutdown else "Off",
+                self._BAD if ups_shutdown else self._IDLE,
+            )
 
     def update_sensors(self, sensor_states: dict):
-        """Update digital sensor display."""
+        """Update digital input chips with words instead of high and low."""
         self.sensor_states = sensor_states
         for name, state in sensor_states.items():
             label = self.digital_labels.get(name)
             if label is None:
                 continue
-            status = "HIGH" if state else "LOW"
-            color = "#16a34a" if state else "#dc2626"
-            label.setText(f"{name}: {status}")
-            label.setStyleSheet(self._LABEL_STRONG_TEMPLATE.format(color=color))
+            on_text, off_text, good_when_true = self._INPUT_WORDS.get(
+                name, ("On", "Off", True)
+            )
+            active = bool(state)
+            text = on_text if active else off_text
+            if name == "Battery Mode" and active:
+                color = self._WARN
+            elif active == good_when_true:
+                color = self._GOOD
+            else:
+                color = self._BAD
+            self._paint_value(label, text, color)
 
     def update_temperatures(self, temps: Optional[dict] = None):
         """Cache logical temperatures for the main and advanced graphs."""
@@ -3880,6 +4058,7 @@ class AppWindow(QMainWindow):
         self.on_compressor_control_toggle_callback: Optional[Callable[[bool], None]] = None
         self.on_compressor_thresholds_change_callback: Optional[Callable[[float, float], None]] = None
         self.on_usb_eject_callback: Optional[Callable[[], None]] = None
+        self.on_battery_minutes_change_callback: Optional[Callable[[int], None]] = None
 
         self._setup_window()
         self._create_widgets()
@@ -4101,10 +4280,16 @@ class AppWindow(QMainWindow):
         # Status tab (digital inputs; also caches logical temperatures for graphs)
         pressure_sensor_names = self._pressure_sensor_names_from_config(self.config)
         digital_sensor_names = self._digital_sensor_names_from_config(self.config)
+        alarms_cfg = self.config.get("alarms") or {}
+        battery_minutes = clamp_battery_runtime_minutes(
+            float(alarms_cfg.get("battery_runtime_s", 1800)) / 60.0
+        )
         self.service2_tab = Service2Tab(
             self.temperature_sensor_names,
             digital_sensor_names=digital_sensor_names,
+            battery_runtime_minutes=battery_minutes,
         )
+        self.service2_tab.on_battery_minutes_change = self._on_battery_minutes_changed
         self.pressure_service_tab = PressureServiceTab(
             pressure_sensor_names=pressure_sensor_names,
         )
@@ -4598,6 +4783,10 @@ class AppWindow(QMainWindow):
         dialog = FaultHelpDialog(self, title, causes, steps)
         dialog.exec()
 
+    def _on_battery_minutes_changed(self, minutes: int) -> None:
+        if self.on_battery_minutes_change_callback:
+            self.on_battery_minutes_change_callback(int(minutes))
+
     def set_acknowledge_enabled(self, enabled: bool) -> None:
         """Enable ACK only when the latched fault condition has cleared."""
         if getattr(self, "_in_error_state", False):
@@ -4610,10 +4799,19 @@ class AppWindow(QMainWindow):
         pressures: Optional[dict] = None,
         measured_flow_ml_per_min: Optional[float] = None,
         compressor_on: Optional[bool] = None,
+        pump_on: Optional[bool] = None,
+        pump_direction: Optional[int] = None,
+        ups_shutdown: Optional[bool] = None,
     ):
         """Update sensor display"""
         self._update_session_timer()
         self.service2_tab.update_sensors(sensor_states)
+        self.service2_tab.update_outputs(
+            compressor_on=compressor_on,
+            pump_on=pump_on,
+            pump_direction=pump_direction,
+            ups_shutdown=ups_shutdown,
+        )
         self.service2_tab.update_temperatures(temperatures)
         self.service2_tab.update_pressures(pressures)
         self.pressure_service_tab.update_pressures(pressures)
@@ -4646,7 +4844,6 @@ class AppWindow(QMainWindow):
 
         # Keep compressor display stable unless updated by app logic.
         self.service_tab.update_outputs()
-        self.service2_tab.update_actuators()
         self.pressure_service_tab.update_pump_speed(
             measured_flow_ml_per_min=measured_flow_ml_per_min,
         )
