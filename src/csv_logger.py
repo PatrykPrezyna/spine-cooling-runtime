@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Optional
 
 from pump_flow_control import rpm_to_flow_ml_per_min
-from session_log_paths import log_directory, sensors_filename_format
+from session_log_paths import (
+    log_directory,
+    log_pressure_enabled,
+    log_reserve_temperatures_enabled,
+    sensors_filename_format,
+)
 
 
 class CSVLogger:
@@ -34,14 +39,22 @@ class CSVLogger:
 
     @staticmethod
     def _temperature_columns_from_config(config: dict) -> list[str]:
-        from sensor_injection import temperature_labels_from_config
+        from sensor_injection import (
+            is_reserve_temperature,
+            temperature_labels_from_config,
+        )
 
-        return temperature_labels_from_config(config)
+        names = temperature_labels_from_config(config)
+        if log_reserve_temperatures_enabled(config):
+            return names
+        return [name for name in names if not is_reserve_temperature(name)]
 
     @staticmethod
     def _pressure_columns_from_config(config: dict) -> list[str]:
         from sensor_injection import pressure_labels_from_config
 
+        if not log_pressure_enabled(config):
+            return []
         return pressure_labels_from_config(config)
 
     @staticmethod

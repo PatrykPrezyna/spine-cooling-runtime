@@ -52,7 +52,7 @@ from pump_flow_control import (
     flow_ml_per_min_to_rpm,
     rpm_to_flow_ml_per_min,
 )
-from safety_rules import RuleContext, TelemetrySnapshot, evaluate, is_fault_still_active
+from safety_rules import RuleContext, TelemetrySnapshot, evaluate
 from sensor_injection import SensorInjectionController, select_temperatures
 from sensor_override_ui import SensorOverrideWindow
 from session_recorder import SessionRecorder
@@ -237,6 +237,8 @@ class CoolingRuntime(QObject):
         self._last_sensor_states: dict = {}
         self._last_pressures: dict = {}
         self._last_measured_flow_ml_per_min: Optional[float] = None
+        # Stop faults whose conditions are still true. Refreshed each safety pass.
+        self._active_stop_codes: list[FaultCode] = []
         self.stepper_continuous_forward: bool = False
         self.stepper_motor_running: bool = False
         self.service_pid_run: bool = False
@@ -640,12 +642,30 @@ class CoolingRuntime(QObject):
     ) -> bool:
         """Evaluate safety rules. Returns True if workflow update should run."""
         ctx = self._build_rule_context(sensor_states, temperatures, pressures)
+        # Rules for cooling and pumping are silent once the state is Error.
+        # Re-check them against the state that faulted so every condition
+        # that is still true can be shown together.
+        if self.state_machine.get_current_state() == State.ERROR:
+            fault_state = self.state_machine.get_fault_context_state()
+            if fault_state is not None:
+                ctx.current_state = fault_state
         active = evaluate(ctx)
 
         stop_codes = [c for c in active if get_fault(c).severity == Severity.STOP]
+        # The pump stops on the way into Error, so the pump-head rule can go
+        # quiet even while the head is still open. Keep that fault listed
+        # until the switch reads closed.
+        if (
+            self.state_machine.get_current_state() == State.ERROR
+            and self.state_machine.get_latched_fault_code() == FaultCode.PUMP_NOT_CLOSED
+            and not self._pump_head_is_closed(sensor_states)
+            and FaultCode.PUMP_NOT_CLOSED not in stop_codes
+        ):
+            stop_codes.append(FaultCode.PUMP_NOT_CLOSED)
+        stop_codes.sort(key=stop_priority)
         message_codes = [c for c in active if get_fault(c).severity == Severity.MESSAGE]
         if stop_codes:
-            primary = min(stop_codes, key=stop_priority)
+            primary = stop_codes[0]
             # Keep the battery countdown visible while a stop fault is latched.
             message_codes = [
                 code
@@ -658,11 +678,13 @@ class CoolingRuntime(QObject):
             ]
             self._sync_warning_log(message_codes)
             self.state_machine.apply_fault(primary)
+            self._publish_active_faults(stop_codes)
             self._stop_service_pid_run()
             if self.ui:
                 self.ui.update_warnings(self._warning_texts(message_codes))
             return False
 
+        self._publish_active_faults([])
         self._sync_warning_log(message_codes)
         if self.ui:
             self.ui.update_warnings(self._warning_texts(message_codes))
@@ -732,6 +754,17 @@ class CoolingRuntime(QObject):
             return False
         return True
 
+    def _publish_active_faults(self, stop_codes: list[FaultCode]) -> None:
+        """Give the error-info button the stop faults that are still true."""
+        self._active_stop_codes = list(stop_codes)
+        if not self.ui:
+            return
+        in_error = (
+            self.state_machine is not None
+            and self.state_machine.get_current_state() == State.ERROR
+        )
+        self.ui.set_active_faults(stop_codes if in_error else [])
+
     def _warning_texts(self, message_codes: list[FaultCode]) -> list[str]:
         """Operator banner lines. The battery warning includes the countdown."""
         lines: list[str] = []
@@ -748,16 +781,15 @@ class CoolingRuntime(QObject):
         temperatures: dict,
         pressures: dict,
     ) -> bool:
+        del temperatures, pressures
         latched = self.state_machine.get_latched_fault_code()
-        if latched is None:
-            return True
-        if latched == FaultCode.PUMP_NOT_CLOSED:
-            return self._pump_head_is_closed(sensor_states)
-        ctx = self._build_rule_context(sensor_states, temperatures, pressures)
-        fault_state = self.state_machine.get_fault_context_state()
-        if fault_state is not None:
-            ctx.current_state = fault_state
-        return not is_fault_still_active(latched, ctx)
+        if (
+            latched == FaultCode.PUMP_NOT_CLOSED
+            and not self._pump_head_is_closed(sensor_states)
+        ):
+            return False
+        # Acknowledge only once every stop condition on the info sheet has cleared.
+        return not self._active_stop_codes
 
     def _refresh_acknowledge_button(
         self,

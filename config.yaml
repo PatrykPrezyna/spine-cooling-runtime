@@ -2,7 +2,7 @@ ui:
   main_view: spine
   window_width: 500
   window_height: 450
-  update_interval_ms: 100
+  update_interval_ms: 250
   fullscreen: true
 actuators:
   control_temp_label: Tip
@@ -158,6 +158,11 @@ sensors:
       bar_hi: 5.171068
 logging:
   directory: logs
+  # Pressure columns in the sensor CSV, and the 100 Hz pressure file.
+  # Off while the extra writes are a performance problem. The gauges still update.
+  log_pressure: false
+  # Reserve 1–4 columns in the sensor CSV. The probes still show on the Animal graph.
+  log_reserve_temperatures: false
   sensors_filename_format: '%Y%m%d_%H%M%S_sensors.csv'
   pressure_filename_format: '%Y%m%d_%H%M%S_pressure_100Hz.csv'
   status_filename_format: '%Y%m%d_%H%M%S_status_and_errors.csv'

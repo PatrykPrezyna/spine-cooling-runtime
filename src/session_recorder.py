@@ -15,7 +15,7 @@ from csv_logger import CSVLogger
 from fault_catalog import FaultCode, get_fault
 from pressure_csv_logger import PressureCSVLogger, PressureCaptureLoop
 from safety_rules import TelemetrySnapshot
-from session_log_paths import log_directory
+from session_log_paths import log_directory, log_pressure_enabled
 from status_event_logger import StatusEventLogger, warning_log_edges
 from usb_log_mirror import (
     STATE_CATCHING_UP,
@@ -102,10 +102,14 @@ class SessionRecorder:
     ) -> None:
         """Begin the 100 Hz pressure file for the whole session.
 
-        Skipped when the reader is unavailable, which would otherwise fill
-        the file with blank rows. Capture failure is not fatal: the sensor
-        CSV still carries pressures at the UI tick rate.
+        Skipped when ``logging.log_pressure`` is false, and when the reader
+        is unavailable, which would otherwise fill the file with blank rows.
+        Capture failure is not fatal: the sensor CSV still carries pressures
+        at the UI tick rate when pressure logging is on.
         """
+        if not log_pressure_enabled(self.config):
+            print("Pressure logging disabled (logging.log_pressure is false)")
+            return
         if pressure_reader is None or not pressure_reader.is_initialized:
             print("Pressure CSV start skipped: pressure reader unavailable")
             return

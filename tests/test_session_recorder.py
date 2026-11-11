@@ -84,3 +84,27 @@ class SessionRecorderTests(unittest.TestCase):
         self.assertEqual(rows[0]["csf_c"], "36.500")
         self.assertEqual(rows[0]["set_temperature_c"], "32.000")
         self.assertEqual(rows[0]["cartridge_input_bar"], "1.25")
+
+    def test_log_pressure_false_skips_pressure_file(self) -> None:
+        self.config["logging"]["log_pressure"] = False
+        recorder = SessionRecorder(
+            self.config,
+            self.session_start,
+            simulation=True,
+        )
+        self.addCleanup(recorder.stop)
+        self.assertTrue(recorder.start_sensor_log())
+        recorder.record_sensors(
+            {},
+            {"CSF": 36.5},
+            pressures={"Cartridge Input": 1.25},
+        )
+        recorder.start_pressure_capture(_PressureReader(), lambda: 0)
+        recorder.stop()
+
+        folder = Path(self._tmpdir.name)
+        names = sorted(path.name for path in folder.glob("*.csv"))
+        self.assertEqual(names, ["20260819_125800_sensors.csv"])
+        with (folder / "20260819_125800_sensors.csv").open(newline="") as handle:
+            header = next(csv.reader(handle))
+        self.assertNotIn("cartridge_input_bar", header)

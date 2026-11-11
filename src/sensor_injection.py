@@ -28,6 +28,12 @@ def thermistor_labels_from_config(config: dict) -> list[str]:
     return names
 
 
+def is_reserve_temperature(name: str) -> bool:
+    """True for the Reserve probes (Reserve, Reserve 1, and so on)."""
+    key = " ".join(str(name).lower().split())
+    return key.startswith("reserve")
+
+
 def split_temperature_pages(names: list[str]) -> tuple[list[str], list[str], list[str]]:
     """Split UI temperatures into the two graph pages and the Status page.
 
@@ -41,7 +47,7 @@ def split_temperature_pages(names: list[str]) -> tuple[list[str], list[str], lis
         key = " ".join(str(name).lower().split())
         if key in {"coolplate 2", "plate 2", "room temp"}:
             status.append(str(name))
-        elif key.startswith("animal") or key.startswith("reserve"):
+        elif key.startswith("animal") or is_reserve_temperature(name):
             page2.append(str(name))
         else:
             page1.append(str(name))

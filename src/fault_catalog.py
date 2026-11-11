@@ -319,3 +319,27 @@ def operator_help(code: Optional[FaultCode]) -> tuple[tuple[str, ...], tuple[str
         return GENERIC_CAUSES, GENERIC_STEPS
     fault = get_fault(code)
     return fault.causes, fault.steps
+
+
+def operator_help_sections(
+    codes: list[FaultCode],
+    fallback_code: Optional[FaultCode] = None,
+    fallback_title: str = "Error",
+) -> list[tuple[str, tuple[str, ...], tuple[str, ...]]]:
+    """Help blocks for every fault that is active now.
+
+    When nothing is still active, the latched fault is shown so the info
+    button still explains the error on screen. An init failure with no
+    catalog code uses the generic help and ``fallback_title``.
+    """
+    selected = list(dict.fromkeys(codes))
+    if not selected and fallback_code is not None:
+        selected = [fallback_code]
+    if not selected:
+        causes, steps = operator_help(None)
+        return [(fallback_title or "Error", causes, steps)]
+    sections: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
+    for code in selected:
+        fault = get_fault(code)
+        sections.append((fault.message, fault.causes, fault.steps))
+    return sections

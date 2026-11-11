@@ -166,5 +166,78 @@ class CsvPressureLoggingTests(unittest.TestCase):
         self.assertEqual(by_name["cartridge_input_bar"], "")
 
 
+class CsvOptionalColumnTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def _config(self, **logging_flags: bool) -> dict:
+        return {
+            "logging": {
+                "directory": self._tmpdir.name,
+                "sensors_filename_format": "%Y%m%d_%H%M%S_sensors.csv",
+                **logging_flags,
+            },
+            "thermistor_sensors": {
+                "labels": {
+                    0: "Tip",
+                    1: "Animal 1",
+                    2: "Reserve 1",
+                    3: "Reserve 2",
+                },
+            },
+            "pressure_sensors": {
+                "enabled": True,
+                "channels": [0, 1],
+                "labels": {0: "Pump In", 1: "Pump Out"},
+            },
+        }
+
+    def test_log_pressure_false_omits_pressure_columns(self) -> None:
+        logger = CSVLogger(self._config(log_pressure=False))
+        self.assertNotIn("pump_in_bar", logger.header)
+        self.assertNotIn("pump_out_bar", logger.header)
+        self.assertIn("tip_c", logger.header)
+        self.assertTrue(logger.start_logging())
+        logger.log(
+            sensor_states={},
+            temperatures={"Tip": 36.5, "Reserve 1": 25.0},
+            pressures={"Pump In": 1.5, "Pump Out": 2.0},
+        )
+        logger.stop_logging()
+        path = Path(logger.get_log_file_path())
+        with path.open(newline="", encoding="utf-8") as fh:
+            header = next(csv.reader(fh))
+        self.assertFalse(any(column.endswith("_bar") for column in header))
+
+    def test_log_reserve_temperatures_false_omits_reserve_columns(self) -> None:
+        logger = CSVLogger(self._config(log_reserve_temperatures=False))
+        self.assertIn("tip_c", logger.header)
+        self.assertIn("animal_1_c", logger.header)
+        self.assertNotIn("reserve_1_c", logger.header)
+        self.assertNotIn("reserve_2_c", logger.header)
+        self.assertIn("pump_in_bar", logger.header)
+        self.assertTrue(logger.start_logging())
+        logger.log(
+            sensor_states={},
+            temperatures={
+                "Tip": 36.5,
+                "Animal 1": 37.0,
+                "Reserve 1": 25.0,
+                "Reserve 2": 24.0,
+            },
+        )
+        logger.stop_logging()
+        path = Path(logger.get_log_file_path())
+        with path.open(newline="", encoding="utf-8") as fh:
+            rows = list(csv.reader(fh))
+        by_name = dict(zip(rows[0], rows[1]))
+        self.assertEqual(by_name["tip_c"], "36.500")
+        self.assertEqual(by_name["animal_1_c"], "37.000")
+        self.assertNotIn("reserve_1_c", by_name)
+
+
 if __name__ == "__main__":
     unittest.main()

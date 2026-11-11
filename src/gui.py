@@ -37,7 +37,7 @@ from cooling_power import (
     catheter_cooling_power_w,
 )
 from config_sections import actuator_device, digital_sensor_entries
-from fault_catalog import FaultCode, operator_help
+from fault_catalog import FaultCode, get_fault, operator_help_sections, stop_priority
 from graph_history import (
     GRAPH_HISTORY_SEC as _GRAPH_HISTORY_SEC,
     GraphSampleHistory,
@@ -352,14 +352,12 @@ class ClickableLabel(QLabel):
 
 
 class FaultHelpDialog(QDialog):
-    """Modal help sheet: probable causes and step-by-step recovery."""
+    """Modal help sheet: probable causes and recovery for each active error."""
 
     def __init__(
         self,
         parent: QWidget,
-        title: str,
-        causes: tuple[str, ...],
-        steps: tuple[str, ...],
+        sections: list[tuple[str, tuple[str, ...], tuple[str, ...]]],
     ):
         super().__init__(parent)
         self.setWindowTitle("Error help")
@@ -380,12 +378,16 @@ class FaultHelpDialog(QDialog):
         layout.setContentsMargins(16, 14, 16, 12)
         layout.setSpacing(10)
 
-        title_label = QLabel(title)
+        if len(sections) == 1:
+            heading = sections[0][0]
+        else:
+            heading = f"{len(sections)} active errors"
+        title_label = QLabel(heading)
         title_label.setObjectName("faultTitle")
         title_label.setWordWrap(True)
         layout.addWidget(title_label)
 
-        body = QLabel(self._help_html(causes, steps))
+        body = QLabel(self._sections_html(sections, show_titles=len(sections) > 1))
         body.setTextFormat(Qt.TextFormat.RichText)
         body.setWordWrap(True)
         body.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -431,6 +433,26 @@ class FaultHelpDialog(QDialog):
             "What to do</p>"
             f"<ol style='font-size:14px;line-height:1.35;'>{step_items}</ol>"
         )
+
+    @classmethod
+    def _sections_html(
+        cls,
+        sections: list[tuple[str, tuple[str, ...], tuple[str, ...]]],
+        show_titles: bool,
+    ) -> str:
+        parts: list[str] = []
+        for index, (title, causes, steps) in enumerate(sections):
+            if index:
+                parts.append(
+                    "<hr style='border:none;border-top:1px solid #e2e8f0;margin:16px 0;'/>"
+                )
+            if show_titles:
+                parts.append(
+                    "<p style='font-size:16px;font-weight:700;color:#7e3f26;"
+                    f"margin:0 0 8px 0;'>{_html_escape(title)}</p>"
+                )
+            parts.append(cls._help_html(causes, steps))
+        return "".join(parts)
 
 
 # Discrete setpoints on the service-tab flow slider (10, 20, 30, ... ml/min).
@@ -3694,7 +3716,7 @@ class TemperatureGraphTab(QWidget):
     def _create_page_buttons(self) -> None:
         if len(self._pages) < 2:
             return
-        titles = ("Tip", "Animal")
+        titles = ("Standard", "Animal")
         for index, page in enumerate(self._pages):
             title = titles[index] if index < len(titles) else f"Page {index + 1}"
             if not page:
@@ -3799,7 +3821,7 @@ class TemperatureGraphTab(QWidget):
 
         # Series toggles (no title label) expand to fill the column height so
         # each is a large, easy touch target. The compressor control stays at
-        # the bottom and is shown only on the Tip page.
+        # the bottom and is shown only on the Standard page.
         for name in self.series_names:
             right_column.addWidget(self.checkboxes[name], 1)
 
@@ -4505,6 +4527,7 @@ class AppWindow(QMainWindow):
         self.error_status_label.clicked.connect(self._on_error_status_clicked)
         self._latched_fault_code: Optional[FaultCode] = None
         self._latched_error_message = ""
+        self._active_fault_codes: list[FaultCode] = []
         self._in_error_state = False
 
         # Session timer chip: elapsed minutes since the session started.
@@ -4853,13 +4876,16 @@ class AppWindow(QMainWindow):
             self.error_status_label.setStyleSheet(
                 self._status_chip_style("#f8e5db", "#d06a45", "#7e3f26")
             )
-            self.error_status_label.setToolTip("Tap for probable causes and steps")
+            self.error_status_label.setToolTip(
+                "Tap to see every error that is active now"
+            )
             self.error_status_label.set_click_enabled(True)
             self.error_status_label.setVisible(True)
             self.warnings_label.setVisible(False)
         else:
             self._latched_fault_code = None
             self._latched_error_message = ""
+            self._active_fault_codes = []
             self.error_status_label.set_click_enabled(False)
             self.error_status_label.setToolTip("")
             hint = self._hint_for_state(state_name)
@@ -4889,13 +4915,37 @@ class AppWindow(QMainWindow):
         if not self._in_error_state:
             self.acknowledge_button.setEnabled(False)
 
+    def set_active_faults(self, codes: list[FaultCode]) -> None:
+        """Remember every stop fault that is still true, and show that on the chip.
+
+        The latched message stays on the chip when every condition has cleared,
+        so the operator can still open help for the error that is displayed.
+        """
+        ordered = sorted(dict.fromkeys(codes), key=stop_priority)
+        self._active_fault_codes = ordered
+        if not self._in_error_state:
+            return
+        if not ordered:
+            text = self._latched_error_message
+        elif len(ordered) == 1:
+            text = get_fault(ordered[0]).message
+        else:
+            text = (
+                f"{get_fault(ordered[0]).message}  (+{len(ordered) - 1} more)"
+            )
+        if text:
+            self.error_status_label.setText(f"{text}   ⓘ")
+
     def _on_error_status_clicked(self) -> None:
-        """Open operator help for the latched error (causes + recovery steps)."""
+        """Open help for every stop fault that is active right now."""
         if not getattr(self, "_in_error_state", False):
             return
-        title = self._latched_error_message or "Error"
-        causes, steps = operator_help(self._latched_fault_code)
-        dialog = FaultHelpDialog(self, title, causes, steps)
+        sections = operator_help_sections(
+            self._active_fault_codes,
+            fallback_code=self._latched_fault_code,
+            fallback_title=self._latched_error_message or "Error",
+        )
+        dialog = FaultHelpDialog(self, sections)
         dialog.exec()
 
     def _on_battery_minutes_changed(self, minutes: int) -> None:

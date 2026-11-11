@@ -91,6 +91,32 @@ def usb_interval_s(config: dict[str, Any] | None) -> float:
     return max(0.2, value)
 
 
+def _logging_flag(
+    config: dict[str, Any] | None,
+    key: str,
+    *,
+    default: bool = True,
+) -> bool:
+    """Read a ``logging`` on/off switch. Missing keys stay on."""
+    cfg = _logging_cfg(config)
+    if key not in cfg or cfg[key] is None:
+        return default
+    value = cfg[key]
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+    return bool(value)
+
+
+def log_pressure_enabled(config: dict[str, Any] | None) -> bool:
+    """Whether pressure is written to the sensor CSV and the 100 Hz file."""
+    return _logging_flag(config, "log_pressure")
+
+
+def log_reserve_temperatures_enabled(config: dict[str, Any] | None) -> bool:
+    """Whether Reserve temperature probes are written to the sensor CSV."""
+    return _logging_flag(config, "log_reserve_temperatures")
+
+
 def usb_mount_path_override(config: dict[str, Any] | None) -> str | None:
     value = usb_config(config).get("mount_path")
     if value is None or str(value).strip() == "":
