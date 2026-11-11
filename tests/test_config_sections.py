@@ -74,7 +74,7 @@ class ConfigLayoutTests(unittest.TestCase):
         )
         self.assertEqual(digital_sensor_names(self.config)[0], "Level Low")
         self.assertEqual(self.config["logging"]["directory"], "logs")
-        self.assertEqual(self.config["alarms"]["csf_label"], "Animal 1")
+        self.assertEqual(self.config["alarms"]["csf_label"], "Tip")
         self.assertEqual(self.config["simulation"]["csf_label"], "Tip")
 
     def test_legacy_flat_keys_still_resolve(self) -> None:

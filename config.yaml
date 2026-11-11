@@ -168,7 +168,7 @@ logging:
     interval_s: 2.0
     mount_path: ''
 alarms:
-  csf_label: Animal 1
+  csf_label: Tip
   csf_low_temp_c: 28.0
   heat_ex_label: Coolplate 1
   heat_ex_min_c: -10.0
