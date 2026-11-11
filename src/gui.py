@@ -2802,8 +2802,8 @@ class Service2Tab(QWidget):
     _BAD = "#dc2626"
     _WARN = "#d97706"
     _IDLE = "#64748b"
-    _CHIP_NAME_STYLE = "font-size: 11px; color: #64748b; background: transparent;"
-    _CHIP_VALUE_STYLE = "font-size: 15px; font-weight: 700; background: transparent; color: {color};"
+    _CHIP_NAME_STYLE = "font-size: 10px; color: #64748b; background: transparent;"
+    _CHIP_VALUE_STYLE = "font-size: 13px; font-weight: 700; background: transparent; color: {color};"
     _SPIN_STYLE = """
         QSpinBox {
             font-size: 16px;
@@ -2846,15 +2846,39 @@ class Service2Tab(QWidget):
         self._create_widgets()
         self._setup_layout()
 
+    def _compact_group(self, title: str, border_color: str) -> QGroupBox:
+        box = QGroupBox(title)
+        box.setStyleSheet(
+            f"""
+            QGroupBox {{
+                font-weight: bold;
+                font-size: 11px;
+                border: 2px solid {border_color};
+                border-radius: 6px;
+                margin-top: 6px;
+                padding-top: 2px;
+                background-color: white;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 8px;
+                padding: 0 4px;
+                color: #1f2937;
+            }}
+            """
+        )
+        return box
+
     def _chip(self, title: str) -> tuple[QFrame, QLabel]:
         frame = QFrame()
         frame.setObjectName("statusChip")
         frame.setStyleSheet(
-            "QFrame#statusChip { background: white; border: 1px solid #d5dee6; border-radius: 8px; }"
+            "QFrame#statusChip { background: white; border: 1px solid #d5dee6; border-radius: 6px; }"
         )
-        frame.setMinimumHeight(52)
+        frame.setMinimumHeight(36)
+        frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setContentsMargins(6, 1, 6, 1)
         layout.setSpacing(0)
         name = QLabel(title)
         name.setStyleSheet(self._CHIP_NAME_STYLE)
@@ -2869,15 +2893,14 @@ class Service2Tab(QWidget):
         label.setStyleSheet(self._CHIP_VALUE_STYLE.format(color=color))
 
     def _create_widgets(self):
-        self.battery_group = QGroupBox("Battery time")
-        self.battery_group.setStyleSheet(ServiceTab._group_box_style("#d97706", "12px", margin_top=6))
+        self.battery_group = self._compact_group("Battery time", "#d97706")
         self.battery_minutes_spin = QSpinBox()
         self.battery_minutes_spin.setRange(1, 180)
         self.battery_minutes_spin.setSingleStep(1)
         self.battery_minutes_spin.setValue(self.battery_runtime_minutes)
         self.battery_minutes_spin.setSuffix(" min")
-        self.battery_minutes_spin.setFixedWidth(96)
-        self.battery_minutes_spin.setFixedHeight(36)
+        self.battery_minutes_spin.setFixedWidth(84)
+        self.battery_minutes_spin.setFixedHeight(28)
         self.battery_minutes_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.battery_minutes_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         self.battery_minutes_spin.setKeyboardTracking(False)
@@ -2892,28 +2915,24 @@ class Service2Tab(QWidget):
             (self.battery_minutes_down, -1),
             (self.battery_minutes_up, 1),
         ):
-            button.setFixedSize(36, 36)
+            button.setFixedSize(28, 28)
             button.setStyleSheet(ServiceTab._TEMP_STEP_BUTTON_STYLE)
             button.clicked.connect(lambda _checked=False, delta=step: self.battery_minutes_spin.stepBy(delta))
 
-        self.inputs_group = QGroupBox("Inputs")
-        self.inputs_group.setStyleSheet(ServiceTab._group_box_style("#3b82f6", "12px", margin_top=6))
+        self.inputs_group = self._compact_group("Inputs", "#3b82f6")
         self.input_chips: dict[str, QFrame] = {}
         for name in self.digital_sensor_names:
             chip, value = self._chip(name)
             self.input_chips[name] = chip
             self.digital_labels[name] = value
 
-        self.outputs_group = QGroupBox("Outputs")
-        self.outputs_group.setStyleSheet(ServiceTab._group_box_style("#0e6a76", "12px", margin_top=6))
+        self.outputs_group = self._compact_group("Outputs", "#0e6a76")
         self.output_chips: dict[str, QFrame] = {}
         for name in ("Compressor", "Pump", "Direction", "UPS shutdown"):
             chip, value = self._chip(name)
             self.output_chips[name] = chip
             self.output_labels[name] = value
 
-        self.temperatures_group = QGroupBox("Temperatures")
-        self.temperatures_group.setStyleSheet(ServiceTab._group_box_style("#0e6a76", "12px", margin_top=6))
         self.status_temp_chips: dict[str, QFrame] = {}
         for name in self.status_temperature_names:
             chip, value = self._chip(name)
@@ -2922,41 +2941,39 @@ class Service2Tab(QWidget):
 
     def _setup_layout(self):
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(8, 6, 8, 6)
-        main_layout.setSpacing(6)
+        main_layout.setContentsMargins(6, 2, 6, 2)
+        main_layout.setSpacing(2)
 
         battery_row = QHBoxLayout()
-        battery_row.setContentsMargins(8, 4, 8, 4)
-        hint = QLabel("On battery before shutdown")
-        hint.setStyleSheet("font-size: 13px; color: #334155;")
+        battery_row.setContentsMargins(6, 2, 6, 2)
+        battery_row.setSpacing(4)
+        hint = QLabel("Shutdown after")
+        hint.setStyleSheet("font-size: 12px; color: #334155;")
         battery_row.addWidget(hint)
-        battery_row.addStretch(1)
         battery_row.addWidget(self.battery_minutes_down)
         battery_row.addWidget(self.battery_minutes_spin)
         battery_row.addWidget(self.battery_minutes_up)
+        battery_row.addStretch(1)
+        for name in self.status_temperature_names:
+            battery_row.addWidget(self.status_temp_chips[name], 1)
         self.battery_group.setLayout(battery_row)
         main_layout.addWidget(self.battery_group)
 
-        temperatures = QHBoxLayout()
-        temperatures.setContentsMargins(8, 4, 8, 6)
-        temperatures.setSpacing(6)
-        for name in self.status_temperature_names:
-            temperatures.addWidget(self.status_temp_chips[name], 1)
-        self.temperatures_group.setLayout(temperatures)
-        main_layout.addWidget(self.temperatures_group)
-
         inputs = QGridLayout()
-        inputs.setContentsMargins(8, 4, 8, 6)
-        inputs.setHorizontalSpacing(6)
-        inputs.setVerticalSpacing(6)
+        inputs.setContentsMargins(6, 2, 6, 2)
+        inputs.setHorizontalSpacing(4)
+        inputs.setVerticalSpacing(4)
+        input_columns = 5
         for index, name in enumerate(self.digital_sensor_names):
-            inputs.addWidget(self.input_chips[name], index // 3, index % 3)
+            inputs.addWidget(
+                self.input_chips[name], index // input_columns, index % input_columns
+            )
         self.inputs_group.setLayout(inputs)
         main_layout.addWidget(self.inputs_group)
 
         outputs = QHBoxLayout()
-        outputs.setContentsMargins(8, 4, 8, 6)
-        outputs.setSpacing(6)
+        outputs.setContentsMargins(6, 2, 6, 2)
+        outputs.setSpacing(4)
         for name in ("Compressor", "Pump", "Direction", "UPS shutdown"):
             outputs.addWidget(self.output_chips[name], 1)
         self.outputs_group.setLayout(outputs)
@@ -3712,6 +3729,12 @@ class TemperatureGraphTab(QWidget):
             self.graph_widget.set_series_visible(
                 name, name in visible and checkbox.isChecked()
             )
+        if self.compressor_checkbox is not None:
+            on_tip_page = index == 0
+            self.compressor_checkbox.setVisible(on_tip_page)
+            self.graph_widget.set_compressor_visible(
+                on_tip_page and self.compressor_checkbox.isChecked()
+            )
 
     def _make_series_checkbox(self, name: str, series_color: str) -> QCheckBox:
         checkbox = QCheckBox(name)
@@ -3774,13 +3797,14 @@ class TemperatureGraphTab(QWidget):
         if extra is not None:
             right_column.addWidget(extra)
 
-        if self.compressor_checkbox is not None:
-            right_column.addWidget(self.compressor_checkbox, 1)
-
         # Series toggles (no title label) expand to fill the column height so
-        # each is a large, easy touch target.
+        # each is a large, easy touch target. The compressor control stays at
+        # the bottom and is shown only on the Tip page.
         for name in self.series_names:
             right_column.addWidget(self.checkboxes[name], 1)
+
+        if self.compressor_checkbox is not None:
+            right_column.addWidget(self.compressor_checkbox, 0)
 
         right_container = QWidget()
         right_container.setLayout(right_column)

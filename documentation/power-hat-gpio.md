@@ -55,8 +55,8 @@ Labels are the silkscreen on the power hat. Rows run from the top of the photo t
 |-----|--------|
 | 5V | 5 V |
 | GND | Ground |
-| SDA | I2C1 data — pump pressure 0x48, catheter pressure 0x49, thermistors 0–7 at 0x4A/0x4B |
-| SCL | I2C1 clock — pump pressure 0x48, catheter pressure 0x49, thermistors 0–7 at 0x4A/0x4B |
+| SDA | I2C1 data — pump pressure 0x48, reserve thermistors 0x49, thermistors 0–7 at 0x4A/0x4B |
+| SCL | I2C1 clock — pump pressure 0x48, reserve thermistors 0x49, thermistors 0–7 at 0x4A/0x4B |
 | IO4 | UPS shutdown output |
 | IO27 | Ready |
 | IO21 | Battery Mode |

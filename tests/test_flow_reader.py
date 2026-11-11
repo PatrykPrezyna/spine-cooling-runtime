@@ -67,7 +67,7 @@ class FlowConfigTests(unittest.TestCase):
         self.assertEqual(int(fs["analog_input"]), 0)
         self.assertAlmostEqual(float(fs["shunt_ohm"]), 220.0)
         self.assertEqual(thermistor_cfg(config)["labels"][4], "Cartrige In")
-        self.assertEqual(pressure_cfg(config)["i2c_addresses"], [0x48, 0x49])
+        self.assertEqual(pressure_cfg(config)["i2c_addresses"], [0x48])
 
     def test_sim_reads_configured_flow(self) -> None:
         bundle = build_hardware(

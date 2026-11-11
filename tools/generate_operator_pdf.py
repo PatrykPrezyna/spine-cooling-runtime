@@ -41,7 +41,10 @@ TEMPS = {
     "Animal 2": 37.0,
     "Animal 3": 37.0,
     "Animal 4": 4.0,
-    "Reserve": 25.0,
+    "Reserve 1": 25.0,
+    "Reserve 2": 25.0,
+    "Reserve 3": 25.0,
+    "Reserve 4": 25.0,
 }
 PRESSURES = {
     "Pump In": 1.71,

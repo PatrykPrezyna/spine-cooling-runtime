@@ -118,7 +118,10 @@ sensors:
       8: Animal 2
       9: Animal 3
       10: Animal 4
-      11: Reserve
+      12: Reserve 1
+      13: Reserve 2
+      14: Reserve 3
+      15: Reserve 4
   flow:
     enabled: true
     i2c_bus: 6
@@ -138,13 +141,10 @@ sensors:
     data_rate: 860
     i2c_addresses:
     - 72
-    - 73
     gain: 16
     channels:
     - 0
     - 1
-    - 2
-    - 3
     labels:
       0: Pump In
       1: Pump Out
@@ -229,5 +229,8 @@ simulation:
     Animal 2: 37.0
     Animal 3: 37.0
     Animal 4: 4.0
-    Reserve: 25.0
+    Reserve 1: 25.0
+    Reserve 2: 25.0
+    Reserve 3: 25.0
+    Reserve 4: 25.0
   flow_ml_per_min: 30.0

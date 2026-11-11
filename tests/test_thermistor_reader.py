@@ -205,6 +205,8 @@ class ExtraBusThermistorTests(unittest.TestCase):
         self.assertEqual(chip_key_for_channel(4), (1, 0x4B))
         self.assertEqual(chip_key_for_channel(8), (6, 0x48))
         self.assertEqual(chip_key_for_channel(11), (6, 0x48))
+        self.assertEqual(chip_key_for_channel(12), (1, 0x49))
+        self.assertEqual(chip_key_for_channel(15), (1, 0x49))
 
     def test_config_yaml_temperature_labels_follow_channels(self) -> None:
         import yaml
@@ -215,8 +217,12 @@ class ExtraBusThermistorTests(unittest.TestCase):
         ts = thermistor_cfg(config)
         self.assertNotIn("i2c_addresses", ts)
         self.assertEqual(
-            [ts["labels"][i] for i in range(8, 12)],
-            ["Animal 2", "Animal 3", "Animal 4", "Reserve"],
+            [ts["labels"][i] for i in range(8, 11)],
+            ["Animal 2", "Animal 3", "Animal 4"],
+        )
+        self.assertEqual(
+            [ts["labels"][i] for i in range(12, 16)],
+            ["Reserve 1", "Reserve 2", "Reserve 3", "Reserve 4"],
         )
         expected_ui = [ts["labels"][i] for i in sorted(ts["labels"])]
         self.assertEqual(temperature_labels_from_config(config), expected_ui)

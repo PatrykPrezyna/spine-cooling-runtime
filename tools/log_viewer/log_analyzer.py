@@ -67,7 +67,10 @@ _DEFAULT_TEMP_NAMES = [
     "Animal 2",
     "Animal 3",
     "Animal 4",
-    "Reserve",
+    "Reserve 1",
+    "Reserve 2",
+    "Reserve 3",
+    "Reserve 4",
 ]
 _DEFAULT_PRESSURE_NAMES = ["Pump In", "Pump Out", "Catheter In", "Catheter Out"]
 

@@ -5,8 +5,10 @@ serves two sensors:
 
     channel 0 → address[0] (i2c-1 0x48, pump), P0-P1
     channel 1 → address[0] (i2c-1 0x48, pump), P2-P3
-    channel 2 → address[1] (i2c-1 0x49, catheter), P0-P1
-    channel 3 → address[1] (i2c-1 0x49, catheter), P2-P3
+    channel 2 → address[1], P0-P1
+    channel 3 → address[1], P2-P3
+
+i2c-1 0x49 is the reserve thermistor chip, not a pressure address.
 
 Conversion matches the simple example: linear mV → bar.
 The calibration anchors are the original sensor points (-11.5 psi / 75.0 psi).
@@ -142,14 +144,14 @@ class ADS1115PressureReader:
         raw = ps_cfg.get("i2c_addresses")
         if raw is None:
             single = ps_cfg.get("i2c_address")
-            raw = [single] if single is not None else [0x48, 0x49]
+            raw = [single] if single is not None else [0x48]
         addresses: List[int] = []
         for item in raw:
             try:
                 addresses.append(int(item))
             except (TypeError, ValueError):
                 continue
-        return addresses or [0x48, 0x49]
+        return addresses or [0x48]
 
     @staticmethod
     def _parse_labels(ps_cfg: dict) -> Dict[int, str]:

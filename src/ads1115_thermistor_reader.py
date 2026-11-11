@@ -2,10 +2,11 @@
 
 Hardware is fixed (not config):
 
-- 12 single-ended channels on three chips
+- 12 single-ended channels on three chips, plus four reserve channels
 - 0–3:  i2c-6 0x4B  (Tip is AIN0)
 - 4–7:  i2c-1 0x4B
 - 8–11: i2c-6 0x48
+- 12–15: i2c-1 0x49  (Reserve 1 is AIN0)
 - gain 1 (±4.096 V), 128 SPS, single-shot
 
 PCB silkscreen TH1–TH16, in the same order as the UI:
@@ -46,8 +47,9 @@ _CHIPS: Tuple[ChipKey, ...] = (
     (6, 0x4B),
     (1, 0x4B),
     (6, 0x48),
+    (1, 0x49),
 )
-_CHANNEL_COUNT = 12
+_CHANNEL_COUNT = 16
 _GAIN = 1
 _DATA_RATE = 128
 _TIP_CHANNEL = 0
