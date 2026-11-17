@@ -13,15 +13,39 @@ LOG="$ROOT/logs/autostart.log"
 PIDFILE="$ROOT/logs/autostart.pid"
 DISABLE="$ROOT/logs/autostart.disabled"
 SHUTDOWN_EXIT=86
+# Changes on every boot, including after the power cable is pulled.
+BOOT_ID=""
+if [[ -r /proc/sys/kernel/random/boot_id ]]; then
+  BOOT_ID="$(tr -d '[:space:]' < /proc/sys/kernel/random/boot_id)"
+fi
 
+# True when pid is this launcher or the UI process, not a recycled pid.
+our_process() {
+  local pid="$1"
+  local cmd=""
+  [[ "$pid" =~ ^[0-9]+$ && -r "/proc/$pid/cmdline" ]] || return 1
+  cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+  [[ "$cmd" == *spine-cooling-start.sh* || "$cmd" == *"src/main.py"* ]]
+}
+
+# Pid file is "<boot id>\n<pid>". A power cut leaves the previous boot's pid
+# on disk, and Linux may give that number to an unrelated process.
 if [[ -f "$PIDFILE" ]]; then
-  old_pid="$(cat "$PIDFILE" 2>/dev/null || true)"
-  if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
+  old_boot="$(sed -n '1p' "$PIDFILE" 2>/dev/null || true)"
+  old_pid="$(sed -n '2p' "$PIDFILE" 2>/dev/null || true)"
+  old_boot="$(printf '%s' "$old_boot" | tr -d '[:space:]')"
+  old_pid="$(printf '%s' "$old_pid" | tr -d '[:space:]')"
+  # Older files were a single line containing only the pid.
+  if [[ -z "$old_pid" && "$old_boot" =~ ^[0-9]+$ ]]; then
+    old_pid="$old_boot"
+    old_boot=""
+  fi
+  if our_process "$old_pid" && { [[ -z "$old_boot" ]] || [[ "$old_boot" == "$BOOT_ID" ]]; }; then
     echo "$(date -Is) already running (pid $old_pid)" >>"$LOG"
     exit 0
   fi
 fi
-echo $$ >"$PIDFILE"
+printf '%s\n%s\n' "$BOOT_ID" "$$" >"$PIDFILE"
 
 if [[ -x "$ROOT/venv/bin/python" ]]; then
   PY="$ROOT/venv/bin/python"

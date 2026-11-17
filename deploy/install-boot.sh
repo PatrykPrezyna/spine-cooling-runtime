@@ -24,7 +24,8 @@ remove_autostart() {
   rm -f "$DESKTOP_FILE"
   touch "$ROOT/logs/autostart.disabled"
   if [[ -f "$ROOT/logs/autostart.pid" ]]; then
-    old_pid="$(cat "$ROOT/logs/autostart.pid" 2>/dev/null || true)"
+    # Current files store the boot id, then the pid. Older files stored only the pid.
+    old_pid="$(awk '/^[0-9]+$/ { pid=$1 } END { print pid }' "$ROOT/logs/autostart.pid" 2>/dev/null || true)"
     if [[ -n "$old_pid" ]]; then
       kill "$old_pid" 2>/dev/null || true
     fi
