@@ -206,7 +206,7 @@ Set `logging.usb.enabled: false` in `config.yaml` to leave the stick unused.
    sudo reboot
    ```
 
-   That turns on desktop auto-login, starts `pigpiod`, and opens the app when the desktop comes up. If the window closes or the program crashes, it opens again. A shutdown from the UI still halts the Pi and does not reopen the window. The boot log is `logs/autostart.log`. Stop it with `bash deploy/install-boot.sh --remove`.
+   That turns on desktop auto-login, starts `pigpiod`, and opens the app when the desktop comes up. Closing the window leaves it closed until the next boot. A shutdown from the UI still halts the Pi. The boot log is `logs/autostart.log`. Stop it with `bash deploy/install-boot.sh --remove`.
 
 Qt on the Pi image also needs:
 

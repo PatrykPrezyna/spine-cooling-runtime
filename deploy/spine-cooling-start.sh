@@ -1,5 +1,6 @@
 #!/bin/bash
-# Start the spine-cooling UI for a desktop session and bring it back if it exits.
+# Start the spine-cooling UI once when the desktop session starts.
+# Closing the window leaves it closed until the next boot.
 # Installed by deploy/install-boot.sh. Do not run this over SSH.
 
 set -u
@@ -47,21 +48,19 @@ if [[ -f "$LOG" ]]; then
   fi
 fi
 
-echo "$(date -Is) starting $PY" >>"$LOG"
+if [[ -f "$DISABLE" ]]; then
+  echo "$(date -Is) autostart disabled" >>"$LOG"
+  rm -f "$PIDFILE"
+  exit 0
+fi
 
-while true; do
-  if [[ -f "$DISABLE" ]]; then
-    echo "$(date -Is) autostart disabled" >>"$LOG"
-    rm -f "$PIDFILE"
-    exit 0
-  fi
-  "$PY" "$ROOT/src/main.py" >>"$LOG" 2>&1
-  code=$?
-  if [[ "$code" -eq "$SHUTDOWN_EXIT" ]]; then
-    echo "$(date -Is) shutdown requested, not restarting" >>"$LOG"
-    rm -f "$PIDFILE"
-    exit 0
-  fi
-  echo "$(date -Is) exited $code, restarting in 3s" >>"$LOG"
-  sleep 3
-done
+echo "$(date -Is) starting $PY" >>"$LOG"
+"$PY" "$ROOT/src/main.py" >>"$LOG" 2>&1
+code=$?
+rm -f "$PIDFILE"
+if [[ "$code" -eq "$SHUTDOWN_EXIT" ]]; then
+  echo "$(date -Is) shutdown requested" >>"$LOG"
+else
+  echo "$(date -Is) exited $code" >>"$LOG"
+fi
+exit 0
