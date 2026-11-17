@@ -179,26 +179,25 @@ Set `logging.usb.enabled: false` in `config.yaml` to leave the stick unused.
 
      After reboot: `ls /dev/i2c-6` and `sudo i2cdetect -y 6` (expect `0x48` for the extra thermistor ADS1115). The original sensors stay on `/dev/i2c-1`.
    - `sudo reboot`
-4. Install pigpio (the pump step pulses need the daemon):
+4. Install pigpio (the pump step pulses need the daemon). `bash deploy/install-boot.sh` does this itself. To install it before that:
 
    ```bash
    sudo apt update
    sudo apt install -y pigpio python3-pigpio
    ```
 
-   If `pigpiod` is not in apt, build it:
+   Raspberry Pi OS Trixie has no `pigpio` package. A source build also does not install `pigpiod.service`, which is why `systemctl` reports that the unit does not exist. Build the daemon, then run `bash deploy/install-boot.sh` — it writes the unit and enables it:
 
    ```bash
-   sudo apt install -y git make gcc
-   cd /tmp
-   git clone https://github.com/joan2937/pigpio.git
-   cd pigpio
-   make
-   sudo make install
+   sudo apt install -y python3-setuptools python3-full python3-dev make gcc wget
+   wget -O /tmp/pigpio-v79.tar.gz https://github.com/joan2937/pigpio/archive/refs/tags/v79.tar.gz
+   tar -C /tmp -zxf /tmp/pigpio-v79.tar.gz
+   make -C /tmp/pigpio-79 -j"$(nproc)"
+   sudo make -C /tmp/pigpio-79 install
    sudo ldconfig
    ```
 
-   Then `sudo systemctl enable pigpiod` and `sudo systemctl start pigpiod`. For the current session only: `sudo pigpiod`. Check with `pigs t`.
+   Check with `pigs t` after the unit is enabled. pigpio does not run on a Raspberry Pi 5.
 5. Follow [Run](#run) above.
 6. Start the UI at boot, with no one logging in or clicking anything. From the repo, as the touchscreen user:
 
