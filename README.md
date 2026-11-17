@@ -217,6 +217,36 @@ sudo apt-get install libqt6gui6 libqt6core6 qt6-qpa-plugins
 
 Stepper wiring background: https://www.instructables.com/Raspberry-Pi-Python-and-a-TB6600-Stepper-Motor-Dri/
 
+### Reach the screen with no router
+
+Turn the Pi into its own Wi-Fi access point so a laptop or phone can connect and open the desktop with VNC. No internet and no external router. NetworkManager starts a local DHCP server; the Pi is `10.42.0.1`. This needs Raspberry Pi OS Bookworm or newer.
+
+One-time on the Pi. Replace the network name and password (at least 8 characters) and store both in the team KeePass:
+
+```bash
+sudo raspi-config nonint do_vnc 0
+sudo apt update && sudo apt install -y dnsmasq-base
+sudo nmcli device wifi hotspot ifname wlan0 ssid "PiHotspot" password "YourPassword123"
+sudo nmcli connection modify Hotspot connection.autoconnect yes
+```
+
+The last line starts the hotspot whenever the Pi powers on.
+
+From the laptop or phone:
+
+1. Join **PiHotspot**. Leave Wi-Fi on automatic DHCP. The device gets an address in `10.42.0.x`.
+2. Open a VNC client (RealVNC Viewer or TigerVNC) and connect to `10.42.0.1`.
+
+SSH and FileZilla use that same address while you are on the hotspot.
+
+To stop the hotspot and join a normal Wi-Fi network again:
+
+```bash
+sudo nmcli connection down Hotspot
+sudo nmcli connection modify Hotspot connection.autoconnect no
+sudo nmcli device wifi connect "YourHomeWiFi" password "YourWiFiPassword"
+```
+
 ## Troubleshooting temperatures
 
 If the main app shows no temperatures, check the bus without the UI:
@@ -228,3 +258,31 @@ python examples/ads1115_thermistors.py 6    # four chips on /dev/i2c-6
 ```
 
 Live numbers mean that bus and ADS1115 are fine — compare the names with `config.yaml`. No devices, or only one bus, means the connector, overlay, address, or pull-ups. Check with `ls /dev/i2c-1 /dev/i2c-6` and `sudo i2cdetect -y 1` / `sudo i2cdetect -y 6`.
+
+## Reach the screen over an Ethernet cable
+
+Plug the laptop straight into the Pi with an Ethernet cable. No router. The laptop stays on automatic DHCP. NetworkManager on the Pi hands out addresses; the Pi is `10.42.0.1`. This needs Raspberry Pi OS Bookworm or newer.
+
+One-time on the Pi. If the wired profile is not named `Wired connection 1`, check it with `nmcli connection show`:
+
+```bash
+sudo raspi-config nonint do_vnc 0
+sudo apt update && sudo apt install -y dnsmasq-base
+sudo nmcli connection modify "Wired connection 1" ipv4.method shared
+sudo nmcli connection down "Wired connection 1" && sudo nmcli connection up "Wired connection 1"
+```
+
+From the laptop:
+
+1. Leave the Ethernet adapter on automatic DHCP.
+2. Connect the cable between the laptop and the Pi.
+3. Wait about 10 seconds. The laptop gets an address in `10.42.0.x`.
+4. Open a VNC client (RealVNC Viewer or TigerVNC) and connect to `10.42.0.1`.
+
+SSH and FileZilla use that same address while the cable is connected.
+
+To put the Pi back on a normal router or switch:
+
+```bash
+sudo nmcli connection modify "Wired connection 1" ipv4.method auto
+```
